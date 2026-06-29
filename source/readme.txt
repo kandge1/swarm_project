@@ -1,0 +1,1 @@
+Contains only the necessary elements for this project

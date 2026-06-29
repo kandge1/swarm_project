@@ -12,5 +12,5 @@
 *.pyo
 
 # VSCode / IDE stuff (optional)
-.vscode/
-.idea/
+# .vscode/
+# .idea/
