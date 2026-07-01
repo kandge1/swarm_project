@@ -14,3 +14,12 @@
 # VSCode / IDE stuff (optional)
 .vscode/
 .idea/
+
+# ROS2 workspace build artifacts
+**/build/
+**/install/
+**/log/
+**/.colcon/
+**/__pycache__/
+*.pyc
+*.pyo
