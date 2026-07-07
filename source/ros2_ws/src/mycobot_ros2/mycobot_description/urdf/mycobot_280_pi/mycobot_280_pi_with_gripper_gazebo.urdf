@@ -175,13 +175,13 @@
   <link name="camera_flange">
     <visual>
       <geometry>
-        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae"/>
+        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae" scale="0.001 0.001 0.001"/>
       </geometry>
       <origin xyz="0.024 -0.008 0.0" rpy="0 3.14159 0"/>
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae"/>
+        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae" scale="0.001 0.001 0.001"/>
       </geometry>
       <origin xyz="0.024 -0.008 0.0" rpy="0 3.14159 0"/>
     </collision>
