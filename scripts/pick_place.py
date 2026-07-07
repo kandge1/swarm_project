@@ -354,6 +354,8 @@ def main():
         time.sleep(0.5)
 
     print("\nPick-and-place sequence complete.")
+    io_client.destroy_node()
+    del mycobot
     rclpy.shutdown()
 
 
