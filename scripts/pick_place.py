@@ -3,9 +3,11 @@
 Pick-and-place demo: known start/end block poses, no camera.
 
 - Lateral/approach moves (pre-grasp, pre-place) use joint-space OMPL
-  planning with BOTH a position constraint AND an orientation constraint,
-  so the gripper holds a fixed downward-facing pose instead of the
-  "noodling" arbitrary-orientation behavior.
+  planning with a deterministic seeded-IK goal state. KDL is seeded from
+  multiple candidate joint configs; the first that is both IK-valid and
+  collision-free is used. This replaces OMPL's randomized constraint
+  sampling, which was landing the arm in a different (often near-singular
+  or self-colliding) configuration each run.
 - Vertical pick/place/retreat moves use MoveIt's /compute_cartesian_path
   service directly (moveit_py's PlanningComponent doesn't expose Cartesian
   planning on this MoveIt version), so the end effector travels in a
@@ -34,9 +36,9 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 # ---- Tunable poses (defaults; adjust to real measurements later) ----
-PICK_XYZ = (0.15, 0.04, 0.18)
-PLACE_XYZ = (0.15, -0.04, 0.18)
-APPROACH_HEIGHT = 0.03  # how far above pick/place to pre-position, meters
+PICK_XYZ = (0.160, -0.100, 0.290)
+PLACE_XYZ = (0.130, -0.100, 0.290)
+APPROACH_HEIGHT = 0.04  # how far above pick/place to pre-position, meters
 
 GRIPPER_OPEN = 0.15    # matches URDF joint upper limit
 GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
@@ -49,10 +51,10 @@ GROUP_NAME = "arm_group"
 # REACHABLE via constraint-based IK probe (ik_probe.py) after fixing the
 # camera_flange.dae mesh scale bug. This is roll=180deg, yaw=90deg: a
 # genuine "point straight down" orientation, not an approximate one.
-GRASP_QX = 0.707
-GRASP_QY = 0.707
-GRASP_QZ = 0.000
-GRASP_QW = 0.000
+GRASP_QX = -0.5
+GRASP_QY = 0.5
+GRASP_QZ = -0.5
+GRASP_QW = 0.5
 
 CARTESIAN_MAX_STEP = 0.005       # 5mm interpolation resolution
 CARTESIAN_JUMP_THRESHOLD = 0.0   # 0 disables jump-threshold filtering
@@ -68,6 +70,53 @@ HOME_DEGREES = {
     "joint6output_to_joint6": 0,
 }
 HOME_RADIANS = {name: math.radians(deg) for name, deg in HOME_DEGREES.items()}
+
+# IK candidate seeds tried in order. KDL's numeric solver can jump to a
+# different solution branch depending on the seed, and some branches self-
+# collide or have joint6output pegged at its limit (-2.44 rad). We provide
+# multiple seeds biasing different arm configurations; the first that passes
+# both IK convergence and collision checks is used.
+#
+# Each entry: (label, joint_values_dict)
+# joint4 is the elbow -- keeping it around -1.55 (home) puts the arm in the
+# elbow-down configuration. Seeds with joint6output=0 prevent it from being
+# pegged at its limit.
+def _build_ik_seeds():
+    seeds = []
+
+    # Seed 1: straight home -- the most natural starting point
+    seeds.append(("home", dict(HOME_RADIANS)))
+
+    # Seed 2: home but with joint6output forced to 0 (prevents limit-pegging)
+    s = dict(HOME_RADIANS)
+    s["joint6output_to_joint6"] = 0.0
+    s["joint6_to_joint5"] = 0.0
+    seeds.append(("home-wrist-zeroed", s))
+
+    # Seed 3: elbow slightly more bent, wrist joints zeroed
+    s = dict(HOME_RADIANS)
+    s["joint4_to_joint3"] = -1.8
+    s["joint5_to_joint4"] = 0.5
+    s["joint6_to_joint5"] = 0.0
+    s["joint6output_to_joint6"] = 0.0
+    seeds.append(("elbow-bent-wrist-zero", s))
+
+    # Seed 4: all zeros -- catches cases where other seeds all fail
+    s = {name: 0.0 for name in HOME_RADIANS}
+    seeds.append(("all-zeros", s))
+
+    # Seed 5: joint4 forced negative and deep, biases strongly toward elbow-down
+    s = dict(HOME_RADIANS)
+    s["joint4_to_joint3"] = -2.0
+    s["joint5_to_joint4"] = 0.3
+    s["joint6_to_joint5"] = 0.0
+    s["joint6output_to_joint6"] = 0.0
+    seeds.append(("deep-elbow-down", s))
+
+    return seeds
+
+
+IK_SEEDS = _build_ik_seeds()
 
 
 def _floatify_joint_limits(config_dict):
@@ -170,11 +219,6 @@ def build_moveit():
 
 
 def make_position_constraint(link_name, frame_id, x, y, z, tolerance=0.04):
-    # Widened from 0.01 to 0.04 (4cm): on a non-redundant 6-DOF arm, only a
-    # discrete set of orientations satisfy IK exactly at any single point.
-    # A larger position sphere gives the constraint sampler room to land on
-    # one of those solvable points near the target instead of being pinned
-    # to one exact xyz where the desired orientation may not be achievable.
     constraint = PositionConstraint()
     constraint.header.frame_id = frame_id
     constraint.link_name = link_name
@@ -197,9 +241,6 @@ def make_position_constraint(link_name, frame_id, x, y, z, tolerance=0.04):
 
 def make_orientation_constraint(link_name, frame_id, qx, qy, qz, qw,
                                  x_tolerance=0.15, y_tolerance=0.15, z_tolerance=3.14):
-    # x/y tightened to ~8.6 deg now that GRASP_QX/QY/QZ/QW is a confirmed-
-    # reachable orientation (via ik_probe.py), not a guess -- keeps the
-    # gripper close to genuinely vertical. z (yaw) stays free.
     constraint = OrientationConstraint()
     constraint.header.frame_id = frame_id
     constraint.link_name = link_name
@@ -227,11 +268,76 @@ def make_grasp_pose(x, y, z):
     return pose
 
 
+def _is_state_colliding(mycobot, state):
+    psm = mycobot.get_planning_scene_monitor()
+    with psm.read_only() as scene:
+        return scene.is_state_colliding(state, GROUP_NAME)
+
+
+def _is_near_joint_limit(state, margin=0.15):
+    """Reject IK solutions where joint6output_to_joint6 is near its limit.
+    KDL pegs it at -2.4434 rad even when seeded elsewhere; OMPL can't plan
+    to a state wedged at a joint limit (no room to sample nearby states)."""
+    # joint6output_to_joint6 limits from URDF: lower=-2.4434, upper=3.14159
+    positions = state.joint_positions  # dict: joint_name -> value
+    val = positions.get("joint6output_to_joint6", None)
+    if val is not None:
+        if val < -2.4434 + margin or val > 3.14159 - margin:
+            return True, "joint6output_to_joint6", val, -2.4434, 3.14159
+    return False, None, None, None, None
+
+
+def solve_ik_state(mycobot, x, y, z, qx, qy, qz, qw):
+    """Try each IK_SEEDS entry in order. Return the first RobotState that
+    both converges and is collision-free, or None if all seeds fail."""
+    robot_model = mycobot.get_robot_model()
+    pose = Pose()
+    pose.position.x = x
+    pose.position.y = y
+    pose.position.z = z
+    pose.orientation.x = qx
+    pose.orientation.y = qy
+    pose.orientation.z = qz
+    pose.orientation.w = qw
+
+    for label, seed in IK_SEEDS:
+        state = RobotState(robot_model)
+        state.set_joint_group_positions(GROUP_NAME, list(seed.values()))
+        state.update()
+
+        if not state.set_from_ik(GROUP_NAME, pose, POSE_LINK, timeout=0.5):
+            print(f"[ik] '{label}' seed: IK did not converge")
+            continue
+
+        joints = [round(v, 3) for v in state.get_joint_group_positions(GROUP_NAME)]
+
+        near_limit, lname, lval, llo, lhi = _is_near_joint_limit(state)
+        if near_limit:
+            print(f"[ik] '{label}' seed: converged to {joints} BUT '{lname}'={lval:.3f} "
+                  f"near limit [{llo:.3f},{lhi:.3f}], skipping")
+            continue
+
+        if _is_state_colliding(mycobot, state):
+            print(f"[ik] '{label}' seed: converged to {joints} BUT self-collides, skipping")
+            continue
+
+        print(f"[ik] '{label}' seed: OK -> {joints}")
+        return state
+
+    print(f"[ik] All seeds exhausted for ({x:.3f},{y:.3f},{z:.3f}) -- falling back to constraint sampling")
+    return None
+
+
+def toggle_gripper(io_client):
+    """Close then open the gripper as a functional pre-start check."""
+    if not io_client.gripper_move_to(GRIPPER_CLOSED):
+        return False
+    time.sleep(0.5)
+    return io_client.gripper_move_to(GRIPPER_OPEN)
+
+
 def go_home(mycobot, arm):
-    """Return the arm to its designated home pose (HOME_RADIANS) before planning
-    anything else. Without this, a leftover pose from a previous run (e.g. gripper
-    folded toward g_base) can leave the arm in self-collision, causing MoveIt's
-    CheckStartStateCollision to reject all subsequent planning."""
+    """Return the arm to its designated home pose before planning anything else."""
     robot_model = mycobot.get_robot_model()
     goal_state = RobotState(robot_model)
     goal_state.set_joint_group_positions(GROUP_NAME, list(HOME_RADIANS.values()))
@@ -242,28 +348,36 @@ def go_home(mycobot, arm):
 
     plan_result = arm.plan()
     if not plan_result:
-        print("Planning to init_pose (home) FAILED.")
+        print("Planning to home pose FAILED.")
         return False
 
     print("Executing joint-space move to home pose...")
-    mycobot.execute(plan_result.trajectory, controllers=[])
+    mycobot.execute(plan_result.trajectory, controllers=["arm_group_controller"])
     return True
 
 
 def move_arm_to(mycobot, arm, x, y, z, lock_orientation=True):
-    """Joint-space plan to a target position, with the gripper orientation
-    locked downward so the arm doesn't twist arbitrarily between waypoints."""
+    """Joint-space plan to a target position. Uses deterministic seeded IK
+    when possible; falls back to OMPL constraint sampling if all seeds fail."""
     arm.set_start_state_to_current_state()
 
-    constraints = Constraints()
-    constraints.position_constraints.append(
-        make_position_constraint(POSE_LINK, PLANNING_FRAME, x, y, z)
-    )
+    ik_state = None
     if lock_orientation:
-        constraints.orientation_constraints.append(
-            make_orientation_constraint(POSE_LINK, PLANNING_FRAME, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+        ik_state = solve_ik_state(mycobot, x, y, z, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+
+    if ik_state is not None:
+        arm.set_goal_state(robot_state=ik_state)
+    else:
+        print(f"[move_arm_to] No valid IK state found for ({x},{y},{z}), using constraint sampling")
+        constraints = Constraints()
+        constraints.position_constraints.append(
+            make_position_constraint(POSE_LINK, PLANNING_FRAME, x, y, z)
         )
-    arm.set_goal_state(motion_plan_constraints=[constraints])
+        if lock_orientation:
+            constraints.orientation_constraints.append(
+                make_orientation_constraint(POSE_LINK, PLANNING_FRAME, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+            )
+        arm.set_goal_state(motion_plan_constraints=[constraints])
 
     plan_result = arm.plan()
     if not plan_result:
@@ -271,13 +385,18 @@ def move_arm_to(mycobot, arm, x, y, z, lock_orientation=True):
         return False
 
     print(f"Executing joint-space move to ({x}, {y}, {z})...")
-    mycobot.execute(plan_result.trajectory, controllers=[])
+    mycobot.execute(plan_result.trajectory, controllers=["arm_group_controller"])
     return True
 
 
 def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.95):
     """Straight-line Cartesian move from the current pose to (x, y, z),
     holding the fixed downward grasp orientation throughout."""
+    psm = mycobot.get_planning_scene_monitor()
+    with psm.read_only() as scene:
+        joint_values = scene.current_state.get_joint_group_positions(GROUP_NAME)
+        print(f"[cartesian] joints at start: {[round(v, 4) for v in joint_values]}")
+
     target = make_grasp_pose(x, y, z)
 
     path_constraints = Constraints()
@@ -285,28 +404,38 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.95):
         make_orientation_constraint(POSE_LINK, PLANNING_FRAME, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
     )
 
+    # DIAGNOSTIC: try with AND without orientation constraint to isolate
+    # whether the constraint or the pose itself is causing the failure
     solution_msg, fraction = io_client.compute_cartesian_path(
+        waypoints=[target],
+        avoid_collisions=True,
+        path_constraints=None,  # TEMP: no orientation constraint
+    )
+    print(f"[diag] Cartesian fraction WITHOUT orientation constraint: {fraction:.2f}")
+    solution_msg2, fraction2 = io_client.compute_cartesian_path(
         waypoints=[target],
         avoid_collisions=True,
         path_constraints=path_constraints,
     )
+    print(f"[diag] Cartesian fraction WITH orientation constraint: {fraction2:.2f}")
+    solution_msg, fraction = solution_msg2, fraction2
 
     if solution_msg is None or fraction < min_fraction:
-        print(f"Cartesian planning FAILED or incomplete for target ({x}, {y}, {z}) "
-              f"(fraction={fraction:.2f})")
+        print(f"Cartesian planning FAILED for ({x}, {y}, {z}) (fraction={fraction:.2f})")
         return False
 
     print(f"Executing Cartesian move to ({x}, {y}, {z}) (fraction={fraction:.2f})...")
 
     robot_model = mycobot.get_robot_model()
     trajectory = RobotTrajectory(robot_model)
+    trajectory.joint_model_group_name = GROUP_NAME
 
     psm = mycobot.get_planning_scene_monitor()
     with psm.read_only() as scene:
         current_state = scene.current_state
         trajectory.set_robot_trajectory_msg(current_state, solution_msg)
 
-    mycobot.execute(trajectory, controllers=[])
+    mycobot.execute(trajectory, controllers=["arm_group_controller"])
     return True
 
 
@@ -322,25 +451,19 @@ def main():
 
     steps = [
         ("Return to home pose", lambda: go_home(mycobot, arm)),
-        ("Open gripper (pre-start)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
-        # Lateral/approach moves: joint-space, orientation-locked
+        ("Toggle gripper (pre-start)", lambda: toggle_gripper(io_client)),
         ("Move to pre-grasp (above pick)",
          lambda: move_arm_to(mycobot, arm, px, py, pz + APPROACH_HEIGHT)),
-        # Vertical descent: straight-line Cartesian
         ("Descend to grasp pose (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, px, py, pz)),
         ("Close gripper (grasp)", lambda: io_client.gripper_move_to(GRIPPER_CLOSED)),
-        # Vertical retreat: straight-line Cartesian
         ("Retreat after grasp (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, px, py, pz + APPROACH_HEIGHT)),
-        # Lateral transfer: joint-space, orientation-locked
         ("Move to pre-place (above place)",
          lambda: move_arm_to(mycobot, arm, lx, ly, lz + APPROACH_HEIGHT)),
-        # Vertical descent: straight-line Cartesian
         ("Descend to place pose (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz)),
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
-        # Vertical retreat: straight-line Cartesian
         ("Retreat after release (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz + APPROACH_HEIGHT)),
     ]
