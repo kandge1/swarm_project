@@ -477,6 +477,7 @@ def main():
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
         ("Retreat after release (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz + APPROACH_HEIGHT)),
+        ("Return to home pose (final)", lambda: go_home(mycobot, arm)),
     ]
 
     for name, action in steps:
