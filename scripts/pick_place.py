@@ -409,16 +409,8 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.95):
     solution_msg, fraction = io_client.compute_cartesian_path(
         waypoints=[target],
         avoid_collisions=True,
-        path_constraints=None,  # TEMP: no orientation constraint
-    )
-    print(f"[diag] Cartesian fraction WITHOUT orientation constraint: {fraction:.2f}")
-    solution_msg2, fraction2 = io_client.compute_cartesian_path(
-        waypoints=[target],
-        avoid_collisions=True,
         path_constraints=path_constraints,
     )
-    print(f"[diag] Cartesian fraction WITH orientation constraint: {fraction2:.2f}")
-    solution_msg, fraction = solution_msg2, fraction2
 
     if solution_msg is None or fraction < min_fraction:
         print(f"Cartesian planning FAILED for ({x}, {y}, {z}) (fraction={fraction:.2f})")
