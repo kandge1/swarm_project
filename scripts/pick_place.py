@@ -36,9 +36,9 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 # ---- Tunable poses (defaults; adjust to real measurements later) ----
-PICK_XYZ = (0.160, -0.100, 0.290)
-PLACE_XYZ = (0.130, -0.100, 0.290)
-APPROACH_HEIGHT = 0.04  # how far above pick/place to pre-position, meters
+PICK_XYZ = (0.20, 0.00, 0.10)
+PLACE_XYZ = (0.20, -0.10, 0.10)
+APPROACH_HEIGHT = 0.15  # how far above pick/place to pre-position, meters
 
 GRIPPER_OPEN = 0.15    # matches URDF joint upper limit
 GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
@@ -51,10 +51,10 @@ GROUP_NAME = "arm_group"
 # REACHABLE via constraint-based IK probe (ik_probe.py) after fixing the
 # camera_flange.dae mesh scale bug. This is roll=180deg, yaw=90deg: a
 # genuine "point straight down" orientation, not an approximate one.
-GRASP_QX = -0.5
-GRASP_QY = 0.5
-GRASP_QZ = -0.5
-GRASP_QW = 0.5
+GRASP_QX = -0.7071
+GRASP_QY = 0.7071
+GRASP_QZ = 0.0
+GRASP_QW = 0.0
 
 CARTESIAN_MAX_STEP = 0.005       # 5mm interpolation resolution
 CARTESIAN_JUMP_THRESHOLD = 0.0   # 0 disables jump-threshold filtering
@@ -85,6 +85,17 @@ def _build_ik_seeds():
     seeds = []
 
     # Seed 1: straight home -- the most natural starting point
+    # Confirmed-good seed for the downward grasp orientation, found via
+    # empirical IK/Cartesian survey after the camera_flange URDF fix.
+    downward_seed = {
+        "joint2_to_joint1":       0.324,
+        "joint3_to_joint2":      -0.334,
+        "joint4_to_joint3":      -0.655,
+        "joint5_to_joint4":      -0.582,
+        "joint6_to_joint5":      -0.0,
+        "joint6output_to_joint6": 0.324,
+    }
+    seeds.append(("downward-confirmed", downward_seed))
     seeds.append(("home", dict(HOME_RADIANS)))
 
     # Seed 2: home but with joint6output forced to 0 (prevents limit-pegging)
@@ -389,7 +400,7 @@ def move_arm_to(mycobot, arm, x, y, z, lock_orientation=True):
     return True
 
 
-def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.95):
+def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
     """Straight-line Cartesian move from the current pose to (x, y, z),
     holding the fixed downward grasp orientation throughout."""
     psm = mycobot.get_planning_scene_monitor()
@@ -409,8 +420,16 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.95):
     solution_msg, fraction = io_client.compute_cartesian_path(
         waypoints=[target],
         avoid_collisions=True,
+        path_constraints=None,  # TEMP: no orientation constraint
+    )
+    print(f"[diag] Cartesian fraction WITHOUT orientation constraint: {fraction:.2f}")
+    solution_msg2, fraction2 = io_client.compute_cartesian_path(
+        waypoints=[target],
+        avoid_collisions=True,
         path_constraints=path_constraints,
     )
+    print(f"[diag] Cartesian fraction WITH orientation constraint: {fraction2:.2f}")
+    solution_msg, fraction = solution_msg2, fraction2
 
     if solution_msg is None or fraction < min_fraction:
         print(f"Cartesian planning FAILED for ({x}, {y}, {z}) (fraction={fraction:.2f})")

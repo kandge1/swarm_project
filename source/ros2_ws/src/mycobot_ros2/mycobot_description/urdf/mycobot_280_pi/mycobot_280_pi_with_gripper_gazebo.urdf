@@ -172,26 +172,6 @@
   </link>
 
   <!-- ==================== CAMERA FLANGE ==================== -->
-  <link name="camera_flange">
-    <visual>
-      <geometry>
-        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae" scale="0.001 0.001 0.001"/>
-      </geometry>
-      <origin xyz="0.024 -0.008 0.0" rpy="0 3.14159 0"/>
-    </visual>
-    <collision>
-      <geometry>
-        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae" scale="0.001 0.001 0.001"/>
-      </geometry>
-      <origin xyz="0.024 -0.008 0.0" rpy="0 3.14159 0"/>
-    </collision>
-    <inertial>
-      <origin xyz="0.024 -0.008 0.0" rpy="0 3.14159 0"/>
-      <mass value="0.03"/>
-      <inertia ixx="0.00003" ixy="0.0" ixz="0.0" iyy="0.00003" iyz="0.0" izz="0.00003"/>
-    </inertial>
-  </link>
-
   <!-- ==================== GRIPPER LINKS ==================== -->
   <link name="gripper_base">
     <visual>
@@ -390,18 +370,12 @@
     <origin xyz="0 0.0456 0" rpy="-1.5708 0 0"/>
   </joint>
 
-  <!-- ==================== CAMERA FLANGE JOINT ==================== -->
-  <joint name="joint6_flange_to_camera_flange" type="fixed">
-    <parent link="joint6_flange"/>
-    <child link="camera_flange"/>
-    <origin xyz="0 0 0.01" rpy="1.5708 0 -1.5708"/>
-  </joint>
-
   <!-- ==================== GRIPPER JOINTS ==================== -->
-  <joint name="camera_flange_to_gripper_base" type="fixed">
-    <parent link="camera_flange"/>
+  <!-- Direct attachment matching Elephant Robotics' official adaptive_gripper URDF -->
+  <joint name="joint6output_to_gripper_base" type="fixed">
+    <parent link="joint6_flange"/>
     <child link="gripper_base"/>
-    <origin xyz="0 0.040 0" rpy="0.7936 -1.5708 -0.7854"/>
+    <origin xyz="0 0 0.034" rpy="1.579 0 0"/>
   </joint>
 
   <joint name="gripper_controller" type="revolute">
