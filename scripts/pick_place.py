@@ -286,15 +286,14 @@ def _is_state_colliding(mycobot, state):
 
 
 def _is_near_joint_limit(state, margin=0.15):
-    """Reject IK solutions where joint6output_to_joint6 is near its limit.
-    KDL pegs it at -2.4434 rad even when seeded elsewhere; OMPL can't plan
-    to a state wedged at a joint limit (no room to sample nearby states)."""
-    # joint6output_to_joint6 limits from URDF: lower=-2.4434, upper=3.14159
+    """Reject IK solutions where any joint is near its URDF limit.
+    joint6output_to_joint6 limits updated to ±6.28318 (full 2pi rotation)."""
+    # joint6output_to_joint6 limits from URDF: lower=-6.28318, upper=6.28318
     positions = state.joint_positions  # dict: joint_name -> value
     val = positions.get("joint6output_to_joint6", None)
     if val is not None:
-        if val < -2.4434 + margin or val > 3.14159 - margin:
-            return True, "joint6output_to_joint6", val, -2.4434, 3.14159
+        if val < -6.28318 + margin or val > 6.28318 - margin:
+            return True, "joint6output_to_joint6", val, -6.28318, 6.28318
     return False, None, None, None, None
 
 
