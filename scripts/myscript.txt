@@ -17,3 +17,8 @@ ros2 control list_controllers
 
 source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 python3 ~/swarm/swarm_project/scripts/pick_place.py
+
+#New terminal, run spiral_test.py
+
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+python3 ~/swarm/swarm_project/scripts/spiral_reach_test.py --screen 2>&1 | tail -20
