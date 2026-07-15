@@ -26,4 +26,5 @@ source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 python3 ~/swarm/swarm_project/scripts/annulus_viz.py
 
 #In another terminal
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 python3 ~/swarm/swarm_project/scripts/annulus_test.py --sweep-rz --no-elbow-ceiling --no-wrist-ceiling

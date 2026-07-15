@@ -63,7 +63,9 @@ import sys
 import time
 
 import rclpy
-from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Pose, Point
+from std_msgs.msg import ColorRGBA
+from visualization_msgs.msg import Marker, MarkerArray
 from moveit.core.robot_state import RobotState
 from moveit.core.robot_trajectory import RobotTrajectory
 
@@ -106,11 +108,11 @@ from pick_place import (  # noqa: E402
 # ceilings disabled to get an unmasked ground-truth map.
 R_INNER = 0.15          # m
 R_OUTER = 0.24          # m
-YAW_MIN = math.radians(-80.0)
-YAW_MAX = math.radians(+80.0)
+YAW_MIN = math.radians(-120.0)
+YAW_MAX = math.radians(+120.0)
 
 TRACE_Z = 0.14          # m -- the grasp plane confirmed in the spiral sweep
-HOVER_DZ = 0.06         # m -- hover at 0.20 m, same as spiral_reach_test.py
+HOVER_DZ = 0.01         # m -- hover at 0.20 m, same as spiral_reach_test.py
 
 ARC_STEP = 0.02         # m -- tangential spacing along the arcs
 RADIAL_STEP = 0.02      # m -- spacing along the radial segments
@@ -289,6 +291,173 @@ def generate_boundary(r_inner=R_INNER, r_outer=R_OUTER,
     flat.append(close)
 
     return flat, edges
+
+
+# ---------------------------------------------------------------------------
+# RViz visualization -- extruded work-zone volume + traced-boundary outline
+# ---------------------------------------------------------------------------
+
+def _pt(x, y, z):
+    p = Point()
+    p.x, p.y, p.z = float(x), float(y), float(z)
+    return p
+
+
+def build_workzone_markers(r_inner, r_outer, yaw_min, yaw_max,
+                           z_bottom, z_top, frame_id=PLANNING_FRAME,
+                           n_arc=48, ns="annulus_workzone",
+                           boundary_points=None):
+    """Build a MarkerArray showing the validated work zone:
+      id 0: TRIANGLE_LIST -- translucent green solid, the extruded annular
+            sector from z_bottom to z_top (an actual volume, not a flat patch).
+      id 1: LINE_LIST -- solid green wireframe. If boundary_points is given
+            (the same list generate_boundary() produced), the top-face edge
+            of the wireframe is drawn from those exact points -- so what you
+            see traces the path the arm actually walked, not a re-derived
+            approximation of it.
+      id 2: TEXT_VIEW_FACING -- a label with the zone parameters.
+    """
+    angles = [yaw_min + (yaw_max - yaw_min) * i / n_arc for i in range(n_arc + 1)]
+    outer_top = [(r_outer * math.cos(a), r_outer * math.sin(a), z_top) for a in angles]
+    outer_bot = [(r_outer * math.cos(a), r_outer * math.sin(a), z_bottom) for a in angles]
+    inner_top = [(r_inner * math.cos(a), r_inner * math.sin(a), z_top) for a in angles]
+    inner_bot = [(r_inner * math.cos(a), r_inner * math.sin(a), z_bottom) for a in angles]
+
+    tris = []
+
+    def quad(a, b, c, d):
+        tris.append((a, b, c))
+        tris.append((a, c, d))
+
+    for i in range(n_arc):
+        quad(outer_top[i], outer_top[i + 1], inner_top[i + 1], inner_top[i])       # top cap
+        quad(outer_bot[i], inner_bot[i], inner_bot[i + 1], outer_bot[i + 1])       # bottom cap
+        quad(outer_top[i], outer_bot[i], outer_bot[i + 1], outer_top[i + 1])       # outer wall
+        quad(inner_top[i], inner_top[i + 1], inner_bot[i + 1], inner_bot[i])       # inner wall
+    quad(outer_top[0], inner_top[0], inner_bot[0], outer_bot[0])                   # yaw_min end cap
+    quad(outer_top[n_arc], outer_bot[n_arc], inner_bot[n_arc], inner_top[n_arc])   # yaw_max end cap
+
+    fill = Marker()
+    fill.header.frame_id = frame_id
+    fill.ns = ns
+    fill.id = 0
+    fill.type = Marker.TRIANGLE_LIST
+    fill.action = Marker.ADD
+    fill.pose.orientation.w = 1.0
+    fill.scale.x = fill.scale.y = fill.scale.z = 1.0
+    fill.color = ColorRGBA(r=0.15, g=0.85, b=0.25, a=0.25)
+    for a, b, c in tris:
+        fill.points += [_pt(*a), _pt(*b), _pt(*c)]
+
+    outline = Marker()
+    outline.header.frame_id = frame_id
+    outline.ns = ns
+    outline.id = 1
+    outline.type = Marker.LINE_LIST
+    outline.action = Marker.ADD
+    outline.pose.orientation.w = 1.0
+    outline.scale.x = 0.0025
+    outline.color = ColorRGBA(r=0.1, g=1.0, b=0.2, a=0.9)
+
+    def line(p1, p2):
+        outline.points += [_pt(*p1), _pt(*p2)]
+
+    if boundary_points:
+        # Draw the top-face outer/inner+radial edges from the ACTUAL traced
+        # points rather than the freshly-sampled `angles` above -- this is
+        # the literal path --execute walked, not a re-derivation of it.
+        by_edge = {}
+        for p in boundary_points:
+            by_edge.setdefault(p["edge"], []).append(p)
+        for edge_name, pts in by_edge.items():
+            for a, b in zip(pts, pts[1:]):
+                line((a["x"], a["y"], z_top), (b["x"], b["y"], z_top))
+    else:
+        for i in range(n_arc):
+            line(outer_top[i], outer_top[i + 1])
+            line(inner_top[i], inner_top[i + 1])
+
+    for i in range(n_arc):
+        line(outer_bot[i], outer_bot[i + 1])
+        line(inner_bot[i], inner_bot[i + 1])
+    line(outer_top[0], outer_bot[0])
+    line(inner_top[0], inner_bot[0])
+    line(outer_top[n_arc], outer_bot[n_arc])
+    line(inner_top[n_arc], inner_bot[n_arc])
+    line(inner_top[0], outer_top[0])
+    line(inner_bot[0], outer_bot[0])
+    line(inner_top[n_arc], outer_top[n_arc])
+    line(inner_bot[n_arc], outer_bot[n_arc])
+
+    label = Marker()
+    label.header.frame_id = frame_id
+    label.ns = ns
+    label.id = 2
+    label.type = Marker.TEXT_VIEW_FACING
+    label.action = Marker.ADD
+    mid_angle = (yaw_min + yaw_max) / 2.0
+    mid_r = (r_inner + r_outer) / 2.0
+    label.pose.position.x = mid_r * math.cos(mid_angle)
+    label.pose.position.y = mid_r * math.sin(mid_angle)
+    label.pose.position.z = z_top + 0.04
+    label.pose.orientation.w = 1.0
+    label.scale.z = 0.02
+    label.color = ColorRGBA(r=1.0, g=1.0, b=1.0, a=0.9)
+    label.text = (f"validated work zone\nr={r_inner:.2f}-{r_outer:.2f} m  "
+                  f"yaw={math.degrees(yaw_min):+.0f}..{math.degrees(yaw_max):+.0f} deg\n"
+                  f"z={z_bottom:.2f}-{z_top:.2f} m")
+
+    arr = MarkerArray()
+    arr.markers = [fill, outline, label]
+    return arr
+
+
+def publish_workzone(topic, frame_id, r_inner, r_outer, yaw_min, yaw_max,
+                     z_bottom, z_top, boundary_points, rate_hz, once,
+                     verbose=False):
+    """Publish the work-zone MarkerArray. Loops at rate_hz by default so late-
+    joining RViz sessions still see it (Marker durability is tied to the
+    publisher's lifetime, not a one-shot latch) -- pass once=True for a
+    single publish if RViz is already open and subscribed."""
+    node = rclpy.create_node("annulus_workzone_publisher")
+    pub = node.create_publisher(MarkerArray, topic, 10)
+
+    marker_array = build_workzone_markers(
+        r_inner, r_outer, yaw_min, yaw_max, z_bottom, z_top,
+        frame_id=frame_id, boundary_points=boundary_points)
+
+    print(f"Publishing MarkerArray on '{topic}' (frame_id='{frame_id}')")
+    print(f"  fill volume : r={r_inner:.3f}-{r_outer:.3f} m, "
+          f"yaw={math.degrees(yaw_min):+.0f}..{math.degrees(yaw_max):+.0f} deg, "
+          f"z={z_bottom:.3f}-{z_top:.3f} m")
+    print(f"  In RViz: Add -> By topic -> {topic} -> MarkerArray. Set Fixed")
+    print(f"  Frame to '{frame_id}' if the display doesn't appear.")
+
+    if once:
+        for stamp_pass in range(3):  # a few sends -- ROS2 pub/sub needs the
+            for m in marker_array.markers:  # discovery handshake to land
+                m.header.stamp = node.get_clock().now().to_msg()
+            pub.publish(marker_array)
+            rclpy.spin_once(node, timeout_sec=0.3)
+        print("Published once (sent a few times to survive discovery). "
+              "Exiting -- the marker will vanish if the node it came from "
+              "(this one) isn't the thing keeping RViz's late-join durability "
+              "alive; if you need it to persist for RViz windows opened "
+              "later, drop --once and leave this running.")
+        node.destroy_node()
+        return
+
+    print("  Publishing every %.1fs. Ctrl-C to stop." % (1.0 / rate_hz))
+    try:
+        while rclpy.ok():
+            for m in marker_array.markers:
+                m.header.stamp = node.get_clock().now().to_msg()
+            pub.publish(marker_array)
+            rclpy.spin_once(node, timeout_sec=1.0 / rate_hz)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
 
 
 # ---------------------------------------------------------------------------
@@ -910,6 +1079,23 @@ def main():
                       help="screen an (r,z) grid to find the real inner boundary")
     mode.add_argument("--selftest-collision", action="store_true",
                       help="prove the collision checker works before trusting it")
+    mode.add_argument("--rviz", action="store_true",
+                      help="publish the work zone as a translucent green "
+                      "MarkerArray for RViz; no MoveIt/motion involved")
+
+    parser.add_argument("--rviz-topic", default="/annulus_workzone")
+    parser.add_argument("--rviz-frame", default=None,
+                        help=f"marker frame_id (default: PLANNING_FRAME = "
+                        f"'{PLANNING_FRAME}')")
+    parser.add_argument("--rviz-z-bottom", type=float, default=None,
+                        help="default: --z (the trace/grasp plane)")
+    parser.add_argument("--rviz-z-top", type=float, default=None,
+                        help="default: --z + HOVER_DZ (the hover height)")
+    parser.add_argument("--rviz-rate", type=float, default=1.0,
+                        help="publish rate in Hz (default 1.0)")
+    parser.add_argument("--rviz-once", action="store_true",
+                        help="publish a few times then exit, instead of "
+                        "looping until Ctrl-C")
 
     parser.add_argument("--selftest-n", type=int, default=400,
                         help="random configs to sample in --selftest-collision")
@@ -959,12 +1145,42 @@ def main():
     parser.add_argument("--outdir", default="/tmp")
     args = parser.parse_args()
 
-    if not (args.probe or args.execute or args.sweep_rz or args.selftest_collision):
+    if not (args.probe or args.execute or args.sweep_rz
+            or args.selftest_collision or args.rviz):
         args.screen = True
 
     # Ceilings are heuristics; let the CLI override or disable them.
     ELBOW_CEILING = None if args.no_elbow_ceiling else args.elbow_ceiling
     WRIST_CEILING = None if args.no_wrist_ceiling else args.wrist_ceiling
+
+    yaw_min = math.radians(args.yaw_min)
+    yaw_max = math.radians(args.yaw_max)
+
+    # --- --rviz needs the boundary geometry (for the traced-outline overlay)
+    # but NOT MoveIt -- no build_moveit(), no planning scene, so it stays
+    # lightweight and can't be affected by the MoveItCpp teardown segfault.
+    if args.rviz:
+        points, _edges = generate_boundary(
+            r_inner=args.r_inner, r_outer=args.r_outer,
+            yaw_min=yaw_min, yaw_max=yaw_max, z=args.z,
+            arc_step=args.arc_step, radial_step=args.radial_step)
+        points = [p for p in points if p["edge"] != "close_loop"]
+
+        z_bottom = args.z if args.rviz_z_bottom is None else args.rviz_z_bottom
+        z_top = (args.z + HOVER_DZ) if args.rviz_z_top is None else args.rviz_z_top
+        frame_id = args.rviz_frame or PLANNING_FRAME
+
+        rclpy.init(args=["--ros-args", "-p", "use_sim_time:=true"])
+        try:
+            publish_workzone(
+                args.rviz_topic, frame_id,
+                args.r_inner, args.r_outer, yaw_min, yaw_max,
+                z_bottom, z_top, points,
+                rate_hz=args.rviz_rate, once=args.rviz_once,
+                verbose=args.verbose)
+        finally:
+            rclpy.shutdown()
+        return
 
     # --- modes that don't need the boundary geometry ---
     if args.sweep_rz or args.selftest_collision:
@@ -988,8 +1204,6 @@ def main():
         sys.stderr.flush()
         os._exit(0)
 
-    yaw_min = math.radians(args.yaw_min)
-    yaw_max = math.radians(args.yaw_max)
 
     points, edges = generate_boundary(
         r_inner=args.r_inner, r_outer=args.r_outer,
