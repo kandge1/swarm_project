@@ -16,10 +16,10 @@ DEFAULTS
 --------
 r-inner/r-outer/yaw-min/yaw-max default to the values confirmed by the
 --sweep-rz ground-truth run and then executed cleanly end to end:
-    r    : 0.15 .. 0.24 m
-    yaw  : -80 .. +80 deg
+    r    : 0.145 .. 0.24 m
+    yaw  : -120 .. +120 deg
 z-lo/z-hi default to the trace plane and hover height from annulus_test.py
-(TRACE_Z=0.14, TRACE_Z+HOVER_DZ=0.20) so the volume reads as "the slab of
+(TRACE_Z=0.081, TRACE_Z+HOVER_DZ=0.141) so the volume reads as "the slab of
 space the arm can work within," not just a flat sheet.
 
 These are CLI-overridable because the confirmed numbers are empirical
@@ -63,12 +63,14 @@ from pick_place import PLANNING_FRAME  # noqa: E402
 # Confirmed-by-sweep defaults. See module docstring.
 # ---------------------------------------------------------------------------
 
-R_INNER_DEFAULT = 0.15
+R_INNER_DEFAULT = 0.145
 R_OUTER_DEFAULT = 0.24
-YAW_MIN_DEFAULT = -80.0   # degrees
-YAW_MAX_DEFAULT = +80.0   # degrees
-Z_LO_DEFAULT = 0.14       # trace plane, matches annulus_test.TRACE_Z
-Z_HI_DEFAULT = 0.20       # hover height, matches TRACE_Z + HOVER_DZ
+YAW_MIN_DEFAULT = -120.0  # degrees
+YAW_MAX_DEFAULT = +120.0  # degrees
+Z_LO_DEFAULT = 0.081      # trace plane, matches annulus_test.TRACE_Z --
+                          # flange target for a 4cm block on the floor,
+                          # through the measured 0.061 m fingertip offset
+Z_HI_DEFAULT = 0.141      # hover height, matches TRACE_Z + HOVER_DZ
 
 VIZ_ARC_STEP = 0.005      # fine subdivision for a smooth rendered curve,
                           # independent of the coarser step actually used

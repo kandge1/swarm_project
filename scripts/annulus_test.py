@@ -104,15 +104,32 @@ from pick_place import (  # noqa: E402
 #      rejects before collision got a chance to clear them, which made
 #      real collisions display as ceiling rejects on the map ('e'/'w'
 #      instead of 'X') and skewed the boundary estimate outward to 0.21.
-# Don't go below ~0.14 at z=0.14 without re-running --sweep-rz with both
-# ceilings disabled to get an unmasked ground-truth map.
-R_INNER = 0.15          # m
+# Both of those were superseded once TRACE_Z was corrected to the real
+# grasp height below (0.081 m, not the earlier IK-convenience guess of
+# 0.14 m) and R_INNER was re-derived from a --sweep-rz run at that real
+# height, confirmed across yaw = 0, +-80, +-120 deg. See chat log.
+R_INNER = 0.145         # m -- confirmed by --sweep-rz at z=0.081, holds
+                        # across every tested yaw. Don't lower this without
+                        # re-running --sweep-rz with both ceilings disabled;
+                        # it's a real self-collision cliff, not a heuristic.
 R_OUTER = 0.24          # m
 YAW_MIN = math.radians(-120.0)
 YAW_MAX = math.radians(+120.0)
+# NOTE: r=0.22 at yaw=-120 hits a joint2_to_joint1 LIMIT reject (not a
+# collision) in the confirming sweep -- a real but minor mechanical
+# constraint only at the extreme corner of (large r, large |yaw|).
 
-TRACE_Z = 0.14          # m -- the grasp plane confirmed in the spiral sweep
-HOVER_DZ = 0.01         # m -- hover at 0.20 m, same as spiral_reach_test.py
+TRACE_Z = 0.081         # m -- flange target for grasping a 4cm cube resting
+                        # on the floor (block center at z=0.02) through the
+                        # gripper's measured fingertip offset of 0.061 m
+                        # (deepest link gripper_left2/right2, measured via
+                        # gripper_offset_probe.py against joint6_flange):
+                        #     flange_target_z = block_contact_z + offset
+                        #                     = 0.02 + 0.061 = 0.081
+                        # Physical hard floor: flange_z can't go below 0.061 m
+                        # without driving the fingertips into the ground --
+                        # that's hardware geometry, not an IK/OMPL limit.
+HOVER_DZ = 0.06         # m -- hover at 0.141 m
 
 ARC_STEP = 0.02         # m -- tangential spacing along the arcs
 RADIAL_STEP = 0.02      # m -- spacing along the radial segments

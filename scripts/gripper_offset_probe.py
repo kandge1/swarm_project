@@ -51,13 +51,10 @@ class OffsetProbe(Node):
     def run(self):
         results = []
         for link in self.links:
-            try:
-                # Give TF a moment to populate on first lookup.
-                t = self.buffer.lookup_transform(
-                    self.root, link, Time(),
-                    timeout=rclpy.duration.Duration(seconds=self.timeout_sec))
-            except (LookupException, ConnectivityException, ExtrapolationException) as exc:
-                print(f"  {link:16s}  UNAVAILABLE ({exc})")
+            t = self._lookup_with_retry(self.root, link, self.timeout_sec)
+            if t is None:
+                print(f"  {link:16s}  UNAVAILABLE (no transform within "
+                     f"{self.timeout_sec:.1f}s)")
                 continue
 
             tr = t.transform.translation
@@ -67,7 +64,7 @@ class OffsetProbe(Node):
 
         if not results:
             print("\n  No gripper links resolved. Is the sim / robot_state_publisher"
-                 " running?")
+                 " running? (ros2 node list should show robot_state_publisher)")
             return
 
         print(f"\n  {'link':16s} {'x':>8s} {'y':>8s} {'z (depth)':>10s} {'lateral':>8s}")
@@ -85,6 +82,32 @@ class OffsetProbe(Node):
         print("  past the last named frame. Treat it as a lower bound on the true")
         print("  offset and sanity-check by eye once you can watch the arm move.")
 
+    def _lookup_with_retry(self, root, link, timeout_sec, poll_sec=0.1):
+        """Poll for a transform rather than doing a single blocking lookup.
+
+        Buffer.lookup_transform's own `timeout=` argument only unblocks early
+        if something ELSE is spinning this node concurrently to feed the
+        TransformListener's subscription callbacks. Nothing was doing that
+        here (no executor, no background thread), so the previous version's
+        single spin_once() + one blocking lookup call raced /tf_static and
+        lost, then threw 'does not exist' for every single link at once --
+        the same startup race tf2_echo hit earlier, just with no retry to
+        recover from it. This explicitly alternates spinning and lookup
+        attempts instead.
+        """
+        deadline = self.get_clock().now().nanoseconds / 1e9 + timeout_sec
+        last_exc = None
+        while self.get_clock().now().nanoseconds / 1e9 < deadline:
+            rclpy.spin_once(self, timeout_sec=poll_sec)
+            try:
+                return self.buffer.lookup_transform(root, link, Time())
+            except (LookupException, ConnectivityException, ExtrapolationException) as exc:
+                last_exc = exc
+                continue
+        if last_exc is not None:
+            self.get_logger().debug(f"{root}->{link}: {last_exc}")
+        return None
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -95,8 +118,6 @@ def main():
 
     rclpy.init()
     node = OffsetProbe(args.root, args.links, args.timeout)
-    # Let TF buffer fill briefly before the first lookup.
-    rclpy.spin_once(node, timeout_sec=1.0)
     try:
         node.run()
     finally:
