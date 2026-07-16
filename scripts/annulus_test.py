@@ -14,23 +14,6 @@ The boundary is a closed loop of 4 edges:
         inner arc  (r=R_INNER, yaw sweeps YAW_MAX -> YAW_MIN)
     -80 radial out (yaw=YAW_MIN, r sweeps R_INNER -> R_OUTER)
 
-WHY THE ARCS ARE THE EASY PART
-------------------------------
-Same trick as spiral_reach_test.py: the grasp quaternion is rotated by the
-target azimuth around world Z before it goes to IK. In the arm's own rotated
-frame every point on an arc sits at (r, 0, z) with an identical relative
-orientation -- so joints 2..6 are the SAME at every vertex of an arc, and only
-joint2_to_joint1 moves. An arc is a one-joint sweep. The radial segments are
-where all six joints actually have to work.
-
-This also settles the question left hanging in the spiral chat: is the OMPL
-planning ceiling on the ABSOLUTE value of joint6output, or on the DELTA from
-the current state? Yaw-rotating the orientation pins joint6output near zero
-across the entire +/-80 deg sweep. If the trace completes, the ceiling was on
-absolute value and this work zone sidesteps it. If it still fails at large
-|yaw| with joint6output ~ 0, the ceiling is about base-joint travel instead
-and the zone needs to shrink.
-
 MODES
 -----
   --screen    (default) IK feasibility per vertex. No motion, no move_group
@@ -124,16 +107,20 @@ YAW_MAX = math.radians(+120.0)
 # collision) in the confirming sweep -- a real but minor mechanical
 # constraint only at the extreme corner of (large r, large |yaw|).
 
-TRACE_Z = 0.081         # m -- flange target for grasping a 4cm cube resting
+TRACE_Z = 0.130         # m -- flange target for grasping a 4cm cube resting
                         # on the floor (block center at z=0.02) through the
                         # gripper's measured fingertip offset of 0.061 m
                         # (deepest link gripper_left2/right2, measured via
-                        # gripper_offset_probe.py against joint6_flange):
-                        #     flange_target_z = block_contact_z + offset
-                        #                     = 0.02 + 0.061 = 0.081
-                        # Physical hard floor: flange_z can't go below 0.061 m
-                        # without driving the fingertips into the ground --
-                        # that's hardware geometry, not an IK/OMPL limit.
+                        # gripper_offset_probe.py against joint6_flange)
+                        # PLUS the 16mm camera flange that sits between
+                        # joint6_flange and gripper_base:
+                        #     flange_target_z = block_contact_z + offset + camera_flange
+                        #                     = 0.02 + 0.094 + 0.016 = 0.130
+                        # Physical hard floor: flange_z can't go below 0.077 m
+                        # (= 0.061 + 0.016) without driving the fingertips into
+                        # the ground -- that's hardware geometry, not an IK/OMPL limit.
+                        # NOTE: R_INNER was calibrated at z=0.081; re-run
+                        # --sweep-rz to re-confirm it at z=0.097.
 HOVER_DZ = 0.06         # m -- hover at 0.141 m
 
 ARC_STEP = 0.02         # m -- tangential spacing along the arcs
