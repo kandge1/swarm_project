@@ -3,10 +3,10 @@ Manual Script for running the pick and place demo with myCobot 280 MoveIt2.
 
 cd ~/swarm/swarm_project/source/ros2_ws
 python3 ~/swarm/swarm_project/scripts/gen_disable_collisions.py
-colcon build --packages-select mycobot_280_moveit2
+colcon build --packages-select mycobot_280pi_camera_moveit2
 
 source install/setup.bash
-ros2 launch mycobot_280_moveit2 demo.launch.py
+ros2 launch mycobot_280pi_camera_moveit2 demo.launch.py
 
 in a new terminal
 
@@ -27,14 +27,14 @@ TMP=$(mktemp -d)
 # --- One-time prep: fix collisions + build, before opening any terminals ---
 cd "$WS"
 python3 "$SCRIPTS/gen_disable_collisions.py"
-colcon build --packages-select mycobot_280_moveit2
+colcon build --packages-select mycobot_280pi_camera_moveit2
 
 # --- Write each tab's commands to its own script file ---
 
 cat > "$TMP/tab1.sh" <<EOF
 cd "$WS"
 source install/setup.bash
-ros2 launch mycobot_280_moveit2 demo.launch.py
+ros2 launch mycobot_280pi_camera_moveit2 demo.launch.py
 exec bash
 EOF
 

@@ -214,7 +214,7 @@ class RobotIOClient(Node):
 
 def build_moveit():
     moveit_config = (
-        MoveItConfigsBuilder("firefighter", package_name="mycobot_280_moveit2")
+        MoveItConfigsBuilder("firefighter", package_name="mycobot_280pi_camera_moveit2")
         .to_moveit_configs()
     )
     config_dict = moveit_config.to_dict()

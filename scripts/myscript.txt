@@ -2,8 +2,9 @@
 
 cd ~/swarm/swarm_project/source/ros2_ws
 source /opt/ros/<your-ros-distro>/setup.bash
+colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2
 source install/setup.bash
-ros2 launch mycobot_280_moveit2 demo.launch.py
+ros2 launch mycobot_280pi_camera_moveit2 demo.launch.py
 
 #In a new terminal spawn all of the nodes 
 

@@ -27,7 +27,7 @@ fi
 
 set -u
 
-URDF_FILE="$ROS2_WS/src/mycobot_ros2/mycobot_description/urdf/mycobot_280_pi/mycobot_280_pi_with_gripper_gazebo.urdf"
+URDF_FILE="$ROS2_WS/src/mycobot_ros2/mycobot_description/urdf/mycobot_280_pi/mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf"
 if [ ! -f "$URDF_FILE" ]; then
   echo "URDF not found at $URDF_FILE" >&2
   exit 1
