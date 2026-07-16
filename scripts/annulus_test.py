@@ -108,10 +108,15 @@ from pick_place import (  # noqa: E402
 # grasp height below (0.081 m, not the earlier IK-convenience guess of
 # 0.14 m) and R_INNER was re-derived from a --sweep-rz run at that real
 # height, confirmed across yaw = 0, +-80, +-120 deg. See chat log.
-R_INNER = 0.145         # m -- confirmed by --sweep-rz at z=0.081, holds
-                        # across every tested yaw. Don't lower this without
-                        # re-running --sweep-rz with both ceilings disabled;
-                        # it's a real self-collision cliff, not a heuristic.
+R_INNER = 0.170         # m -- re-confirmed by --sweep-rz at z=0.081 with the
+                        # adaptive gripper + camera_flange attached (2026-07-16).
+                        # r=0.15-0.16 are real self-collisions (the gripper body
+                        # contacts the arm when folded that close); r=0.12-0.14
+                        # hit the wrist ceiling AND collide. Holds uniformly
+                        # across yaw = 0, +-80, +-120 deg (planar assumption
+                        # confirmed). Previously 0.145, but that was calibrated
+                        # on mycobot_280_m5.urdf which has no gripper. Don't
+                        # lower without re-running --sweep-rz with the gripper.
 R_OUTER = 0.24          # m
 YAW_MIN = math.radians(-120.0)
 YAW_MAX = math.radians(+120.0)

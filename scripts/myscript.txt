@@ -6,12 +6,6 @@ colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2
 source install/setup.bash
 ros2 launch mycobot_280pi_camera_moveit2 demo.launch.py
 
-#In a new terminal launch the wrist camera (install first: sudo apt install ros-jazzy-v4l2-camera)
-#Optional: add camera_info_url:=file:///path/to/wrist_camera.yaml once calibrated
-
-source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
-ros2 launch mycobot_280pi_camera_moveit2 camera.launch.py
-
 #In a new terminal spawn all of the nodes 
 
 source install/setup.bash
@@ -30,10 +24,14 @@ python3 ~/swarm/swarm_project/scripts/pick_place.py
 #To run annulus_test.py
 #In one terminal 
 source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
-python3 ~/swarm/swarm_project/scripts/annulus_viz.py
+python3 ~/swarm/swarm_project/scripts/annulus_show.py
 
 #In another terminal
 source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 python3 ~/swarm/swarm_project/scripts/annulus_test.py --execute --yaw-min -130 --yaw-max +130
 
+#In a new terminal launch the wrist camera (install first: sudo apt install ros-jazzy-v4l2-camera)
+#Optional: add camera_info_url:=file:///path/to/wrist_camera.yaml once calibrated
 
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 camera.launch.py
