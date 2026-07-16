@@ -157,6 +157,21 @@
     </collision>
   </link>
 
+  <!-- Optical frame with ROS camera convention: z-forward, x-right, y-down -->
+  <link name="wrist_camera_link"/>
+  <link name="wrist_camera_optical_frame"/>
+
+  <joint name="camera_flange_to_camera_link" type="fixed">
+    <parent link="camera_flange"/>
+    <child  link="wrist_camera_link"/>
+    <origin xyz="0 0 0.012" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="camera_link_to_optical" type="fixed">
+    <parent link="wrist_camera_link"/>
+    <child  link="wrist_camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+  </joint>
 
 
   <joint name="g_base_to_joint1" type="fixed">

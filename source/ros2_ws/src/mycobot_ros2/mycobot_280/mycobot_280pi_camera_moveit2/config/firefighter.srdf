@@ -57,6 +57,26 @@
     <disable_collisions link1="camera_flange" link2="gripper_right1" reason="Never"/>
     <disable_collisions link1="camera_flange" link2="gripper_right2" reason="Never"/>
     <disable_collisions link1="camera_flange" link2="gripper_right3" reason="Never"/>
+    <!--DISABLE COLLISIONS: wrist_camera_link and wrist_camera_optical_frame (massless sensor frames)-->
+    <disable_collisions link1="wrist_camera_link" link2="camera_flange"        reason="Adjacent"/>
+    <disable_collisions link1="wrist_camera_link" link2="wrist_camera_optical_frame" reason="Adjacent"/>
+    <disable_collisions link1="wrist_camera_link" link2="joint6_flange"        reason="Never"/>
+    <disable_collisions link1="wrist_camera_link" link2="joint6"               reason="Never"/>
+    <disable_collisions link1="wrist_camera_link" link2="gripper_base"         reason="Never"/>
+    <disable_collisions link1="wrist_camera_link" link2="gripper_left1"        reason="Never"/>
+    <disable_collisions link1="wrist_camera_link" link2="gripper_left2"        reason="Never"/>
+    <disable_collisions link1="wrist_camera_link" link2="gripper_left3"        reason="Never"/>
+    <disable_collisions link1="wrist_camera_link" link2="gripper_right1"       reason="Never"/>
+    <disable_collisions link1="wrist_camera_link" link2="gripper_right2"       reason="Never"/>
+    <disable_collisions link1="wrist_camera_link" link2="gripper_right3"       reason="Never"/>
+    <disable_collisions link1="wrist_camera_optical_frame" link2="camera_flange"  reason="Never"/>
+    <disable_collisions link1="wrist_camera_optical_frame" link2="gripper_base"   reason="Never"/>
+    <disable_collisions link1="wrist_camera_optical_frame" link2="gripper_left1"  reason="Never"/>
+    <disable_collisions link1="wrist_camera_optical_frame" link2="gripper_left2"  reason="Never"/>
+    <disable_collisions link1="wrist_camera_optical_frame" link2="gripper_left3"  reason="Never"/>
+    <disable_collisions link1="wrist_camera_optical_frame" link2="gripper_right1" reason="Never"/>
+    <disable_collisions link1="wrist_camera_optical_frame" link2="gripper_right2" reason="Never"/>
+    <disable_collisions link1="wrist_camera_optical_frame" link2="gripper_right3" reason="Never"/>
     <!--DISABLE COLLISIONS: gripper links-->
     <disable_collisions link1="gripper_base" link2="gripper_left1" reason="Adjacent"/>
     <disable_collisions link1="gripper_base" link2="gripper_left2" reason="Adjacent"/>
