@@ -255,7 +255,7 @@
 
   <joint name="g_base_to_joint1" type="fixed">
     <axis xyz="0 0 0"/>
-    <limit effort = "1000.0" lower = "-3.14" upper = "3.14159" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-3.14" upper = "3.14159" velocity = "3.0"/>
     <parent link="g_base"/>
     <child link="joint1"/>
     <origin xyz= "0 0 0" rpy = "0 0 0"/>  
@@ -264,7 +264,7 @@
 
   <joint name="joint2_to_joint1" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-2.9321" upper = "2.9321" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-2.9321" upper = "2.9321" velocity = "3.0"/>
     <parent link="joint1"/>
     <child link="joint2"/>
     <origin xyz= "0 0 0.13956" rpy = "0 0 0"/>  
@@ -273,7 +273,7 @@
 
   <joint name="joint3_to_joint2" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-2.4434" upper = "2.4434" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-2.4434" upper = "2.4434" velocity = "3.0"/>
     <parent link="joint2"/>
     <child link="joint3"/>
     <origin xyz= "0 0 -0.001" rpy = "0 1.5708 -1.5708"/>  
@@ -282,7 +282,7 @@
 
   <joint name="joint4_to_joint3" type="revolute">
     <axis xyz=" 0 0 1"/>
-    <limit effort = "1000.0" lower = "-2.6179" upper = "2.6179" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-2.6179" upper = "2.6179" velocity = "3.0"/>
     <parent link="joint3"/>
     <child link="joint4"/>
     <origin xyz= "  -0.1104 0 0   " rpy = "0 0 0"/>  
@@ -291,7 +291,7 @@
 
   <joint name="joint5_to_joint4" type="revolute">
     <axis xyz=" 0 0 1"/>
-    <limit effort = "1000.0" lower = "-3.6179" upper = "3.6179" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-3.6179" upper = "3.6179" velocity = "3.0"/>
     <parent link="joint4"/>
     <child link="joint5"/>
     <origin xyz= "-0.096 0 0.06462" rpy = "0 0 -1.5708"/>  
@@ -299,7 +299,7 @@
 
   <joint name="joint6_to_joint5" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-2.7052" upper = "2.7925" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-2.7052" upper = "2.7925" velocity = "3.0"/>
     <parent link="joint5"/>
     <child link="joint6"/>
     <origin xyz= "0 -0.07318 -0.001" rpy = "1.5708 -1.5708 0"/>  
@@ -307,7 +307,7 @@
 
   <joint name="joint6output_to_joint6" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-3.14159" upper = "3.14159" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-3.14159" upper = "3.14159" velocity = "3.0"/>
     <parent link="joint6"/>
     <child link="joint6_flange"/>
     <origin xyz= "0 0.0456 0" rpy = "-1.5708 0 0"/>  
@@ -315,7 +315,7 @@
 
   <joint name="joint6output_to_camera_flange" type="fixed">
     <!-- <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-3.14" upper = "3.14159" velocity = "0"/> -->
+    <limit effort = "1000.0" lower = "-3.14" upper = "3.14159" velocity = "3.0"/> -->
     <parent link="joint6_flange"/>
     <child link="camera_flange"/>
     <!-- <origin xyz= "0 0.0 0" rpy = "1.5708 1.5708 0"/>   -->
@@ -325,7 +325,7 @@
   <!-- Adaptive gripper copied without changing any xyz or rpy values. -->
 <joint name="camera_flange_to_gripper_base" type="fixed">
     <!-- <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-3.14" upper = "3.14159" velocity = "0"/> -->
+    <limit effort = "1000.0" lower = "-3.14" upper = "3.14159" velocity = "3.0"/> -->
     <parent link="camera_flange"/>
     <child link="gripper_base"/>
     <!-- <origin xyz= "0 0.0 0" rpy = "0 1.5708 1.5708"/>   -->
@@ -489,7 +489,7 @@
 
 <joint name="gripper_controller" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-0.74" upper = "0.15" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-0.74" upper = "0.15" velocity = "3.0"/>
     <parent link="gripper_base"/>
     <child link="gripper_left3"/>
     <origin xyz= "-0.012 0.005 0" rpy = "0 0 0"/> 
@@ -497,7 +497,7 @@
 
   <joint name="gripper_base_to_gripper_left2" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-0.8" upper = "0.5" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-0.8" upper = "0.5" velocity = "3.0"/>
     <parent link="gripper_base"/>
     <child link="gripper_left2"/>
     <origin xyz= "-0.005 0.027 0" rpy = "0 0 0"/> 
@@ -506,7 +506,7 @@
 
   <joint name="gripper_left3_to_gripper_left1" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-0.5" upper = "0.5" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-0.5" upper = "0.5" velocity = "3.0"/>
     <parent link="gripper_left3"/>
     <child link="gripper_left1"/>
     <origin xyz= "-0.027 0.016 0" rpy = "0 0 0"/> 
@@ -515,7 +515,7 @@
 
   <joint name="gripper_base_to_gripper_right3" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-0.15" upper = "0.7" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-0.15" upper = "0.7" velocity = "3.0"/>
     <parent link="gripper_base"/>
     <child link="gripper_right3"/>
     <origin xyz= "0.012 0.005 0" rpy = "0 0 0"/> 
@@ -524,7 +524,7 @@
 
   <joint name="gripper_base_to_gripper_right2" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-0.5" upper = "0.8" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-0.5" upper = "0.8" velocity = "3.0"/>
     <parent link="gripper_base"/>
     <child link="gripper_right2"/>
     <origin xyz= "0.005 0.027 0" rpy = "0 0 0"/> 
@@ -533,7 +533,7 @@
 
   <joint name="gripper_right3_to_gripper_right1" type="revolute">
     <axis xyz="0 0 1"/>
-    <limit effort = "1000.0" lower = "-0.5" upper = "0.5" velocity = "0"/>
+    <limit effort = "1000.0" lower = "-0.5" upper = "0.5" velocity = "3.0"/>
     <parent link="gripper_right3"/>
     <child link="gripper_right1"/>
     <origin xyz= "0.027 0.016 0" rpy = "0 0 0"/> 

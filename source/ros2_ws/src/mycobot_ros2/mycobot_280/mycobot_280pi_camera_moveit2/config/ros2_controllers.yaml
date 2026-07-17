@@ -9,6 +9,24 @@ controller_manager:
     gripper_group_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
+# gz_ros2_control's GazeboSimSystem runs as its own node ("/gz_ros_control", not
+# "/controller_manager") and reads this single global P gain as a plain ROS
+# parameter on THIS node (not per-joint, and not from the URDF's <ros2_control>
+# block despite that being the more obvious place to look).
+#
+# IMPORTANT: for a position command interface this gain does NOT produce an
+# effort. gz_system.cpp computes  target_velocity = gain * position_error *
+# update_rate  and sends that as a JointVelocityCmd. So the units are "velocity
+# per unit error", and the real static hold against gravity is done by Gazebo's
+# velocity motor resisting motion at zero commanded velocity (bounded by the
+# joint effort limit), NOT by this gain. That means a modest gain holds fine;
+# cranking it huge just commands absurd velocities and oscillates. It also means
+# the joint's URDF <limit velocity="..."> MUST be > 0 -- with velocity=0 the
+# velocity command is clamped to zero and the arm can never correct its sag.
+gz_ros_control:
+  ros__parameters:
+    position_proportional_gain: 1.0
+
 arm_group_controller:
   ros__parameters:
     joints:

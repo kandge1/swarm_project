@@ -50,7 +50,6 @@ from geometry_msgs.msg import Pose, Point
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker, MarkerArray
 from moveit.core.robot_state import RobotState
-from moveit.core.robot_trajectory import RobotTrajectory
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -966,7 +965,7 @@ def sweep_rz(mycobot, r_lo, r_hi, r_step, z_list, yaw_list,
 # Motion
 # ---------------------------------------------------------------------------
 
-def move_to_vertex(mycobot, arm, point, z_override=None, verbose=False):
+def move_to_vertex(mycobot, arm, io_client, point, z_override=None, verbose=False):
     """Joint-space plan to a single boundary vertex using seeded IK."""
     z = point["z"] if z_override is None else z_override
     quat = yaw_rotated_grasp_quat(point["yaw"])
@@ -985,8 +984,8 @@ def move_to_vertex(mycobot, arm, point, z_override=None, verbose=False):
         print(f"    OMPL planning FAILED (IK seed '{label}' was valid)")
         return False
 
-    mycobot.execute(plan_result.trajectory, controllers=["arm_group_controller"])
-    return True
+    joint_trajectory = plan_result.trajectory.get_robot_trajectory_msg().joint_trajectory
+    return io_client.arm_execute(joint_trajectory)
 
 
 def cartesian_edge(mycobot, io_client, edge_points, z_override=None,
@@ -1027,19 +1026,11 @@ def cartesian_edge(mycobot, io_client, edge_points, z_override=None,
     if not execute:
         return fraction, False
 
-    robot_model = mycobot.get_robot_model()
-    trajectory = RobotTrajectory(robot_model)
-    trajectory.joint_model_group_name = GROUP_NAME
-
-    psm = mycobot.get_planning_scene_monitor()
-    with psm.read_only() as scene:
-        trajectory.set_robot_trajectory_msg(scene.current_state, solution_msg)
-
-    mycobot.execute(trajectory, controllers=["arm_group_controller"])
+    io_client.arm_execute(solution_msg.joint_trajectory)
     return fraction, True
 
 
-def joint_chain_edge(mycobot, arm, edge_points, z_override=None, verbose=False,
+def joint_chain_edge(mycobot, arm, io_client, edge_points, z_override=None, verbose=False,
                      dwell_sec=DWELL_SEC):
     """Chained joint-space plans, vertex to vertex, no go_home() in between.
     Each step is a small increment, which is what kept planning reliable in
@@ -1047,7 +1038,7 @@ def joint_chain_edge(mycobot, arm, edge_points, z_override=None, verbose=False,
     reached = 0
     for p in edge_points:
         print(f"    -> [{p['index']:3d}] r={p['r']:.3f} yaw={p['yaw_deg']:+7.2f}")
-        if not move_to_vertex(mycobot, arm, p, z_override=z_override, verbose=verbose):
+        if not move_to_vertex(mycobot, arm, io_client, p, z_override=z_override, verbose=verbose):
             print(f"    STOPPED at vertex {p['index']}")
             break
         reached += 1
@@ -1271,7 +1262,7 @@ def main():
 
         # ---- Everything below moves or plans against move_group ----
         print("\n=== Return to home pose ===")
-        if not go_home(mycobot, arm):
+        if not go_home(mycobot, arm, io_client):
             print("Could not reach home. Aborting.")
             return
 
@@ -1290,7 +1281,7 @@ def main():
         first = edges[0][0]
 
         print("\n=== Move to hover above first vertex ===")
-        if not move_to_vertex(mycobot, arm, first,
+        if not move_to_vertex(mycobot, arm, io_client, first,
                               z_override=args.z + HOVER_DZ, verbose=args.verbose):
             print("Could not reach the start hover pose. Aborting.")
             return
@@ -1312,7 +1303,7 @@ def main():
                     print("    edge not executed -- stopping trace here")
                     break
             else:
-                reached = joint_chain_edge(mycobot, arm, edge,
+                reached = joint_chain_edge(mycobot, arm, io_client, edge,
                                            z_override=args.z, verbose=args.verbose,
                                            dwell_sec=args.dwell)
                 summary.append((name, f"{reached}/{len(edge)} vertices", ""))
@@ -1325,7 +1316,7 @@ def main():
         cartesian_edge(mycobot, io_client, [last], z_override=args.z + HOVER_DZ)
 
         print("\n=== Return to home pose (final) ===")
-        go_home(mycobot, arm)
+        go_home(mycobot, arm, io_client)
 
         print("\n" + "=" * 68)
         print("TRACE SUMMARY")

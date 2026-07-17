@@ -38,10 +38,16 @@ def generate_launch_description():
     )
 
     # ROS 2 core nodes
+    # use_sim_time is required on every node here: joint_states/tf/etc. from
+    # Gazebo are stamped with sim time (via /clock), and without this a node
+    # comparing its own wall-clock time against those stamps sees them as
+    # perpetually stale — e.g. move_group's trajectory_execution_manager
+    # rejecting every execution with "couldn't receive full current joint
+    # state within 1s" even though joint_states is publishing fine.
     rsp = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
-        parameters=[moveit_config.robot_description],
+        parameters=[moveit_config.robot_description, {"use_sim_time": True}],
         output="screen",
     )
 
@@ -49,7 +55,7 @@ def generate_launch_description():
         package="moveit_ros_move_group",
         executable="move_group",
         output="screen",
-        parameters=[moveit_config.to_dict()],
+        parameters=[moveit_config.to_dict(), {"use_sim_time": True}],
     )
 
     rviz = Node(
@@ -63,6 +69,7 @@ def generate_launch_description():
             moveit_config.robot_description_kinematics,
             moveit_config.planning_pipelines,
             moveit_config.joint_limits,
+            {"use_sim_time": True},
         ],
     )
 
@@ -79,9 +86,15 @@ def generate_launch_description():
     )
 
     # Controller spawners
-    # Delayed 15 s to give Gazebo and gz_ros2_control time to create /controller_manager
+    # Small delay so gz_sim/gz_ros2_control has started before spawners begin polling
+    # for /controller_manager; the spawners themselves already retry until the service
+    # is up, so this doesn't need to cover the full startup time. Keeping this short
+    # matters: with no controller yet claiming the position command interface, the arm
+    # is uncommanded and sags under gravity until a controller activates and latches
+    # onto whatever pose it finds as its hold point — a long delay here bakes in a
+    # sagged "home" position.
     delayed_controllers = TimerAction(
-        period=15.0,
+        period=2.0,
         actions=[
             Node(
                 package="controller_manager",
