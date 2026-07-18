@@ -4,6 +4,14 @@
 <xacro:property name="width" value=".2" />
 
 
+  <link name="world"/>
+
+  <joint name="world_to_g_base" type="fixed">
+    <parent link="world"/>
+    <child link="g_base"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
   <link name="g_base">
     <inertial>
       <mass value="0.1"/>
