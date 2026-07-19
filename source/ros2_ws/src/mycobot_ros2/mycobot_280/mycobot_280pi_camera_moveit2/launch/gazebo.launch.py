@@ -24,7 +24,14 @@ def generate_launch_description():
             )
         ]),
         launch_arguments={
-            "gz_args": "-r empty.sdf",
+            # Custom world (not the stock empty.sdf) because it adds the
+            # Sensors system plugin - without it, gz-sim registers the
+            # wrist camera's gz-transport topic but never renders/publishes
+            # any frames on it.
+            "gz_args": "-r " + os.path.join(
+                get_package_share_directory("mycobot_280pi_camera_moveit2"),
+                "worlds", "camera_world.sdf",
+            ),
             "on_exit_shutdown": "true",
         }.items(),
     )
