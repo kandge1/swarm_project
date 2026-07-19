@@ -88,5 +88,10 @@ python3 ~/swarm/swarm_project/scripts/annulus_test.py --execute
 # robot: both publish sensor_msgs/Image on /wrist_camera/image_raw)
 source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 python3 ~/swarm/swarm_project/scripts/camera_view.py
+
+# Terminal 5 — one-shot: spawn table + AprilTag marker + ball into Gazebo
+# (run once after Gazebo is up; run again after restarting Gazebo)
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+python3 ~/swarm/swarm_project/scripts/spawn_world.py
 # Raw feed is also viewable live in RViz via the "Wrist Camera" Image display
 # (added to moveit.rviz), subscribed to /wrist_camera/image_raw.
