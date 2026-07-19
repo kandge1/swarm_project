@@ -251,7 +251,10 @@
   <joint name="camera_flange_to_camera_link" type="fixed">
     <parent link="camera_flange"/>
     <child  link="wrist_camera_link"/>
-    <origin xyz="0 0 0.012" rpy="0 0 0"/>
+    <!-- xyz measured from the physical camera body: lens is ~20mm along
+         +X (lateral) and ~8.5mm along +Z (half the 16mm body thickness,
+         plus 0.5mm safety margin) from the mounting-face origin. -->
+    <origin xyz="0.0400 0.0085 0 " rpy="-1.5708 0 1.5708"/>
   </joint>
 
   <joint name="camera_link_to_optical" type="fixed">

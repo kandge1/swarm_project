@@ -31,6 +31,38 @@ Visualization Manager:
       Topic:
         Value: /wrist_camera/image_raw
       Value: true
+    - Class: rviz_default_plugins/Camera
+      Name: Wrist Camera Frustum
+      Topic:
+        Value: /wrist_camera/image_raw
+      Visibility:
+        Grid: true
+        MotionPlanning: true
+      Overlay Alpha: 0.5
+      Value: true
+    - Class: rviz_default_plugins/TF
+      Enabled: true
+      Filter (blacklist): ""
+      Filter (whitelist): "camera_flange|wrist_camera_link|wrist_camera_optical_frame"
+      Frame Timeout: 15
+      Frames:
+        All Enabled: false
+        camera_flange:
+          Value: true
+        wrist_camera_link:
+          Value: true
+        wrist_camera_optical_frame:
+          Value: true
+      Marker Alpha: 1
+      Marker Scale: 0.15
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Tree:
+        {}
+      Update Interval: 0
+      Value: true
   Global Options:
     Fixed Frame: g_base
   Tools:
