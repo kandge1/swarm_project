@@ -3,7 +3,7 @@
     <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
 
     <!-- Import firefighter urdf file -->
-    <xacro:include filename="$(find mycobot_description)/urdf/mycobot_280_pi/mycobot_280_pi_with_gripper_gazebo.urdf" />
+    <xacro:include filename="$(find mycobot_description)/urdf/mycobot_280_pi/mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf" />
 
     <!-- Import control_xacro -->
     <xacro:include filename="firefighter.ros2_control.xacro" />

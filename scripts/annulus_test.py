@@ -14,23 +14,6 @@ The boundary is a closed loop of 4 edges:
         inner arc  (r=R_INNER, yaw sweeps YAW_MAX -> YAW_MIN)
     -80 radial out (yaw=YAW_MIN, r sweeps R_INNER -> R_OUTER)
 
-WHY THE ARCS ARE THE EASY PART
-------------------------------
-Same trick as spiral_reach_test.py: the grasp quaternion is rotated by the
-target azimuth around world Z before it goes to IK. In the arm's own rotated
-frame every point on an arc sits at (r, 0, z) with an identical relative
-orientation -- so joints 2..6 are the SAME at every vertex of an arc, and only
-joint2_to_joint1 moves. An arc is a one-joint sweep. The radial segments are
-where all six joints actually have to work.
-
-This also settles the question left hanging in the spiral chat: is the OMPL
-planning ceiling on the ABSOLUTE value of joint6output, or on the DELTA from
-the current state? Yaw-rotating the orientation pins joint6output near zero
-across the entire +/-80 deg sweep. If the trace completes, the ceiling was on
-absolute value and this work zone sidesteps it. If it still fails at large
-|yaw| with joint6output ~ 0, the ceiling is about base-joint travel instead
-and the zone needs to shrink.
-
 MODES
 -----
   --screen    (default) IK feasibility per vertex. No motion, no move_group
@@ -67,7 +50,6 @@ from geometry_msgs.msg import Pose, Point
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker, MarkerArray
 from moveit.core.robot_state import RobotState
-from moveit.core.robot_trajectory import RobotTrajectory
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -108,10 +90,15 @@ from pick_place import (  # noqa: E402
 # grasp height below (0.081 m, not the earlier IK-convenience guess of
 # 0.14 m) and R_INNER was re-derived from a --sweep-rz run at that real
 # height, confirmed across yaw = 0, +-80, +-120 deg. See chat log.
-R_INNER = 0.145         # m -- confirmed by --sweep-rz at z=0.081, holds
-                        # across every tested yaw. Don't lower this without
-                        # re-running --sweep-rz with both ceilings disabled;
-                        # it's a real self-collision cliff, not a heuristic.
+R_INNER = 0.170         # m -- re-confirmed by --sweep-rz at z=0.081 with the
+                        # adaptive gripper + camera_flange attached (2026-07-16).
+                        # r=0.15-0.16 are real self-collisions (the gripper body
+                        # contacts the arm when folded that close); r=0.12-0.14
+                        # hit the wrist ceiling AND collide. Holds uniformly
+                        # across yaw = 0, +-80, +-120 deg (planar assumption
+                        # confirmed). Previously 0.145, but that was calibrated
+                        # on mycobot_280_m5.urdf which has no gripper. Don't
+                        # lower without re-running --sweep-rz with the gripper.
 R_OUTER = 0.24          # m
 YAW_MIN = math.radians(-120.0)
 YAW_MAX = math.radians(+120.0)
@@ -119,16 +106,20 @@ YAW_MAX = math.radians(+120.0)
 # collision) in the confirming sweep -- a real but minor mechanical
 # constraint only at the extreme corner of (large r, large |yaw|).
 
-TRACE_Z = 0.081         # m -- flange target for grasping a 4cm cube resting
+TRACE_Z = 0.105         # m -- flange target for grasping a 4cm cube resting
                         # on the floor (block center at z=0.02) through the
                         # gripper's measured fingertip offset of 0.061 m
                         # (deepest link gripper_left2/right2, measured via
-                        # gripper_offset_probe.py against joint6_flange):
-                        #     flange_target_z = block_contact_z + offset
-                        #                     = 0.02 + 0.061 = 0.081
-                        # Physical hard floor: flange_z can't go below 0.061 m
-                        # without driving the fingertips into the ground --
-                        # that's hardware geometry, not an IK/OMPL limit.
+                        # gripper_offset_probe.py against joint6_flange)
+                        # PLUS the 16mm camera flange that sits between
+                        # joint6_flange and gripper_base:
+                        #     flange_target_z = block_contact_z + offset + camera_flange
+                        #                     = 0.02 + 0.094 + 0.016 = 0.130
+                        # Physical hard floor: flange_z can't go below 0.077 m
+                        # (= 0.061 + 0.016) without driving the fingertips into
+                        # the ground -- that's hardware geometry, not an IK/OMPL limit.
+                        # NOTE: R_INNER was calibrated at z=0.081; re-run
+                        # --sweep-rz to re-confirm it at z=0.097.
 HOVER_DZ = 0.06         # m -- hover at 0.141 m
 
 ARC_STEP = 0.02         # m -- tangential spacing along the arcs
@@ -974,7 +965,7 @@ def sweep_rz(mycobot, r_lo, r_hi, r_step, z_list, yaw_list,
 # Motion
 # ---------------------------------------------------------------------------
 
-def move_to_vertex(mycobot, arm, point, z_override=None, verbose=False):
+def move_to_vertex(mycobot, arm, io_client, point, z_override=None, verbose=False):
     """Joint-space plan to a single boundary vertex using seeded IK."""
     z = point["z"] if z_override is None else z_override
     quat = yaw_rotated_grasp_quat(point["yaw"])
@@ -993,8 +984,8 @@ def move_to_vertex(mycobot, arm, point, z_override=None, verbose=False):
         print(f"    OMPL planning FAILED (IK seed '{label}' was valid)")
         return False
 
-    mycobot.execute(plan_result.trajectory, controllers=["arm_group_controller"])
-    return True
+    joint_trajectory = plan_result.trajectory.get_robot_trajectory_msg().joint_trajectory
+    return io_client.arm_execute(joint_trajectory)
 
 
 def cartesian_edge(mycobot, io_client, edge_points, z_override=None,
@@ -1035,19 +1026,11 @@ def cartesian_edge(mycobot, io_client, edge_points, z_override=None,
     if not execute:
         return fraction, False
 
-    robot_model = mycobot.get_robot_model()
-    trajectory = RobotTrajectory(robot_model)
-    trajectory.joint_model_group_name = GROUP_NAME
-
-    psm = mycobot.get_planning_scene_monitor()
-    with psm.read_only() as scene:
-        trajectory.set_robot_trajectory_msg(scene.current_state, solution_msg)
-
-    mycobot.execute(trajectory, controllers=["arm_group_controller"])
+    io_client.arm_execute(solution_msg.joint_trajectory)
     return fraction, True
 
 
-def joint_chain_edge(mycobot, arm, edge_points, z_override=None, verbose=False,
+def joint_chain_edge(mycobot, arm, io_client, edge_points, z_override=None, verbose=False,
                      dwell_sec=DWELL_SEC):
     """Chained joint-space plans, vertex to vertex, no go_home() in between.
     Each step is a small increment, which is what kept planning reliable in
@@ -1055,7 +1038,7 @@ def joint_chain_edge(mycobot, arm, edge_points, z_override=None, verbose=False,
     reached = 0
     for p in edge_points:
         print(f"    -> [{p['index']:3d}] r={p['r']:.3f} yaw={p['yaw_deg']:+7.2f}")
-        if not move_to_vertex(mycobot, arm, p, z_override=z_override, verbose=verbose):
+        if not move_to_vertex(mycobot, arm, io_client, p, z_override=z_override, verbose=verbose):
             print(f"    STOPPED at vertex {p['index']}")
             break
         reached += 1
@@ -1279,7 +1262,7 @@ def main():
 
         # ---- Everything below moves or plans against move_group ----
         print("\n=== Return to home pose ===")
-        if not go_home(mycobot, arm):
+        if not go_home(mycobot, arm, io_client):
             print("Could not reach home. Aborting.")
             return
 
@@ -1298,7 +1281,7 @@ def main():
         first = edges[0][0]
 
         print("\n=== Move to hover above first vertex ===")
-        if not move_to_vertex(mycobot, arm, first,
+        if not move_to_vertex(mycobot, arm, io_client, first,
                               z_override=args.z + HOVER_DZ, verbose=args.verbose):
             print("Could not reach the start hover pose. Aborting.")
             return
@@ -1320,7 +1303,7 @@ def main():
                     print("    edge not executed -- stopping trace here")
                     break
             else:
-                reached = joint_chain_edge(mycobot, arm, edge,
+                reached = joint_chain_edge(mycobot, arm, io_client, edge,
                                            z_override=args.z, verbose=args.verbose,
                                            dwell_sec=args.dwell)
                 summary.append((name, f"{reached}/{len(edge)} vertices", ""))
@@ -1333,7 +1316,7 @@ def main():
         cartesian_edge(mycobot, io_client, [last], z_override=args.z + HOVER_DZ)
 
         print("\n=== Return to home pose (final) ===")
-        go_home(mycobot, arm)
+        go_home(mycobot, arm, io_client)
 
         print("\n" + "=" * 68)
         print("TRACE SUMMARY")

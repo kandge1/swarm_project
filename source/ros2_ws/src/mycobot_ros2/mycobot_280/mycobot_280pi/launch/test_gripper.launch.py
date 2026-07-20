@@ -17,7 +17,7 @@ def generate_launch_description():
         name="model",
         default_value=os.path.join(
             get_package_share_path("mycobot_description"),
-            "urdf/mycobot_280_pi/mycobot_280_pi_adaptive_gripper.urdf"
+            "urdf/mycobot_280_pi/mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf"
         )
     )
     res.append(model_launch_arg)

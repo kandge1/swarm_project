@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="firefighter">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+    <!-- Set use_sim:=true when launching with Gazebo, false for RViz-only mock hardware -->
+    <xacro:arg name="use_sim" default="false" />
+
+    <!-- Import firefighter urdf file (camera flange + adaptive gripper) -->
+    <xacro:include filename="$(find mycobot_description)/urdf/mycobot_280_pi/mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf" />
+
+    <!-- Import Gazebo camera plugin (also loads gz_ros2_control when use_sim=true) -->
+    <xacro:include filename="$(find mycobot_description)/urdf/mycobot_280_pi/mycobot_280_pi_camera_flange_plus_gripper.gazebo" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="firefighter.ros2_control.xacro" />
+
+    <xacro:firefighter_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)" use_sim="$(arg use_sim)"/>
+
+</robot>

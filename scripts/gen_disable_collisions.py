@@ -6,7 +6,7 @@ pairs = itertools.combinations(links, 2)
 lines = [f'    <disable_collisions link1="{a}" link2="{b}" reason="Adjacent"/>' for a, b in pairs]
 block = "\n".join(lines) + "\n"
 
-path = "src/mycobot_ros2/mycobot_280/mycobot_280_moveit2/config/firefighter.srdf"
+path = "src/mycobot_ros2/mycobot_280/mycobot_280pi_camera_moveit2/config/firefighter.srdf"
 with open(path, "r") as f:
     content = f.read()
 

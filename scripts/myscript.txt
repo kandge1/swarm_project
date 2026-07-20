@@ -1,9 +1,14 @@
+
+### RVIZ Everything ###
+
+
 #Launch Rviz and spawn arm
 
 cd ~/swarm/swarm_project/source/ros2_ws
 source /opt/ros/<your-ros-distro>/setup.bash
+colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2
 source install/setup.bash
-ros2 launch mycobot_280_moveit2 demo.launch.py
+ros2 launch mycobot_280pi_camera_moveit2 demo.launch.py
 
 #In a new terminal spawn all of the nodes 
 
@@ -23,10 +28,71 @@ python3 ~/swarm/swarm_project/scripts/pick_place.py
 #To run annulus_test.py
 #In one terminal 
 source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
-python3 ~/swarm/swarm_project/scripts/annulus_viz.py
+python3 ~/swarm/swarm_project/scripts/annulus_show.py
 
 #In another terminal
 source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 python3 ~/swarm/swarm_project/scripts/annulus_test.py --execute --yaw-min -130 --yaw-max +130
 
+#In a new terminal launch the wrist camera (install first: sudo apt install ros-jazzy-v4l2-camera)
+#Optional: add camera_info_url:=file:///path/to/wrist_camera.yaml once calibrated
 
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 camera.launch.py
+
+### Gazebo ###
+
+# Before launching, clean up any stale processes/shared memory from previous sessions.
+# NOTE: killall matches on the 15-char truncated process name, which misses Gazebo
+# Harmonic's real process names (gz sim server / gz sim gui / parameter_bridge). A
+# survivor here keeps a gz-transport advertisement alive on /clock, which makes the
+# NEXT gz sim fall back to a namespaced clock topic ("Found additional publishers on
+# /clock") — controller_manager then waits forever ("No clock received") and
+# `ros2 topic hz /clock` shows nothing. Use pkill -f (matches full cmdline) instead:
+#
+# There was ALSO a second, more fundamental cause of the same symptom, now fixed in
+# gazebo.launch.py: camera_bridge used to bridge /clock BIDIRECTIONALLY
+# (.../Clock@gz.msgs.Clock). Because gz_sim and camera_bridge start in parallel with
+# no ordering, the bridge's own ROS->GZ /clock advertisement could win the race
+# against gz_sim's own clock publisher, forcing gz_sim onto the namespaced
+# /world/empty/clock topic instead of plain /clock — reproducible even from a
+# perfectly clean launch, no stale processes required. Fixed by making the /clock
+# bridge GZ->ROS only (.../Clock[gz.msgs.Clock) since nothing needs to push ROS time
+# into Gazebo anyway.
+pkill -9 -f "gz sim"; pkill -9 -f "parameter_bridge"; pkill -9 -f "move_group"; pkill -9 -f "rviz2"; pkill -9 -f "robot_state_publisher"
+rm -rf /dev/shm/fastrtps_* /dev/shm/ros_*
+
+# Verify clean slate before launching — should print nothing:
+ps aux | grep -iE "gz sim|parameter_bridge|move_group|robot_state_publisher" | grep -v grep
+
+# Terminal 1 — build and launch everything (Gazebo + MoveIt + RViz + controllers auto-spawn after 15s)
+cd ~/swarm/swarm_project/source/ros2_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2
+source install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 gazebo.launch.py
+
+# Wait ~15 seconds for controllers to come up, then verify:
+ros2 control list_controllers
+# ros2 topic hz /clock   # should show ~1000 Hz; if silent, Gazebo never came up — check Terminal 1 for errors
+
+# Optional, visualization for annulus test.py 
+$ Terminal 2 — run annulus_show.py (same as RViz workflow)
+#source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+#python3 ~/swarm/swarm_project/scripts/annulus_show.py
+
+# Terminal 3 — run annulus_test.py
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+python3 ~/swarm/swarm_project/scripts/annulus_test.py --execute
+
+# Terminal 4 — camera processing (same script works in Gazebo or on the real
+# robot: both publish sensor_msgs/Image on /wrist_camera/image_raw)
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+python3 ~/swarm/swarm_project/scripts/camera_view.py
+
+# Terminal 5 — one-shot: AprilTag marker + ball into Gazebo
+# (run once after Gazebo is up; run again after restarting Gazebo)
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+python3 ~/swarm/swarm_project/scripts/spawn_world.py
+# Raw feed is also viewable live in RViz via the "Wrist Camera" Image display
+# (added to moveit.rviz), subscribed to /wrist_camera/image_raw.

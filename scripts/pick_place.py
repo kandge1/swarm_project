@@ -17,6 +17,7 @@ Pick-and-place demo: known start/end block poses, no camera.
 """
 
 import math
+import tempfile
 import time
 
 import rclpy
@@ -31,7 +32,6 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 
 from moveit.planning import MoveItPy
 from moveit.core.robot_state import RobotState
-from moveit.core.robot_trajectory import RobotTrajectory
 from moveit_configs_utils import MoveItConfigsBuilder
 
 
@@ -142,14 +142,50 @@ def _floatify_joint_limits(config_dict):
 
 
 class RobotIOClient(Node):
-    """Handles gripper open/close (action) and Cartesian path requests (service)."""
+    """Handles gripper open/close (action), arm trajectory execution (action),
+    and Cartesian path requests (service)."""
 
     def __init__(self):
         super().__init__("robot_io_client")
         self._gripper_client = ActionClient(
             self, FollowJointTrajectory, "/gripper_group_controller/follow_joint_trajectory"
         )
+        self._arm_client = ActionClient(
+            self, FollowJointTrajectory, "/arm_group_controller/follow_joint_trajectory"
+        )
         self._cartesian_client = self.create_client(GetCartesianPath, "/compute_cartesian_path")
+
+    # ---- Arm ----
+    def arm_execute(self, joint_trajectory):
+        """Send a trajectory_msgs/JointTrajectory straight to
+        arm_group_controller's action server, bypassing MoveItPy's own
+        execution manager. MoveItPy's built-in execute() validates the
+        current joint state's timestamp against its own clock before
+        running, and with use_sim_time it crashes on construction (a known
+        unresolved bug: moveit/moveit2#2220, #2940) so it never runs with
+        sim time at all -- it only ever sees wall-clock, which will never
+        match Gazebo's sim-time-stamped /joint_states, so validation always
+        times out. Going straight to the controller's action server (same
+        pattern already used for the gripper below) skips that check
+        entirely.
+        """
+        if not self._arm_client.wait_for_server(timeout_sec=5.0):
+            self.get_logger().error("arm_group_controller action server not available")
+            return False
+
+        goal = FollowJointTrajectory.Goal()
+        goal.trajectory = joint_trajectory
+
+        future = self._arm_client.send_goal_async(goal)
+        rclpy.spin_until_future_complete(self, future)
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().error("Arm goal rejected")
+            return False
+
+        result_future = goal_handle.get_result_async()
+        rclpy.spin_until_future_complete(self, result_future)
+        return True
 
     # ---- Gripper ----
     def gripper_move_to(self, position, duration_sec=1.0):
@@ -214,7 +250,7 @@ class RobotIOClient(Node):
 
 def build_moveit():
     moveit_config = (
-        MoveItConfigsBuilder("firefighter", package_name="mycobot_280_moveit2")
+        MoveItConfigsBuilder("firefighter", package_name="mycobot_280pi_camera_moveit2")
         .to_moveit_configs()
     )
     config_dict = moveit_config.to_dict()
@@ -226,7 +262,27 @@ def build_moveit():
         "max_acceleration_scaling_factor": 1.0,
     }
     _floatify_joint_limits(config_dict)
-    return MoveItPy(node_name="pick_place", config_dict=config_dict)
+
+    # use_sim_time can't go through config_dict: MoveItPy's config_dict path
+    # triggers an upstream bug (moveit2#2220/#2940) where enabling sim time
+    # crashes with "qos_overrides./clock.subscription.durability could not
+    # be set". Loading it through a real YAML file via launch_params_filepaths
+    # goes through the normal rclcpp parameter-file path instead and avoids
+    # that bug. Without this, MoveItPy's clock stays on wall-time while
+    # Gazebo's joint_states are stamped with sim time, so every trajectory
+    # validation fails with "couldn't receive full current joint state
+    # within 1s" even though joint_states is publishing fine.
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", delete=False
+    ) as sim_time_yaml:
+        sim_time_yaml.write("/**:\n  ros__parameters:\n    use_sim_time: true\n")
+        sim_time_yaml_path = sim_time_yaml.name
+
+    return MoveItPy(
+        node_name="pick_place",
+        config_dict=config_dict,
+        launch_params_filepaths=[sim_time_yaml_path],
+    )
 
 
 def make_position_constraint(link_name, frame_id, x, y, z, tolerance=0.04):
@@ -347,7 +403,7 @@ def toggle_gripper(io_client):
     return io_client.gripper_move_to(GRIPPER_OPEN)
 
 
-def go_home(mycobot, arm):
+def go_home(mycobot, arm, io_client):
     """Return the arm to its designated home pose before planning anything else."""
     robot_model = mycobot.get_robot_model()
     goal_state = RobotState(robot_model)
@@ -363,11 +419,11 @@ def go_home(mycobot, arm):
         return False
 
     print("Executing joint-space move to home pose...")
-    mycobot.execute(plan_result.trajectory, controllers=["arm_group_controller"])
-    return True
+    joint_trajectory = plan_result.trajectory.get_robot_trajectory_msg().joint_trajectory
+    return io_client.arm_execute(joint_trajectory)
 
 
-def move_arm_to(mycobot, arm, x, y, z, lock_orientation=True):
+def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
     """Joint-space plan to a target position. Uses deterministic seeded IK
     when possible; falls back to OMPL constraint sampling if all seeds fail."""
     arm.set_start_state_to_current_state()
@@ -396,8 +452,8 @@ def move_arm_to(mycobot, arm, x, y, z, lock_orientation=True):
         return False
 
     print(f"Executing joint-space move to ({x}, {y}, {z})...")
-    mycobot.execute(plan_result.trajectory, controllers=["arm_group_controller"])
-    return True
+    joint_trajectory = plan_result.trajectory.get_robot_trajectory_msg().joint_trajectory
+    return io_client.arm_execute(joint_trajectory)
 
 
 def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
@@ -437,17 +493,7 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
 
     print(f"Executing Cartesian move to ({x}, {y}, {z}) (fraction={fraction:.2f})...")
 
-    robot_model = mycobot.get_robot_model()
-    trajectory = RobotTrajectory(robot_model)
-    trajectory.joint_model_group_name = GROUP_NAME
-
-    psm = mycobot.get_planning_scene_monitor()
-    with psm.read_only() as scene:
-        current_state = scene.current_state
-        trajectory.set_robot_trajectory_msg(current_state, solution_msg)
-
-    mycobot.execute(trajectory, controllers=["arm_group_controller"])
-    return True
+    return io_client.arm_execute(solution_msg.joint_trajectory)
 
 
 def main():
@@ -461,23 +507,23 @@ def main():
     lx, ly, lz = PLACE_XYZ
 
     steps = [
-        ("Return to home pose", lambda: go_home(mycobot, arm)),
+        ("Return to home pose", lambda: go_home(mycobot, arm, io_client)),
         ("Toggle gripper (pre-start)", lambda: toggle_gripper(io_client)),
         ("Move to pre-grasp (above pick)",
-         lambda: move_arm_to(mycobot, arm, px, py, pz + APPROACH_HEIGHT)),
+         lambda: move_arm_to(mycobot, arm, io_client, px, py, pz + APPROACH_HEIGHT)),
         ("Descend to grasp pose (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, px, py, pz)),
         ("Close gripper (grasp)", lambda: io_client.gripper_move_to(GRIPPER_CLOSED)),
         ("Retreat after grasp (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, px, py, pz + APPROACH_HEIGHT)),
         ("Move to pre-place (above place)",
-         lambda: move_arm_to(mycobot, arm, lx, ly, lz + APPROACH_HEIGHT)),
+         lambda: move_arm_to(mycobot, arm, io_client, lx, ly, lz + APPROACH_HEIGHT)),
         ("Descend to place pose (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz)),
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
         ("Retreat after release (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz + APPROACH_HEIGHT)),
-        ("Return to home pose (final)", lambda: go_home(mycobot, arm)),
+        ("Return to home pose (final)", lambda: go_home(mycobot, arm, io_client)),
     ]
 
     for name, action in steps:
