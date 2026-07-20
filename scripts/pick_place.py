@@ -52,7 +52,7 @@ from moveit_configs_utils import MoveItConfigsBuilder
 # (TABLE_TOP_Z + DEFAULT_BLOCK_SIZE/2 = 0.02 + 0.01 = 0.03) for the current
 # cube size; re-derive it the same way if DEFAULT_BLOCK_SIZE changes again.
 PICK_XYZ = (+0.000, +0.250, 0.030)
-PLACE_XYZ = (+0.000, -0.250, 0.080)
+PLACE_XYZ = (+0.000, -0.250, 0.060)
 APPROACH_HEIGHT = 0.08  # how far above pick/place to pre-position, meters
 
 # Vertical distance from the commanded joint6_flange position down to where
@@ -63,7 +63,7 @@ APPROACH_HEIGHT = 0.08  # how far above pick/place to pre-position, meters
 # (it's purely gripper/flange geometry) -- re-measure with
 # gripper_offset_probe.py and update this if the gripper or camera-flange
 # geometry changes, not if the block size changes.
-GRASP_OFFSET_Z = 0.09
+GRASP_OFFSET_Z = 0.075
 
 # Cube side length, meters -- matches CUBE_SIZE_1/CUBE_SIZE_2 in
 # spawn_world.py. Used to convert a place SURFACE height into the block-
@@ -80,15 +80,21 @@ GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
 # position error. GRIPPER_STEP closes in small increments instead, reading
 # gripper_controller's effort off /joint_states after each one and stopping
 # as soon as it spikes (contact), rather than always finishing at
-# GRIPPER_CLOSED. GRIPPER_EFFORT_THRESHOLD is a placeholder -- has NOT been
-# empirically tuned. Run once, watch the printed "[gripper] target=... "
-# effort=..." trace while closing on a block, and set this comfortably above
-# the free-swing noise floor and below whatever visibly deforms/launches the
-# block.
+# GRIPPER_CLOSED.
+#
+# GRIPPER_EFFORT_THRESHOLD tuned from an observed trace closing on a 2cm
+# cube: free-swing noise floor sits at ~0.001, first real contact spikes to
+# ~0.7-0.8 (a "holding it well" grip, confirmed visually), and continuing to
+# close from there ramps quickly into a ~2-3.4 "squeezing/glitching the
+# block out of the gripper" regime as each further step drives deeper into
+# an already-contacted, incompressible object. 0.5 sits just above the noise
+# floor and catches the very first contact spike, stopping before the next
+# increment ever gets sent. Re-tune the same way (watch the trace) if the
+# block size/mass or gripper geometry changes enough to shift these numbers.
 GRIPPER_STEP = 0.03            # rad, per increment
 GRIPPER_STEP_DURATION = 0.3    # sec, trajectory duration per increment
 GRIPPER_SETTLE_SEC = 0.15      # sec to spin after each step before reading effort
-GRIPPER_EFFORT_THRESHOLD = 5.0  # N*m -- UNTUNED, watch the trace and adjust
+GRIPPER_EFFORT_THRESHOLD = 0.8 # N*m
 
 POSE_LINK = "joint6_flange"
 PLANNING_FRAME = "world"
@@ -730,6 +736,9 @@ def main():
             print(f"Step failed: {name}. Aborting sequence.")
             break
         time.sleep(0.5)
+    
+    print("\n=== Final return to home pose ===")
+    go_home(mycobot, arm, io_client)
 
     print("\nPick-and-place sequence complete.")
     io_client.destroy_node()
