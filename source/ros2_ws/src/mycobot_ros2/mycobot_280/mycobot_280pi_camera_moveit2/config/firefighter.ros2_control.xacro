@@ -76,6 +76,12 @@
                   <param name="initial_value">0.0</param>
                 </state_interface>
                 <state_interface name="velocity"/>
+                <!-- Exposes gz_ros2_control's simulated joint effort on
+                     /joint_states for gripper_controller, so pick_place.py
+                     can stop closing on contact instead of always driving
+                     to a fixed closed position regardless of what's in the
+                     gripper. -->
+                <state_interface name="effort"/>
             </joint>
 
         </ros2_control>

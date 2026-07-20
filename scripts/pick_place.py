@@ -14,8 +14,14 @@ Pick-and-place demo: known start/end block poses, no camera.
   straight line along z instead of an arbitrary curved joint-space path.
 - Gripper open/close via a direct FollowJointTrajectory action client to
   gripper_group_controller (bypasses MoveIt planning groups for the gripper).
+- Gripper closing watches gripper_controller's effort on /joint_states and
+  stops as soon as it detects contact, instead of always driving to a fixed
+  closed position regardless of what (if anything) is between the fingers.
+  Requires the "effort" state_interface on gripper_controller -- see
+  firefighter.ros2_control.xacro / ros2_controllers.yaml.
 """
 
+import argparse
 import math
 import tempfile
 import time
@@ -26,6 +32,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Pose
 from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint
 from moveit_msgs.srv import GetCartesianPath
+from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
@@ -36,12 +43,52 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 # ---- Tunable poses (defaults; adjust to real measurements later) ----
-PICK_XYZ = (0.20, 0.00, 0.10)
-PLACE_XYZ = (0.20, -0.10, 0.10)
-APPROACH_HEIGHT = 0.15  # how far above pick/place to pre-position, meters
+# PICK_XYZ/PLACE_XYZ's z is NOT a flange target -- see the pick/place-height
+# convention comment above parse_args(). PICK_XYZ.z is a block CENTER
+# (matches what spawn_world.py prints); PLACE_XYZ.z is a resting SURFACE
+# (table top, or the top of the block underneath when stacking). Both are
+# converted to actual flange targets in main() via GRASP_OFFSET_Z /
+# DEFAULT_BLOCK_SIZE. PICK_XYZ.z below matches spawn_world.py's cube center
+# (TABLE_TOP_Z + DEFAULT_BLOCK_SIZE/2 = 0.02 + 0.01 = 0.03) for the current
+# cube size; re-derive it the same way if DEFAULT_BLOCK_SIZE changes again.
+PICK_XYZ = (+0.000, +0.250, 0.030)
+PLACE_XYZ = (+0.000, -0.250, 0.080)
+APPROACH_HEIGHT = 0.08  # how far above pick/place to pre-position, meters
+
+# Vertical distance from the commanded joint6_flange position down to where
+# the gripper actually grips a block, i.e. flange_target_z = block_center_z +
+# GRASP_OFFSET_Z when descending from directly above with the fixed downward
+# grasp orientation. Consistent with the fingertip offset annulus_test.py
+# measured via gripper_offset_probe.py. This does NOT depend on block size
+# (it's purely gripper/flange geometry) -- re-measure with
+# gripper_offset_probe.py and update this if the gripper or camera-flange
+# geometry changes, not if the block size changes.
+GRASP_OFFSET_Z = 0.09
+
+# Cube side length, meters -- matches CUBE_SIZE_1/CUBE_SIZE_2 in
+# spawn_world.py. Used to convert a place SURFACE height into the block-
+# center height the flange must descend to when releasing.
+DEFAULT_BLOCK_SIZE = 0.02
 
 GRIPPER_OPEN = 0.15    # matches URDF joint upper limit
 GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
+
+# gripper_controller's URDF effort limit is 1000 (an unset-default value, not
+# a real spec), so nothing in sim stops the gripper from driving straight
+# through GRIPPER_CLOSED regardless of what's between the fingers -- it'll
+# either crush/launch the block or grind against it at full commanded
+# position error. GRIPPER_STEP closes in small increments instead, reading
+# gripper_controller's effort off /joint_states after each one and stopping
+# as soon as it spikes (contact), rather than always finishing at
+# GRIPPER_CLOSED. GRIPPER_EFFORT_THRESHOLD is a placeholder -- has NOT been
+# empirically tuned. Run once, watch the printed "[gripper] target=... "
+# effort=..." trace while closing on a block, and set this comfortably above
+# the free-swing noise floor and below whatever visibly deforms/launches the
+# block.
+GRIPPER_STEP = 0.03            # rad, per increment
+GRIPPER_STEP_DURATION = 0.3    # sec, trajectory duration per increment
+GRIPPER_SETTLE_SEC = 0.15      # sec to spin after each step before reading effort
+GRIPPER_EFFORT_THRESHOLD = 5.0  # N*m -- UNTUNED, watch the trace and adjust
 
 POSE_LINK = "joint6_flange"
 PLANNING_FRAME = "world"
@@ -50,7 +97,10 @@ GROUP_NAME = "arm_group"
 # Downward-facing grasp orientation for joint6_flange -- confirmed
 # REACHABLE via constraint-based IK probe (ik_probe.py) after fixing the
 # camera_flange.dae mesh scale bug. This is roll=180deg, yaw=90deg: a
-# genuine "point straight down" orientation, not an approximate one.
+# genuine "point straight down" orientation, not an approximate one. This is
+# the yaw=0 REFERENCE quaternion for gripper_yaw_quat() below -- other
+# scripts (annulus_test.py) import these raw components directly, so leave
+# them as-is and do yaw adjustments via gripper_yaw_quat() instead.
 GRASP_QX = -0.7071
 GRASP_QY = 0.7071
 GRASP_QZ = 0.0
@@ -70,6 +120,53 @@ HOME_DEGREES = {
     "joint6output_to_joint6": 0,
 }
 HOME_RADIANS = {name: math.radians(deg) for name, deg in HOME_DEGREES.items()}
+
+# joint6output_to_joint6 is the last joint before joint6_flange (POSE_LINK)
+# and rotates the flange (and gripper) about its own approach axis without
+# moving its position -- under the downward grasp orientation that axis is
+# world-vertical, so this joint is exactly "gripper yaw about the vertical."
+# Earlier this was pinned to a constant RAW JOINT VALUE, which does NOT keep
+# the gripper facing a constant WORLD direction -- joint6output's zero
+# position is measured relative to the base's own rotation (joint1), which
+# differs between pick and place, so a fixed joint value let the world-frame
+# facing drift between targets. Locking the world orientation instead means
+# targeting a fixed absolute quaternion via full 6D IK (below) and letting
+# joint6output solve to whatever value that requires -- it will vary, and
+# that's the point: it's actively holding the gripper's facing constant in
+# the world frame as the arm reaches to different (x, y).
+#
+# GRIPPER_YAW_DEG is the fixed world yaw (about Z) applied on top of the
+# GRASP_Q* reference orientation above. 0.0 reproduces GRASP_Q* unchanged.
+# Not yet empirically confirmed to be parallel to world +X -- watch the
+# gripper in sim and adjust in +/-90deg steps until the jaws line up with X.
+GRIPPER_YAW_DEG = 0.0
+
+
+def quat_multiply(q1, q2):
+    """Hamilton product q1 * q2, both as (x, y, z, w)."""
+    x1, y1, z1, w1 = q1
+    x2, y2, z2, w2 = q2
+    return (
+        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+    )
+
+
+def gripper_yaw_quat(yaw_deg=GRIPPER_YAW_DEG):
+    """q_yaw(yaw_deg) * GRASP_Q -- the fixed downward grasp quaternion
+    rotated by yaw_deg around world Z, keeping the "point straight down"
+    component intact while fixing the world-frame gripper facing."""
+    yaw = math.radians(yaw_deg)
+    q_yaw = (0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0))
+    q_grasp = (GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+    return quat_multiply(q_yaw, q_grasp)
+
+
+# The actual grasp target used throughout this script -- gripper always
+# facing the same fixed world direction, regardless of pick/place location.
+GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW = gripper_yaw_quat()
 
 # IK candidate seeds tried in order. KDL's numeric solver can jump to a
 # different solution branch depending on the seed, and some branches self-
@@ -154,6 +251,20 @@ class RobotIOClient(Node):
             self, FollowJointTrajectory, "/arm_group_controller/follow_joint_trajectory"
         )
         self._cartesian_client = self.create_client(GetCartesianPath, "/compute_cartesian_path")
+        self._joint_efforts = {}
+        self._joint_state_sub = self.create_subscription(
+            JointState, "/joint_states", self._on_joint_state, 10
+        )
+
+    def _on_joint_state(self, msg):
+        for name, effort in zip(msg.name, msg.effort):
+            self._joint_efforts[name] = effort
+
+    def joint_effort(self, joint_name):
+        """Latest effort reading for joint_name from /joint_states, or None
+        if it hasn't been received yet (e.g. no "effort" state_interface
+        configured for that joint)."""
+        return self._joint_efforts.get(joint_name)
 
     # ---- Arm ----
     def arm_execute(self, joint_trajectory):
@@ -323,15 +434,15 @@ def make_orientation_constraint(link_name, frame_id, qx, qy, qz, qw,
 
 
 def make_grasp_pose(x, y, z):
-    """Pose for Cartesian waypoints: position + the fixed downward grasp orientation."""
+    """Pose for Cartesian waypoints: position + the fixed downward, fixed-yaw grasp orientation."""
     pose = Pose()
     pose.position.x = x
     pose.position.y = y
     pose.position.z = z
-    pose.orientation.x = GRASP_QX
-    pose.orientation.y = GRASP_QY
-    pose.orientation.z = GRASP_QZ
-    pose.orientation.w = GRASP_QW
+    pose.orientation.x = GRIPPER_LOCK_QX
+    pose.orientation.y = GRIPPER_LOCK_QY
+    pose.orientation.z = GRIPPER_LOCK_QZ
+    pose.orientation.w = GRIPPER_LOCK_QW
     return pose
 
 
@@ -403,6 +514,50 @@ def toggle_gripper(io_client):
     return io_client.gripper_move_to(GRIPPER_OPEN)
 
 
+def gripper_close_until_contact(io_client, start=GRIPPER_OPEN, closed=GRIPPER_CLOSED,
+                                 step=GRIPPER_STEP, step_duration=GRIPPER_STEP_DURATION,
+                                 settle_sec=GRIPPER_SETTLE_SEC,
+                                 effort_threshold=GRIPPER_EFFORT_THRESHOLD):
+    """Close the gripper in small increments, stopping as soon as
+    gripper_controller's measured effort exceeds effort_threshold (contact
+    with the block) instead of always driving to `closed` regardless of
+    what's in the way. Falls back to a single move straight to `closed` if
+    no effort reading is available (e.g. the effort state_interface isn't
+    configured), since that's strictly the old behavior, not a new failure
+    mode. Returns True unless a gripper action call itself fails."""
+    target = start
+    got_any_reading = False
+
+    while target > closed:
+        target = max(closed, target - step)
+        if not io_client.gripper_move_to(target, duration_sec=step_duration):
+            return False
+
+        rclpy.spin_once(io_client, timeout_sec=settle_sec)
+        effort = io_client.joint_effort("gripper_controller")
+
+        if effort is None:
+            print(f"[gripper] target={target:.3f}  effort=<no reading -- "
+                  f"is the effort state_interface configured?>")
+            continue
+
+        got_any_reading = True
+        print(f"[gripper] target={target:.3f}  effort={effort:.3f}")
+        if abs(effort) >= effort_threshold:
+            print(f"[gripper] contact detected (|effort|={abs(effort):.3f} >= "
+                  f"{effort_threshold:.3f}) at position {target:.3f}, stopping close")
+            return True
+
+    if not got_any_reading:
+        print("[gripper] no effort readings received at all -- closed fully to "
+              f"{closed:.3f} without contact detection (old fixed-close behavior)")
+    else:
+        print(f"[gripper] reached fully-closed position {closed:.3f} without "
+              "detecting contact (nothing between the fingers, or "
+              "GRIPPER_EFFORT_THRESHOLD is set too high)")
+    return True
+
+
 def go_home(mycobot, arm, io_client):
     """Return the arm to its designated home pose before planning anything else."""
     robot_model = mycobot.get_robot_model()
@@ -430,7 +585,8 @@ def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
 
     ik_state = None
     if lock_orientation:
-        ik_state = solve_ik_state(mycobot, x, y, z, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+        ik_state = solve_ik_state(mycobot, x, y, z,
+                                   GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
 
     if ik_state is not None:
         arm.set_goal_state(robot_state=ik_state)
@@ -441,8 +597,14 @@ def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
             make_position_constraint(POSE_LINK, PLANNING_FRAME, x, y, z)
         )
         if lock_orientation:
+            # z_tolerance tightened to match x/y (default is ~free, 3.14) so
+            # the fallback also holds the fixed world yaw instead of letting
+            # OMPL pick any wrist twist -- see GRIPPER_YAW_DEG above.
             constraints.orientation_constraints.append(
-                make_orientation_constraint(POSE_LINK, PLANNING_FRAME, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+                make_orientation_constraint(
+                    POSE_LINK, PLANNING_FRAME,
+                    GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW,
+                    z_tolerance=0.15)
             )
         arm.set_goal_state(motion_plan_constraints=[constraints])
 
@@ -468,7 +630,10 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
 
     path_constraints = Constraints()
     path_constraints.orientation_constraints.append(
-        make_orientation_constraint(POSE_LINK, PLANNING_FRAME, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+        make_orientation_constraint(
+            POSE_LINK, PLANNING_FRAME,
+            GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW,
+            z_tolerance=0.15)
     )
 
     # DIAGNOSTIC: try with AND without orientation constraint to isolate
@@ -496,15 +661,47 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
     return io_client.arm_execute(solution_msg.joint_trajectory)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Pick-and-place demo with hardcoded/known block poses.")
+    parser.add_argument("--pick-position", type=float, nargs=3, metavar=("X", "Y", "Z"),
+                        default=list(PICK_XYZ),
+                        help="pick location, meters. X,Y and the picked-up block's "
+                        "CENTER Z -- same convention spawn_world.py's coordinate "
+                        f"summary prints, paste directly (default: {PICK_XYZ})")
+    parser.add_argument("--place-position", type=float, nargs=3, metavar=("X", "Y", "Z"),
+                        default=list(PLACE_XYZ),
+                        help="place location, meters. X,Y and the SURFACE Z the block "
+                        "should come to rest on -- the table top for a fresh "
+                        "placement, or the top of the block underneath when "
+                        f"stacking (default: {PLACE_XYZ})")
+    parser.add_argument("--block-size", type=float, default=DEFAULT_BLOCK_SIZE,
+                        help="cube side length, meters, used to turn --place-position's "
+                        "surface Z into the block-center Z the flange must descend to "
+                        f"when releasing (default: {DEFAULT_BLOCK_SIZE})")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
     rclpy.init(args=["--ros-args", "-p", "use_sim_time:=true"])
 
     mycobot = build_moveit()
     arm = mycobot.get_planning_component(GROUP_NAME)
     io_client = RobotIOClient()
 
-    px, py, pz = PICK_XYZ
-    lx, ly, lz = PLACE_XYZ
+    px, py, pick_center_z = args.pick_position
+    lx, ly, place_surface_z = args.place_position
+
+    # Convert block-center (pick) / resting-surface (place) heights into
+    # actual joint6_flange targets -- see GRASP_OFFSET_Z above.
+    pz = pick_center_z + GRASP_OFFSET_Z
+    lz = place_surface_z + args.block_size / 2.0 + GRASP_OFFSET_Z
+
+    print(f"[pick_place] pick block-center z={pick_center_z:.3f} -> flange target z={pz:.3f}")
+    print(f"[pick_place] place surface z={place_surface_z:.3f} "
+          f"(block size {args.block_size:.3f}) -> flange target z={lz:.3f}")
 
     steps = [
         ("Return to home pose", lambda: go_home(mycobot, arm, io_client)),
@@ -513,7 +710,7 @@ def main():
          lambda: move_arm_to(mycobot, arm, io_client, px, py, pz + APPROACH_HEIGHT)),
         ("Descend to grasp pose (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, px, py, pz)),
-        ("Close gripper (grasp)", lambda: io_client.gripper_move_to(GRIPPER_CLOSED)),
+        ("Close gripper (grasp, stop on contact)", lambda: gripper_close_until_contact(io_client)),
         ("Retreat after grasp (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, px, py, pz + APPROACH_HEIGHT)),
         ("Move to pre-place (above place)",
