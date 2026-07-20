@@ -346,7 +346,7 @@
   <link name="gripper_base">
     <inertial>
       <mass value="0.05"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <origin xyz="0.0 0 -0.012" rpy="0 0 0"/>
       <inertia ixx="0.00005" ixy="0.0" ixz="0.0"
                iyy="0.00005" iyz="0.0"
                izz="0.00005"/>
@@ -368,10 +368,10 @@
   <link name="gripper_left1">
     <inertial>
       <mass value="0.01"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.00002" ixy="0.0" ixz="0.0"
-               iyy="0.00002" iyz="0.0"
-               izz="0.00002"/>
+      <origin xyz="0.039 -0.0133 -0.012" rpy="0 0 0"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0"
+               iyy="0.00001" iyz="0.0"
+               izz="0.00001"/>
     </inertial>
     <visual>
       <geometry>
@@ -390,10 +390,10 @@
   <link name="gripper_left2">
     <inertial>
       <mass value="0.01"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.00002" ixy="0.0" ixz="0.0"
-               iyy="0.00002" iyz="0.0"
-               izz="0.00002"/>
+      <origin xyz="0.005 -0.0195 -0.012" rpy="0 0 0"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0"
+               iyy="0.00001" iyz="0.0"
+               izz="0.00001"/>
     </inertial>
     <visual>
       <geometry>
@@ -412,10 +412,10 @@
   <link name="gripper_left3">
     <inertial>
       <mass value="0.01"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.00002" ixy="0.0" ixz="0.0"
-               iyy="0.00002" iyz="0.0"
-               izz="0.00002"/>
+      <origin xyz="0.012 0.0025 -0.012" rpy="0 0 0"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0"
+               iyy="0.00001" iyz="0.0"
+               izz="0.00001"/>
     </inertial>
     <visual>
       <geometry>
@@ -434,10 +434,10 @@
   <link name="gripper_right1">
     <inertial>
       <mass value="0.01"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.00002" ixy="0.0" ixz="0.0"
-               iyy="0.00002" iyz="0.0"
-               izz="0.00002"/>
+      <origin xyz="-0.039 -0.0133 -0.012" rpy="0 0 0"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0"
+               iyy="0.00001" iyz="0.0"
+               izz="0.00001"/>
     </inertial>
     <visual>
       <geometry>
@@ -456,10 +456,10 @@
   <link name="gripper_right2">
     <inertial>
       <mass value="0.01"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.00002" ixy="0.0" ixz="0.0"
-               iyy="0.00002" iyz="0.0"
-               izz="0.00002"/>
+      <origin xyz="-0.005 -0.0195 -0.012" rpy="0 0 0"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0"
+               iyy="0.00001" iyz="0.0"
+               izz="0.00001"/>
     </inertial>
     <visual>
       <geometry>
@@ -478,10 +478,10 @@
   <link name="gripper_right3">
     <inertial>
       <mass value="0.01"/>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.00002" ixy="0.0" ixz="0.0"
-               iyy="0.00002" iyz="0.0"
-               izz="0.00002"/>
+      <origin xyz="-0.012 0.0025 -0.012" rpy="0 0 0"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0"
+               iyy="0.00001" iyz="0.0"
+               izz="0.00001"/>
     </inertial>
     <visual>
       <geometry>

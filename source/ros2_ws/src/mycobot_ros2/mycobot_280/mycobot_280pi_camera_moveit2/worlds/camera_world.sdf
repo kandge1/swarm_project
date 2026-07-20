@@ -14,6 +14,15 @@
     <plugin
       filename="gz-sim-physics-system"
       name="gz::sim::systems::Physics">
+      <!-- Explicitly select bullet-featherstone: the default engine
+           (dartsim, in this gz-sim build) has no <mimic> joint constraint
+           support at all, so the adaptive gripper's 4 follower finger
+           joints would be left completely unconstrained/free-swinging in
+           physics. bullet-featherstone does implement mimic constraints
+           (its only gap is multi-axis joints, which these aren't). -->
+      <engine>
+        <filename>gz-physics-bullet-featherstone-plugin</filename>
+      </engine>
     </plugin>
     <plugin
       filename="gz-sim-user-commands-system"
