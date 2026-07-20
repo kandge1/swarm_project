@@ -83,5 +83,32 @@
       </link>
     </model>
 
+    <!-- Work table: 40in x 40in x 2cm, centered at the world origin so the
+         robot spawns directly on top of it (see spawn_robot's -z in
+         gazebo.launch.py). Top surface at z=0.02. Kept in sync by hand with
+         TABLE_SIZE/TABLE_THICKNESS/TABLE_TOP_Z in scripts/spawn_world.py,
+         which still spawns the markers/ball relative to this same surface. -->
+    <model name="table">
+      <static>true</static>
+      <pose>0 0 0.01 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box><size>1.016 1.016 0.02</size></box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box><size>1.016 1.016 0.02</size></box>
+          </geometry>
+          <material>
+            <ambient>0.55 0.35 0.2 1</ambient>
+            <diffuse>0.55 0.35 0.2 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
   </world>
 </sdf>

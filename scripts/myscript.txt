@@ -76,7 +76,8 @@ ros2 launch mycobot_280pi_camera_moveit2 gazebo.launch.py
 ros2 control list_controllers
 # ros2 topic hz /clock   # should show ~1000 Hz; if silent, Gazebo never came up — check Terminal 1 for errors
 
-# Terminal 2 — run annulus_test.py (same as RViz workflow)
+# Optional, visualization for annulus test.py 
+$ Terminal 2 — run annulus_show.py (same as RViz workflow)
 #source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 #python3 ~/swarm/swarm_project/scripts/annulus_show.py
 
@@ -89,7 +90,7 @@ python3 ~/swarm/swarm_project/scripts/annulus_test.py --execute
 source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 python3 ~/swarm/swarm_project/scripts/camera_view.py
 
-# Terminal 5 — one-shot: spawn table + AprilTag marker + ball into Gazebo
+# Terminal 5 — one-shot: AprilTag marker + ball into Gazebo
 # (run once after Gazebo is up; run again after restarting Gazebo)
 source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 python3 ~/swarm/swarm_project/scripts/spawn_world.py

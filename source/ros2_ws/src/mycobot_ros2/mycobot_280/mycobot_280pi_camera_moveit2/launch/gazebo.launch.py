@@ -36,11 +36,18 @@ def generate_launch_description():
         }.items(),
     )
 
-    # Spawn the robot into Gazebo from the robot_description topic
+    # Spawn the robot into Gazebo from the robot_description topic, at the
+    # world origin flush on top of the table defined in camera_world.sdf
+    # (top surface at z=0.02). g_base's mesh (G_base.dae, authored in mm)
+    # spans local z [-54.99, 55.00]mm; its <origin rpy="0 0 1.5708" xyz="0 0
+    # -0.03"> is a pure Z-rotation (doesn't affect z) plus a -0.03 shift, so
+    # the true bottom of the base sits 0.085m below the spawn root - not the
+    # ~0.1m the old flat-ground offset assumed. z = 0.02 (table top) + 0.085
+    # (base depth) = 0.105.
     spawn_robot = Node(
         package="ros_gz_sim",
         executable="create",
-        arguments=["-topic", "robot_description", "-name", "firefighter", "-z", "0.1"],
+        arguments=["-topic", "robot_description", "-name", "firefighter", "-z", "0.055"],
         output="screen",
     )
 

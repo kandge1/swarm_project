@@ -106,7 +106,7 @@ YAW_MAX = math.radians(+120.0)
 # collision) in the confirming sweep -- a real but minor mechanical
 # constraint only at the extreme corner of (large r, large |yaw|).
 
-TRACE_Z = 0.130         # m -- flange target for grasping a 4cm cube resting
+TRACE_Z = 0.105         # m -- flange target for grasping a 4cm cube resting
                         # on the floor (block center at z=0.02) through the
                         # gripper's measured fingertip offset of 0.061 m
                         # (deepest link gripper_left2/right2, measured via

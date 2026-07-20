@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Spawn a table, an AprilTag marker, and a ball into the running Gazebo world.
+"""Spawn an AprilTag marker square and a ball into the running Gazebo world.
 
 Uses the same mechanism gazebo.launch.py uses to spawn the robot itself:
 the `ros_gz_sim create` CLI tool, which calls the world's gz-transport
 /world/<world>/create service. Each object is a self-contained SDF <model>
 string with its world pose baked into <pose>, so nothing depends on where
 `create`'s own -x/-y/-z flags would otherwise place it.
+
+The table itself is no longer spawned by this script - it's now a static
+<model> baked directly into camera_world.sdf so the robot can spawn
+already sitting on it (see gazebo.launch.py). TABLE_TOP_Z below must stay
+in sync by hand with that table's height (top surface at z=0.02).
 
 Requires Gazebo already running (see myscript.txt, Terminal 1) with a world
 named "empty" - true for both the stock empty.sdf and this project's
@@ -22,11 +27,9 @@ TAG_TEXTURES = [ASSETS_DIR / f"tag36h11_0000{i}.png" for i in range(4)]
 
 INCH = 0.0254
 
-# Table: 4ft x 4ft, centered at the origin, top surface flush with the
-# ground (z=0) to match the work-surface height annulus_test.py already
-# assumes (its z range is 0.13-0.24m measured from the arm base at z=0).
-TABLE_SIZE = 40 * INCH
-TABLE_THICKNESS = 0.02
+# Top surface height of the table baked into camera_world.sdf, to match the
+# work-surface height annulus_test.py already assumes (its z range is
+# 0.13-0.24m measured from the arm base at z=0).
 TABLE_TOP_Z = 0.02
 
 # 4 AprilTag markers (1in x 1in each), one at each corner of a 10cm x 10cm
@@ -49,33 +52,6 @@ BALL_MASS = 0.05
 BALL_X = SQUARE_CENTER_X
 BALL_Y = SQUARE_CENTER_Y
 BALL_Z = TABLE_TOP_Z + BALL_RADIUS
-
-
-def table_sdf() -> str:
-    return f"""
-<sdf version="1.9">
-  <model name="table">
-    <static>true</static>
-    <link name="link">
-      <collision name="collision">
-        <geometry>
-          <box><size>{TABLE_SIZE} {TABLE_SIZE} {TABLE_THICKNESS}</size></box>
-        </geometry>
-      </collision>
-      <visual name="visual">
-        <geometry>
-          <box><size>{TABLE_SIZE} {TABLE_SIZE} {TABLE_THICKNESS}</size></box>
-        </geometry>
-        <material>
-          <ambient>0.55 0.35 0.2 1</ambient>
-          <diffuse>0.55 0.35 0.2 1</diffuse>
-          <specular>0.1 0.1 0.1 1</specular>
-        </material>
-      </visual>
-    </link>
-  </model>
-</sdf>
-"""
 
 
 def marker_sdf(texture: pathlib.Path) -> str:
@@ -165,8 +141,6 @@ def main():
     parser.add_argument("--world", default="empty", help="Gazebo world name")
     args = parser.parse_args()
 
-    table_z = TABLE_TOP_Z - TABLE_THICKNESS / 2
-    spawn(args.world, "table", table_sdf(), 0, 0, table_z)
     for i, (x, y) in enumerate(MARKER_CORNERS):
         spawn(args.world, f"apriltag_marker_{i}", marker_sdf(TAG_TEXTURES[i]), x, y, MARKER_Z)
     spawn(args.world, "ball", ball_sdf(), BALL_X, BALL_Y, BALL_Z)
