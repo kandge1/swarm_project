@@ -52,7 +52,7 @@ from moveit_configs_utils import MoveItConfigsBuilder
 # (TABLE_TOP_Z + DEFAULT_BLOCK_SIZE/2 = 0.02 + 0.01 = 0.03) for the current
 # cube size; re-derive it the same way if DEFAULT_BLOCK_SIZE changes again.
 PICK_XYZ = (+0.000, +0.250, 0.030)
-PLACE_XYZ = (+0.000, -0.250, 0.060)
+PLACE_XYZ = (+0.000, -0.250, 0.040)
 APPROACH_HEIGHT = 0.08  # how far above pick/place to pre-position, meters
 
 # Vertical distance from the commanded joint6_flange position down to where
@@ -82,19 +82,30 @@ GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
 # as soon as it spikes (contact), rather than always finishing at
 # GRIPPER_CLOSED.
 #
-# GRIPPER_EFFORT_THRESHOLD tuned from an observed trace closing on a 2cm
-# cube: free-swing noise floor sits at ~0.001, first real contact spikes to
-# ~0.7-0.8 (a "holding it well" grip, confirmed visually), and continuing to
-# close from there ramps quickly into a ~2-3.4 "squeezing/glitching the
-# block out of the gripper" regime as each further step drives deeper into
-# an already-contacted, incompressible object. 0.5 sits just above the noise
-# floor and catches the very first contact spike, stopping before the next
-# increment ever gets sent. Re-tune the same way (watch the trace) if the
-# block size/mass or gripper geometry changes enough to shift these numbers.
-GRIPPER_STEP = 0.03            # rad, per increment
-GRIPPER_STEP_DURATION = 0.3    # sec, trajectory duration per increment
-GRIPPER_SETTLE_SEC = 0.15      # sec to spin after each step before reading effort
-GRIPPER_EFFORT_THRESHOLD = 0.8 # N*m
+# An observed trace closing on a 2cm cube: free-swing noise floor sits at
+# ~0.001 all the way through -0.390, then the SINGLE NEXT 0.03 rad step (to
+# -0.420) already spiked to -0.78, and the step after that (-0.450) to
+# -2.28. 0.03 rad is too coarse to land ON the "just touching" point --
+# it jumps straight past it into the squeeze/glitch regime in one step, so
+# no single GRIPPER_EFFORT_THRESHOLD value can distinguish "holding it well"
+# from "squeezing it out of the gripper": both can happen within the same
+# increment. No threshold fixes a resolution problem -- what actually helps
+# is taking smaller, slower steps once past the point contact was last
+# observed, so the effort reading has a chance to land in between.
+# GRIPPER_FINE_ZONE is that cutover position; below GRIPPER_STEP/
+# GRIPPER_STEP_DURATION are used, at-or-past it GRIPPER_FINE_STEP/
+# GRIPPER_FINE_STEP_DURATION take over. Re-tune all of this the same way
+# (watch the "[gripper] target=... effort=..." trace) if the block
+# size/mass or gripper geometry changes enough to shift these numbers.
+GRIPPER_STEP = 0.03              # rad, per increment before the fine zone
+GRIPPER_STEP_DURATION = 0.3      # sec, trajectory duration per coarse increment
+GRIPPER_FINE_ZONE = -0.40        # rad -- switch to fine stepping at/past this position
+GRIPPER_FINE_STEP = 0.005        # rad, per increment once inside the fine zone
+GRIPPER_FINE_STEP_DURATION = 0.5  # sec, per fine increment -- slower, gives the
+                                   # physics engine/effort reading more time to
+                                   # settle between smaller nudges
+GRIPPER_SETTLE_SEC = 0.15        # sec to spin after each step before reading effort
+GRIPPER_EFFORT_THRESHOLD = 0.2   # N*m
 
 POSE_LINK = "joint6_flange"
 PLANNING_FRAME = "world"
@@ -522,33 +533,45 @@ def toggle_gripper(io_client):
 
 def gripper_close_until_contact(io_client, start=GRIPPER_OPEN, closed=GRIPPER_CLOSED,
                                  step=GRIPPER_STEP, step_duration=GRIPPER_STEP_DURATION,
+                                 fine_zone=GRIPPER_FINE_ZONE, fine_step=GRIPPER_FINE_STEP,
+                                 fine_step_duration=GRIPPER_FINE_STEP_DURATION,
                                  settle_sec=GRIPPER_SETTLE_SEC,
                                  effort_threshold=GRIPPER_EFFORT_THRESHOLD):
     """Close the gripper in small increments, stopping as soon as
     gripper_controller's measured effort exceeds effort_threshold (contact
     with the block) instead of always driving to `closed` regardless of
-    what's in the way. Falls back to a single move straight to `closed` if
-    no effort reading is available (e.g. the effort state_interface isn't
-    configured), since that's strictly the old behavior, not a new failure
-    mode. Returns True unless a gripper action call itself fails."""
+    what's in the way. Steps are coarse (`step`) until `target` reaches
+    `fine_zone`, then switch to smaller, slower (`fine_step`,
+    `fine_step_duration`) increments -- see GRIPPER_FINE_ZONE comment above
+    for why a single step size can't both close quickly through open air and
+    land precisely on first contact. Falls back to a single move straight to
+    `closed` if no effort reading is available (e.g. the effort
+    state_interface isn't configured), since that's strictly the old
+    behavior, not a new failure mode. Returns True unless a gripper action
+    call itself fails."""
     target = start
     got_any_reading = False
 
     while target > closed:
-        target = max(closed, target - step)
-        if not io_client.gripper_move_to(target, duration_sec=step_duration):
+        in_fine_zone = target <= fine_zone
+        this_step = fine_step if in_fine_zone else step
+        this_duration = fine_step_duration if in_fine_zone else step_duration
+
+        target = max(closed, target - this_step)
+        if not io_client.gripper_move_to(target, duration_sec=this_duration):
             return False
 
         rclpy.spin_once(io_client, timeout_sec=settle_sec)
         effort = io_client.joint_effort("gripper_controller")
 
+        zone = "fine" if in_fine_zone else "coarse"
         if effort is None:
-            print(f"[gripper] target={target:.3f}  effort=<no reading -- "
+            print(f"[gripper] target={target:.3f} ({zone})  effort=<no reading -- "
                   f"is the effort state_interface configured?>")
             continue
 
         got_any_reading = True
-        print(f"[gripper] target={target:.3f}  effort={effort:.3f}")
+        print(f"[gripper] target={target:.3f} ({zone})  effort={effort:.3f}")
         if abs(effort) >= effort_threshold:
             print(f"[gripper] contact detected (|effort|={abs(effort):.3f} >= "
                   f"{effort_threshold:.3f}) at position {target:.3f}, stopping close")
