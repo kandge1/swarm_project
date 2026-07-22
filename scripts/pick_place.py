@@ -48,11 +48,33 @@ from moveit_configs_utils import MoveItConfigsBuilder
 # (matches what spawn_world.py prints); PLACE_XYZ.z is a resting SURFACE
 # (table top, or the top of the block underneath when stacking). Both are
 # converted to actual flange targets in main() via GRASP_OFFSET_Z /
-# DEFAULT_BLOCK_SIZE. PICK_XYZ.z below matches spawn_world.py's cube center
-# (TABLE_TOP_Z + DEFAULT_BLOCK_SIZE/2 = 0.02 + 0.01 = 0.03) for the current
-# cube size; re-derive it the same way if DEFAULT_BLOCK_SIZE changes again.
-PICK_XYZ = (+0.000, +0.250, 0.030)
-PLACE_XYZ = (+0.000, -0.250, 0.040)
+# DEFAULT_BLOCK_SIZE.
+#
+# MoveIt plans purely in joint-angle space against the URDF's own kinematic
+# tree, which has no knowledge of where gazebo.launch.py's `ros_gz_sim
+# create -z ...` physically places the robot in Gazebo's absolute frame.
+# But since those SAME joint angles are what actually gets executed by
+# Gazebo (which IS anchored at the spawn pose), any MoveIt Cartesian target
+# lands, in Gazebo-absolute space, at target_z + spawn_z. spawn_z was
+# lowered from 0.055 to 0.02 (g_base embedded in the table -- see
+# gazebo.launch.py) to make the real robot flush with the table, a -0.035m
+# shift. Every target below that's meant to hit an ABSOLUTE table/block
+# height -- i.e. numbers taken directly from spawn_world.py's printed
+# coordinates -- needs +0.035m to compensate, or it'll now aim 0.035m too
+# low (into the table). GRASP_OFFSET_Z below is NOT one of these: it's a
+# difference between two points on the same rigid gripper (flange to
+# fingertip), so the spawn shift cancels out of it and it's untouched.
+#
+# SPAWN_HEIGHT_CORRECTION documents that delta; re-derive it (old_spawn_z -
+# new_spawn_z) and reapply below if the spawn height in gazebo.launch.py
+# ever changes again. PICK_XYZ.z, uncorrected, would match spawn_world.py's
+# cube center (TABLE_TOP_Z + DEFAULT_BLOCK_SIZE/2 = 0.02 + 0.01 = 0.03); add
+# the correction the same way for any new pick/place position derived from
+# spawn_world.py's output. NOT re-verified by an actual run yet -- watch the
+# first grasp closely.
+SPAWN_HEIGHT_CORRECTION = 0.035  # m, = old spawn_z (0.055) - new spawn_z (0.02)
+PICK_XYZ = (+0.000, +0.250, 0.030 + SPAWN_HEIGHT_CORRECTION)
+PLACE_XYZ = (+0.000, -0.250, 0.040 + SPAWN_HEIGHT_CORRECTION)
 APPROACH_HEIGHT = 0.08  # how far above pick/place to pre-position, meters
 
 # Vertical distance from the commanded joint6_flange position down to where

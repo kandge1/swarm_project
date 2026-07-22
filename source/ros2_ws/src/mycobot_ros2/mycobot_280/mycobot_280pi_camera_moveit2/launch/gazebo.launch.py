@@ -36,18 +36,42 @@ def generate_launch_description():
         }.items(),
     )
 
-    # Spawn the robot into Gazebo from the robot_description topic, at the
-    # world origin flush on top of the table defined in camera_world.sdf
-    # (top surface at z=0.02). g_base's mesh (G_base.dae, authored in mm)
-    # spans local z [-54.99, 55.00]mm; its <origin rpy="0 0 1.5708" xyz="0 0
-    # -0.03"> is a pure Z-rotation (doesn't affect z) plus a -0.03 shift, so
-    # the true bottom of the base sits 0.085m below the spawn root - not the
-    # ~0.1m the old flat-ground offset assumed. z = 0.02 (table top) + 0.085
-    # (base depth) = 0.105.
+    # Spawn the robot into Gazebo from the robot_description topic, positioned
+    # so g_base -- a fictitious mounting-plate link with no equivalent on the
+    # real hardware -- sinks into the table, leaving the real robot (starting
+    # at joint1) flush with the table top, matching how it'd actually be
+    # bolted down.
+    #
+    # g_base's link frame IS the spawn root (world->g_base fixed joint has
+    # zero offset), and joint1 attaches to g_base via ANOTHER zero-offset
+    # fixed joint -- so g_base and joint1 share the exact same origin point.
+    # Their meshes were authored to meet right at that shared point:
+    #   - G_base.dae (mm-scaled): full mesh spans local z [0, 32]mm before
+    #     the URDF <origin xyz="0 0 -0.03"> shift is applied (the accompanying
+    #     rpy is a pure Z-rotation, doesn't affect z) -> in the shared root
+    #     frame this base plate spans z [-0.030, +0.002] -- its top sits
+    #     essentially AT the root origin.
+    #   - joint1_pi.dae (already meters, zero <origin>): spans local z
+    #     [0.000, 0.073] directly in the shared root frame -- its bottom
+    #     sits exactly AT the root origin too.
+    # (Both measured with trimesh, which walks each mesh's COLLADA node/
+    # matrix transform hierarchy and applies its <unit meter> scale --
+    # reading raw vertex arrays directly, as an earlier pass over the
+    # gripper meshes did, ignores that hierarchy and gives wrong numbers.)
+    #
+    # So placing the shared root origin AT the table top (z=0.02, see
+    # camera_world.sdf) puts g_base's top and joint1's bottom in the same
+    # place (to within the ~2mm the two meshes were authored apart), exactly
+    # the "g_base buried, real robot flush" mount this is going for. Note the
+    # table itself is only 0.02m thick (camera_world.sdf) while g_base's full
+    # depth is 0.032m, so about 1cm of g_base necessarily pokes out the
+    # BOTTOM of the table into the floor -- g_base is a fixed (non-dynamic)
+    # mount with no collision consequence, so this is purely a cosmetic
+    # sliver hidden under the table from any normal viewing angle.
     spawn_robot = Node(
         package="ros_gz_sim",
         executable="create",
-        arguments=["-topic", "robot_description", "-name", "firefighter", "-z", "0.055"],
+        arguments=["-topic", "robot_description", "-name", "firefighter", "-z", "0.02"],
         output="screen",
     )
 
