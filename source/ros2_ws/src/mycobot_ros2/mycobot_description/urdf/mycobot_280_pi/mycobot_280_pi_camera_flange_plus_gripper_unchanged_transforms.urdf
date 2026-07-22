@@ -380,10 +380,27 @@
     <origin xyz = "0.039 -0.0133 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
+      <!-- Box, not the mesh, for collision: gz-sim/DART requires convex
+           collision geometry for dynamic (moving, non-static) bodies, so a
+           mesh collision here gets silently replaced with a single convex
+           hull of the whole mesh. On a finger link that hull fills in any
+           concave curvature of the contact surface, bulging the true
+           collision boundary out past the visual mesh, which is why the
+           gripper was reported registering contact well before the fingers
+           visually touched the block. This box is a tight axis-aligned
+           bound of gripper_left1.dae's true composed geometry, computed
+           with trimesh (which walks the COLLADA node/matrix hierarchy
+           and applies unit-meter=0.001), NOT by reading the raw vertex
+           source arrays directly. An earlier attempt did the latter, which
+           ignores each geometry node's own transform and produced a bogus,
+           badly-mispositioned box: the fingers passed straight through
+           the block with no collision response at all. Verify visually
+           (RViz "Show Collision Geometry") before trusting this further if
+           the mesh is ever re-exported. -->
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/adaptive_gripper/gripper_left1.dae"/>
+        <box size="0.0244 0.0582 0.0207"/>
       </geometry>
-        <origin xyz = "0.039 -0.0133 -0.012 " rpy = " 0 0 0"/>
+        <origin xyz = "0.0065 0.0241 -0.0082" rpy = " 0 0 0"/>
     </collision>
   </link>
 
@@ -402,10 +419,11 @@
     <origin xyz = "0.005 -0.0195 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
+      <!-- Box, not mesh: see gripper_left1's collision comment above for why. -->
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/adaptive_gripper/gripper_left2.dae"/>
+        <box size="0.0359 0.0243 0.0200"/>
       </geometry>
-        <origin xyz = "0.005 -0.0195 -0.012 " rpy = " 0 0 0"/>
+        <origin xyz = "-0.0145 0.0075 -0.0082" rpy = " 0 0 0"/>
     </collision>
   </link>
 
@@ -424,10 +442,11 @@
     <origin xyz = "0.012 0.0025 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
+      <!-- Box, not mesh: see gripper_left1's collision comment above for why. -->
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/adaptive_gripper/gripper_left3.dae"/>
+        <box size="0.0450 0.0335 0.0050"/>
       </geometry>
-    <origin xyz = "0.012 0.0025 -0.012 " rpy = " 0 0 0"/>
+    <origin xyz = "-0.0097 0.0025 -0.0007" rpy = " 0 0 0"/>
     </collision>
   </link>
 
@@ -446,10 +465,11 @@
     <origin xyz = "-0.039 -0.0133 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
+      <!-- Box, not mesh: see gripper_left1's collision comment above for why. -->
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/adaptive_gripper/gripper_right1.dae"/>
+        <box size="0.0244 0.0582 0.0207"/>
       </geometry>
-        <origin xyz = "-0.039 -0.0133 -0.012 " rpy = " 0 0 0"/>
+        <origin xyz = "-0.0078 0.0245 -0.0082" rpy = " 0 0 0"/>
     </collision>
   </link>
 
@@ -468,10 +488,11 @@
     <origin xyz = "-0.005 -0.0195 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
+      <!-- Box, not mesh: see gripper_left1's collision comment above for why. -->
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/adaptive_gripper/gripper_right2.dae"/>
+        <box size="0.0357 0.0247 0.0200"/>
       </geometry>
-        <origin xyz = "-0.005 -0.0195 -0.012 " rpy = " 0 0 0"/>
+        <origin xyz = "0.0134 0.0077 -0.0082" rpy = " 0 0 0"/>
     </collision>
   </link>
 
@@ -490,10 +511,11 @@
     <origin xyz = "-0.012 0.0025 -0.012 " rpy = " 0 0 0"/>
     </visual>
     <collision>
+      <!-- Box, not mesh: see gripper_left1's collision comment above for why. -->
       <geometry>
-       <mesh filename="package://mycobot_description/urdf/adaptive_gripper/gripper_right3.dae"/>
+        <box size="0.0450 0.0339 0.0050"/>
       </geometry>
-    <origin xyz = "-0.012 0.0025 -0.012" rpy = " 0 0 0"/>
+    <origin xyz = "0.0085 0.0027 -0.0007" rpy = " 0 0 0"/>
     </collision>
   </link>
 

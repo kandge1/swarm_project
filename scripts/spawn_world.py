@@ -42,7 +42,7 @@ TABLE_TOP_Z = 0.02
 MARKER_SIZE = 1 * INCH
 MARKER_THICKNESS = 0.001
 MARKER_Z = TABLE_TOP_Z + MARKER_THICKNESS / 2
-SQUARE_SIZE = 0.10
+SQUARE_SIZE = 0.05
 SQUARE_DISTANCE = 0.25
 _half = SQUARE_SIZE / 2
 SQUARE_CENTERS = {
@@ -64,13 +64,13 @@ BALL_MASS = 0.05
 BALL_X, BALL_Y = SQUARE_CENTERS["right"]
 BALL_Z = TABLE_TOP_Z + BALL_RADIUS
 
-CUBE_SIZE_1 = 0.04
+CUBE_SIZE_1 = 0.02
 CUBE_MASS_1 = 0.05
 CUBE_X_1, CUBE_Y_1 = SQUARE_CENTERS["left"]
 CUBE_Z_1 = TABLE_TOP_Z + CUBE_SIZE_1 / 2
 
 
-CUBE_SIZE_2 = 0.04
+CUBE_SIZE_2 = 0.02
 CUBE_MASS_2 = 0.05
 CUBE_X_2, CUBE_Y_2 = SQUARE_CENTERS["right"]
 CUBE_Z_2 = TABLE_TOP_Z + CUBE_SIZE_2 / 2
@@ -185,8 +185,50 @@ def spawn(world: str, name: str, sdf: str, x: float, y: float, z: float):
     )
     if result.returncode != 0:
         print(f"  FAILED: {result.stderr.strip()}")
-    else:
-        print("  OK")
+        return False
+    print("  OK")
+    return True
+
+
+def print_coordinate_summary(spawned_blocks):
+    """Print the world-frame centers of everything spawned, so pick_place.py's
+    --pick-position/--place-position can be filled in without re-deriving
+    them by hand. These are the coordinates baked into this script (not
+    measured from the robot's camera), matching pick_place.py's "known
+    start/end poses, no camera" approach for now."""
+    print("\n" + "=" * 68)
+    print("COORDINATE SUMMARY (world frame, meters)")
+    print("=" * 68)
+
+    print("\nAprilTag squares (center of the 4-corner square):")
+    for square_name, (cx, cy) in SQUARE_CENTERS.items():
+        print(f"  {square_name:6s}  center=({cx:+.3f}, {cy:+.3f}, {MARKER_Z:.3f})")
+
+    print("\nBlocks (center Z is what pick_place.py's --pick-position expects; "
+          "top Z is the resting surface a block stacked on top of this one "
+          "would use for --place-position):")
+    for record in spawned_blocks:
+        top_z = record["z"] + record["size"] / 2.0
+        print(f"  {record['name']:8s}  center=({record['x']:+.3f}, {record['y']:+.3f}, "
+              f"{record['z']:.3f})  top_z={top_z:.3f}  on '{record['square']}' square")
+
+    empty_squares = [name for name in SQUARE_CENTERS
+                     if name not in {b["square"] for b in spawned_blocks}]
+    if spawned_blocks and empty_squares:
+        pick = spawned_blocks[0]
+        place_x, place_y = SQUARE_CENTERS[empty_squares[0]]
+        print("\nExample pick_place.py invocation "
+              f"(pick '{pick['name']}', place on empty '{empty_squares[0]}' square, "
+              f"resting directly on the table):")
+        print(f"  python3 pick_place.py "
+              f"--pick-position {pick['x']:.3f} {pick['y']:.3f} {pick['z']:.3f} "
+              f"--place-position {place_x:.3f} {place_y:.3f} {TABLE_TOP_Z:.3f}")
+        print(f"\nTo stack a second block on top of '{pick['name']}' instead, use its "
+              f"top_z as the place surface:")
+        print(f"  python3 pick_place.py "
+              f"--pick-position <other block center xyz> "
+              f"--place-position {pick['x']:.3f} {pick['y']:.3f} "
+              f"{pick['z'] + pick['size'] / 2.0:.3f}")
 
 
 def main():
@@ -198,8 +240,20 @@ def main():
         for i, (x, y) in enumerate(corners):
             spawn(args.world, f"apriltag_marker_{square_name}_{i}", marker_sdf(TAG_TEXTURES[i]), x, y, MARKER_Z)
     # spawn(args.world, "ball", ball_sdf(), BALL_X, BALL_Y, BALL_Z)
-    spawn(args.world, "cube_1", cube_sdf("cube_1", CUBE_SIZE_1, CUBE_MASS_1, (0.1, 0.3, 0.9)), CUBE_X_1, CUBE_Y_1, CUBE_Z_1)
-    spawn(args.world, "cube_2", cube_sdf("cube_2", CUBE_SIZE_2, CUBE_MASS_2, (0.15, 0.7, 0.2)), CUBE_X_2, CUBE_Y_2, CUBE_Z_2)
+
+    blocks_to_spawn = [
+        {"name": "cube_1", "square": "left", "size": CUBE_SIZE_1, "mass": CUBE_MASS_1,
+         "color": (0.1, 0.3, 0.9), "x": CUBE_X_1, "y": CUBE_Y_1, "z": CUBE_Z_1},
+        {"name": "cube_2", "square": "right", "size": CUBE_SIZE_2, "mass": CUBE_MASS_2,
+         "color": (0.15, 0.7, 0.2), "x": CUBE_X_2, "y": CUBE_Y_2, "z": CUBE_Z_2},
+    ]
+    spawned_blocks = []
+    for block in blocks_to_spawn:
+        sdf = cube_sdf(block["name"], block["size"], block["mass"], block["color"])
+        if spawn(args.world, block["name"], sdf, block["x"], block["y"], block["z"]):
+            spawned_blocks.append(block)
+
+    print_coordinate_summary(spawned_blocks)
 
 
 if __name__ == "__main__":

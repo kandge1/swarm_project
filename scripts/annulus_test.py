@@ -106,21 +106,46 @@ YAW_MAX = math.radians(+120.0)
 # collision) in the confirming sweep -- a real but minor mechanical
 # constraint only at the extreme corner of (large r, large |yaw|).
 
-TRACE_Z = 0.105         # m -- flange target for grasping a 4cm cube resting
-                        # on the floor (block center at z=0.02) through the
-                        # gripper's measured fingertip offset of 0.061 m
-                        # (deepest link gripper_left2/right2, measured via
-                        # gripper_offset_probe.py against joint6_flange)
-                        # PLUS the 16mm camera flange that sits between
-                        # joint6_flange and gripper_base:
+# SPAWN_HEIGHT_CORRECTION: gazebo.launch.py's spawn -z was lowered from
+# 0.055 to 0.02 (g_base embedded in the table so the real robot sits flush
+# with the table top -- see gazebo.launch.py). MoveIt plans in joint-angle
+# space against the URDF's own kinematic tree, oblivious to where Gazebo
+# physically anchors the robot; since the SAME joint angles get executed by
+# Gazebo's physics, any MoveIt Cartesian target lands, in Gazebo-absolute
+# space, at target_z + spawn_z. Every constant below that targets an
+# ABSOLUTE table/floor height (TRACE_Z; the sweep defaults and warning
+# thresholds further down in main()) now needs +0.035m to keep meaning the
+# same real-world height it did before. R_INNER/R_OUTER are XY-plane radii
+# and HOVER_DZ is a relative offset ON TOP of TRACE_Z, so none of those are
+# affected by a Z-only spawn shift.
+#
+# TRACE_Z below has the correction applied, but this file's whole point is
+# empirically re-deriving exactly these numbers (see the file's own history
+# of corrections above), and I can't run --sweep-rz myself -- treat this as
+# an unverified starting estimate and re-run --sweep-rz /
+# --selftest-collision to confirm it, same as after any other change to the
+# robot's physical mounting. The --sweep-z default range and the z<=0.14
+# warning threshold further down in main() were NOT shifted; they're stale
+# against the old mounting until re-validated the same way.
+SPAWN_HEIGHT_CORRECTION = 0.035  # m, = old spawn_z (0.055) - new spawn_z (0.02)
+
+TRACE_Z = 0.105 + SPAWN_HEIGHT_CORRECTION  # m -- flange target for grasping
+                        # a 4cm cube resting on the floor (block center at
+                        # z=0.02) through the gripper's measured fingertip
+                        # offset of 0.061 m (deepest link gripper_left2/
+                        # right2, measured via gripper_offset_probe.py
+                        # against joint6_flange) PLUS the 16mm camera flange
+                        # that sits between joint6_flange and gripper_base:
                         #     flange_target_z = block_contact_z + offset + camera_flange
                         #                     = 0.02 + 0.094 + 0.016 = 0.130
-                        # Physical hard floor: flange_z can't go below 0.077 m
-                        # (= 0.061 + 0.016) without driving the fingertips into
-                        # the ground -- that's hardware geometry, not an IK/OMPL limit.
-                        # NOTE: R_INNER was calibrated at z=0.081; re-run
-                        # --sweep-rz to re-confirm it at z=0.097.
-HOVER_DZ = 0.06         # m -- hover at 0.141 m
+                        # (pre-spawn-height-correction value; not re-verified)
+                        # Physical hard floor: flange_z can't go below
+                        # 0.077 + SPAWN_HEIGHT_CORRECTION m without driving
+                        # the fingertips into the ground -- that's hardware
+                        # geometry, not an IK/OMPL limit.
+                        # NOTE: R_INNER was calibrated at z=0.081 (pre-
+                        # correction); re-run --sweep-rz to re-confirm it.
+HOVER_DZ = 0.06         # m -- relative hover offset above TRACE_Z
 
 ARC_STEP = 0.02         # m -- tangential spacing along the arcs
 RADIAL_STEP = 0.02      # m -- spacing along the radial segments

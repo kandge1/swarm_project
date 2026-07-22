@@ -3,19 +3,29 @@
 Pick-and-place demo: known start/end block poses, no camera.
 
 - Lateral/approach moves (pre-grasp, pre-place) use joint-space OMPL
-  planning with a deterministic seeded-IK goal state. KDL is seeded from
-  multiple candidate joint configs; the first that is both IK-valid and
-  collision-free is used. This replaces OMPL's randomized constraint
-  sampling, which was landing the arm in a different (often near-singular
-  or self-colliding) configuration each run.
+  planning with a deterministic IK goal state. The goal is solved via
+  MoveIt's /compute_ik service using a small position sphere + orientation
+  window (constraint-based IK), seeded from multiple candidate joint
+  configs; the first collision-free, non-limit-pegged solution is used.
+  This replaces two earlier approaches: exact-pose RobotState.set_from_ik,
+  which effectively never converged for the downward grasp on this
+  non-redundant 6-DOF arm (KDL couldn't land on the exact orientation near
+  the wrist singularity), and raw OMPL constraint sampling, which landed the
+  arm in a different (often near-singular) configuration each run.
 - Vertical pick/place/retreat moves use MoveIt's /compute_cartesian_path
   service directly (moveit_py's PlanningComponent doesn't expose Cartesian
   planning on this MoveIt version), so the end effector travels in a
   straight line along z instead of an arbitrary curved joint-space path.
 - Gripper open/close via a direct FollowJointTrajectory action client to
   gripper_group_controller (bypasses MoveIt planning groups for the gripper).
+- Gripper closing watches gripper_controller's effort on /joint_states and
+  stops as soon as it detects contact, instead of always driving to a fixed
+  closed position regardless of what (if anything) is between the fingers.
+  Requires the "effort" state_interface on gripper_controller -- see
+  firefighter.ros2_control.xacro / ros2_controllers.yaml.
 """
 
+import argparse
 import math
 import tempfile
 import time
@@ -25,7 +35,8 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
 from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint
-from moveit_msgs.srv import GetCartesianPath
+from moveit_msgs.srv import GetCartesianPath, GetPositionIK
+from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
@@ -36,12 +47,105 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 # ---- Tunable poses (defaults; adjust to real measurements later) ----
-PICK_XYZ = (0.20, 0.00, 0.10)
-PLACE_XYZ = (0.20, -0.10, 0.10)
-APPROACH_HEIGHT = 0.15  # how far above pick/place to pre-position, meters
+# PICK_XYZ/PLACE_XYZ's z is NOT a flange target -- see the pick/place-height
+# convention comment above parse_args(). PICK_XYZ.z is a block CENTER
+# (matches what spawn_world.py prints); PLACE_XYZ.z is a resting SURFACE
+# (table top, or the top of the block underneath when stacking). Both are
+# converted to actual flange targets in main() via GRASP_OFFSET_Z /
+# DEFAULT_BLOCK_SIZE.
+#
+# MoveIt plans purely in joint-angle space against the URDF's own kinematic
+# tree, which has no knowledge of where gazebo.launch.py's `ros_gz_sim
+# create -z ...` physically places the robot in Gazebo's absolute frame.
+# But since those SAME joint angles are what actually gets executed by
+# Gazebo (which IS anchored at the spawn pose), any MoveIt Cartesian target
+# lands, in Gazebo-absolute space, at target_z + spawn_z. spawn_z was
+# lowered from 0.055 to 0.02 (g_base embedded in the table -- see
+# gazebo.launch.py) to make the real robot flush with the table, a -0.035m
+# shift. Every target below that's meant to hit an ABSOLUTE table/block
+# height -- i.e. numbers taken directly from spawn_world.py's printed
+# coordinates -- needs +0.035m to compensate, or it'll now aim 0.035m too
+# low (into the table). GRASP_OFFSET_Z below is NOT one of these: it's a
+# difference between two points on the same rigid gripper (flange to
+# fingertip), so the spawn shift cancels out of it and it's untouched.
+#
+# SPAWN_HEIGHT_CORRECTION documents that delta; re-derive it (old_spawn_z -
+# new_spawn_z) and reapply below if the spawn height in gazebo.launch.py
+# ever changes again. PICK_XYZ.z, uncorrected, would match spawn_world.py's
+# cube center (TABLE_TOP_Z + DEFAULT_BLOCK_SIZE/2 = 0.02 + 0.01 = 0.03); add
+# the correction the same way for any new pick/place position derived from
+# spawn_world.py's output. NOT re-verified by an actual run yet -- watch the
+# first grasp closely.
+SPAWN_HEIGHT_CORRECTION = 0.035  # m, = old spawn_z (0.055) - new spawn_z (0.02)
+PICK_XYZ = (+0.000, +0.250, 0.030 + SPAWN_HEIGHT_CORRECTION)
+PLACE_XYZ = (+0.000, -0.250, 0.040 + SPAWN_HEIGHT_CORRECTION)
+# APPROACH_HEIGHT is how far above the grasp/place flange target to
+# pre-position for the straight-down descent. It is HARD-CAPPED by the arm's
+# reach, NOT a free choice: at the pick/place radius (0.25m) the flange can
+# only reach at all up to z~=0.21 (measured with scripts/reach_probe.py --
+# 0.21 works, 0.215 is already outside the workspace at ANY orientation).
+# The place flange target (0.16) is the higher of the two, so keep
+# 0.16+APPROACH_HEIGHT <= ~0.205. Anything taller puts the hover outside the
+# reachable workspace, where every IK seed legitimately fails to converge
+# (there is no solution) and the OMPL fallback can only satisfy its 4cm
+# position sphere by parking the flange lower AND tilted -- that was the
+# "all seeds exhausted" + visibly-tilted-hover symptom. 0.04 keeps both
+# hovers (0.18 pick, 0.20 place) comfortably reachable and pointing straight
+# down to within ~3 deg. Re-measure the ceiling with reach_probe.py if the
+# targets, radius, or robot mount height change.
+APPROACH_HEIGHT = 0.04  # meters above the flange target; capped by reach (see above)
+
+# Vertical distance from the commanded joint6_flange position down to where
+# the gripper actually grips a block, i.e. flange_target_z = block_center_z +
+# GRASP_OFFSET_Z when descending from directly above with the fixed downward
+# grasp orientation. Consistent with the fingertip offset annulus_test.py
+# measured via gripper_offset_probe.py. This does NOT depend on block size
+# (it's purely gripper/flange geometry) -- re-measure with
+# gripper_offset_probe.py and update this if the gripper or camera-flange
+# geometry changes, not if the block size changes.
+GRASP_OFFSET_Z = 0.075
+
+# Cube side length, meters -- matches CUBE_SIZE_1/CUBE_SIZE_2 in
+# spawn_world.py. Used to convert a place SURFACE height into the block-
+# center height the flange must descend to when releasing.
+DEFAULT_BLOCK_SIZE = 0.02
 
 GRIPPER_OPEN = 0.15    # matches URDF joint upper limit
 GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
+
+# gripper_controller's URDF effort limit is 1000 (an unset-default value, not
+# a real spec), so nothing in sim stops the gripper from driving straight
+# through GRIPPER_CLOSED regardless of what's between the fingers -- it'll
+# either crush/launch the block or grind against it at full commanded
+# position error. GRIPPER_STEP closes in small increments instead, reading
+# gripper_controller's effort off /joint_states after each one and stopping
+# as soon as it spikes (contact), rather than always finishing at
+# GRIPPER_CLOSED.
+#
+# An observed trace closing on a 2cm cube: free-swing noise floor sits at
+# ~0.001 all the way through -0.390, then the SINGLE NEXT 0.03 rad step (to
+# -0.420) already spiked to -0.78, and the step after that (-0.450) to
+# -2.28. 0.03 rad is too coarse to land ON the "just touching" point --
+# it jumps straight past it into the squeeze/glitch regime in one step, so
+# no single GRIPPER_EFFORT_THRESHOLD value can distinguish "holding it well"
+# from "squeezing it out of the gripper": both can happen within the same
+# increment. No threshold fixes a resolution problem -- what actually helps
+# is taking smaller, slower steps once past the point contact was last
+# observed, so the effort reading has a chance to land in between.
+# GRIPPER_FINE_ZONE is that cutover position; below GRIPPER_STEP/
+# GRIPPER_STEP_DURATION are used, at-or-past it GRIPPER_FINE_STEP/
+# GRIPPER_FINE_STEP_DURATION take over. Re-tune all of this the same way
+# (watch the "[gripper] target=... effort=..." trace) if the block
+# size/mass or gripper geometry changes enough to shift these numbers.
+GRIPPER_STEP = 0.03              # rad, per increment before the fine zone
+GRIPPER_STEP_DURATION = 0.3      # sec, trajectory duration per coarse increment
+GRIPPER_FINE_ZONE = -0.40        # rad -- switch to fine stepping at/past this position
+GRIPPER_FINE_STEP = 0.005        # rad, per increment once inside the fine zone
+GRIPPER_FINE_STEP_DURATION = 0.5  # sec, per fine increment -- slower, gives the
+                                   # physics engine/effort reading more time to
+                                   # settle between smaller nudges
+GRIPPER_SETTLE_SEC = 0.15        # sec to spin after each step before reading effort
+GRIPPER_EFFORT_THRESHOLD = 0.2   # N*m
 
 POSE_LINK = "joint6_flange"
 PLANNING_FRAME = "world"
@@ -50,7 +154,10 @@ GROUP_NAME = "arm_group"
 # Downward-facing grasp orientation for joint6_flange -- confirmed
 # REACHABLE via constraint-based IK probe (ik_probe.py) after fixing the
 # camera_flange.dae mesh scale bug. This is roll=180deg, yaw=90deg: a
-# genuine "point straight down" orientation, not an approximate one.
+# genuine "point straight down" orientation, not an approximate one. This is
+# the yaw=0 REFERENCE quaternion for gripper_yaw_quat() below -- other
+# scripts (annulus_test.py) import these raw components directly, so leave
+# them as-is and do yaw adjustments via gripper_yaw_quat() instead.
 GRASP_QX = -0.7071
 GRASP_QY = 0.7071
 GRASP_QZ = 0.0
@@ -58,6 +165,26 @@ GRASP_QW = 0.0
 
 CARTESIAN_MAX_STEP = 0.005       # 5mm interpolation resolution
 CARTESIAN_JUMP_THRESHOLD = 0.0   # 0 disables jump-threshold filtering
+
+# Tolerances for the constraint-based IK goal search (solve_ik_state).
+# Exact-pose IK (RobotState.set_from_ik) demands the flange hit the target
+# position AND orientation to KDL's tight numeric tolerance; near this arm's
+# downward-grasp wrist configuration that Newton solve fails to converge from
+# every seed -- even the current state sitting 8cm directly below a target on
+# a column the Cartesian planner reaches at fraction=1.00 (see solve_ik_state
+# for the full explanation). Allowing a small position sphere + orientation
+# window -- the same trick ik_probe.py used to confirm reachability -- makes
+# the same targets converge reliably and deterministically. The hover this
+# feeds only needs to be roughly downward; the straight-down orientation is
+# re-imposed exactly by the Cartesian descent that follows.
+IK_POS_TOLERANCE = 0.02          # m, radius of the goal position sphere
+# 0.10 rad (~5.7 deg): at the reachable hover heights straight-down solves to
+# within ~3 deg (measured, reach_probe.py), so this window is comfortably
+# satisfiable while still keeping the hover visibly straight rather than
+# tilted. Widen it only if a target near the reach edge stops converging.
+IK_ORI_XY_TOLERANCE = 0.10       # rad, tilt allowed off straight-down
+IK_ORI_Z_TOLERANCE = 0.15        # rad, yaw window about the approach axis
+IK_SERVICE_TIMEOUT = 0.3         # sec, per-seed /compute_ik solve budget
 
 # Designated home pose (matches reset_arm.py / config/initial_positions.yaml),
 # originally specified in degrees and converted to radians here.
@@ -70,6 +197,53 @@ HOME_DEGREES = {
     "joint6output_to_joint6": 0,
 }
 HOME_RADIANS = {name: math.radians(deg) for name, deg in HOME_DEGREES.items()}
+
+# joint6output_to_joint6 is the last joint before joint6_flange (POSE_LINK)
+# and rotates the flange (and gripper) about its own approach axis without
+# moving its position -- under the downward grasp orientation that axis is
+# world-vertical, so this joint is exactly "gripper yaw about the vertical."
+# Earlier this was pinned to a constant RAW JOINT VALUE, which does NOT keep
+# the gripper facing a constant WORLD direction -- joint6output's zero
+# position is measured relative to the base's own rotation (joint1), which
+# differs between pick and place, so a fixed joint value let the world-frame
+# facing drift between targets. Locking the world orientation instead means
+# targeting a fixed absolute quaternion via full 6D IK (below) and letting
+# joint6output solve to whatever value that requires -- it will vary, and
+# that's the point: it's actively holding the gripper's facing constant in
+# the world frame as the arm reaches to different (x, y).
+#
+# GRIPPER_YAW_DEG is the fixed world yaw (about Z) applied on top of the
+# GRASP_Q* reference orientation above. 0.0 reproduces GRASP_Q* unchanged.
+# Not yet empirically confirmed to be parallel to world +X -- watch the
+# gripper in sim and adjust in +/-90deg steps until the jaws line up with X.
+GRIPPER_YAW_DEG = 0.0
+
+
+def quat_multiply(q1, q2):
+    """Hamilton product q1 * q2, both as (x, y, z, w)."""
+    x1, y1, z1, w1 = q1
+    x2, y2, z2, w2 = q2
+    return (
+        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+    )
+
+
+def gripper_yaw_quat(yaw_deg=GRIPPER_YAW_DEG):
+    """q_yaw(yaw_deg) * GRASP_Q -- the fixed downward grasp quaternion
+    rotated by yaw_deg around world Z, keeping the "point straight down"
+    component intact while fixing the world-frame gripper facing."""
+    yaw = math.radians(yaw_deg)
+    q_yaw = (0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0))
+    q_grasp = (GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+    return quat_multiply(q_yaw, q_grasp)
+
+
+# The actual grasp target used throughout this script -- gripper always
+# facing the same fixed world direction, regardless of pick/place location.
+GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW = gripper_yaw_quat()
 
 # IK candidate seeds tried in order. KDL's numeric solver can jump to a
 # different solution branch depending on the seed, and some branches self-
@@ -124,7 +298,33 @@ def _build_ik_seeds():
     s["joint6output_to_joint6"] = 0.0
     seeds.append(("deep-elbow-down", s))
 
+    # Mirrored copies: every seed above biases joint2_to_joint1 (the base
+    # rotation) toward the SAME positive direction (0.324, HOME_RADIANS's
+    # +0.035, or 0.0) -- none bias negative. KDL's IK is a local numeric
+    # solver that converges to whichever solution branch is nearest its
+    # seed, not a global search, so targets needing the base rotated the
+    # OTHER way (e.g. PLACE_XYZ's negative Y) had no seed anywhere near
+    # their true solution and consistently failed to converge on every one
+    # of the seeds above, forcing the slow/unreliable OMPL constraint-
+    # sampling fallback. Appended after the originals (not interleaved) so
+    # positive-Y targets keep converging on the same seed as before with no
+    # behavior change; negative-Y targets now fall through to these instead
+    # of exhausting all 6 originals and failing.
+    seeds += [(f"{label}-mirrored", _mirror_seed(seed)) for label, seed in seeds]
+
     return seeds
+
+
+def _mirror_seed(seed):
+    """Negate the base rotation and wrist-twist as a starting guess for a
+    target on the opposite side of the robot from what `seed` was tuned
+    for. Elbow/wrist bend (joint3/4/5) don't need mirroring -- those only
+    depend on radial distance and height, not which side of the base the
+    target is on."""
+    mirrored = dict(seed)
+    mirrored["joint2_to_joint1"] = -seed["joint2_to_joint1"]
+    mirrored["joint6output_to_joint6"] = -seed["joint6output_to_joint6"]
+    return mirrored
 
 
 IK_SEEDS = _build_ik_seeds()
@@ -154,6 +354,21 @@ class RobotIOClient(Node):
             self, FollowJointTrajectory, "/arm_group_controller/follow_joint_trajectory"
         )
         self._cartesian_client = self.create_client(GetCartesianPath, "/compute_cartesian_path")
+        self._ik_client = self.create_client(GetPositionIK, "/compute_ik")
+        self._joint_efforts = {}
+        self._joint_state_sub = self.create_subscription(
+            JointState, "/joint_states", self._on_joint_state, 10
+        )
+
+    def _on_joint_state(self, msg):
+        for name, effort in zip(msg.name, msg.effort):
+            self._joint_efforts[name] = effort
+
+    def joint_effort(self, joint_name):
+        """Latest effort reading for joint_name from /joint_states, or None
+        if it hasn't been received yet (e.g. no "effort" state_interface
+        configured for that joint)."""
+        return self._joint_efforts.get(joint_name)
 
     # ---- Arm ----
     def arm_execute(self, joint_trajectory):
@@ -247,6 +462,71 @@ class RobotIOClient(Node):
 
         return response.solution, response.fraction
 
+    # ---- Inverse kinematics ----
+    def compute_ik(self, x, y, z, qx, qy, qz, qw, seed_joint_names, seed_positions,
+                   pos_tolerance=IK_POS_TOLERANCE, xy_tolerance=IK_ORI_XY_TOLERANCE,
+                   z_tolerance=IK_ORI_Z_TOLERANCE, timeout_sec=IK_SERVICE_TIMEOUT):
+        """Constraint-based IK via MoveIt's /compute_ik service: find a
+        collision-free joint solution that puts POSE_LINK within a small
+        position sphere + orientation window of the target, seeded from a
+        specific configuration so the numeric solver stays on one solution
+        branch instead of jumping between them per call.
+
+        Returns {joint_name: value} for the whole returned joint_state (arm
+        joints plus whatever else move_group echoes back), or None if the
+        solver found nothing inside the tolerated region. This succeeds on
+        targets that RobotState.set_from_ik (exact pose) cannot -- see
+        solve_ik_state / IK_POS_TOLERANCE above for why.
+        """
+        if not self._ik_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("/compute_ik service not available")
+            return None
+
+        request = GetPositionIK.Request()
+        request.ik_request.group_name = GROUP_NAME
+        request.ik_request.ik_link_name = POSE_LINK
+        request.ik_request.avoid_collisions = True
+        request.ik_request.timeout.sec = int(timeout_sec)
+        request.ik_request.timeout.nanosec = int((timeout_sec % 1) * 1e9)
+
+        # Seed the numeric solver. is_diff=True applies these joint values as
+        # an override on top of the robot's current state, so unspecified
+        # joints (e.g. the gripper) come from the live state rather than 0.
+        request.ik_request.robot_state.is_diff = True
+        request.ik_request.robot_state.joint_state.name = list(seed_joint_names)
+        request.ik_request.robot_state.joint_state.position = list(seed_positions)
+
+        # pose_stamped is required by the message even alongside constraints;
+        # it is the nominal center, the constraints define the tolerated region.
+        request.ik_request.pose_stamped.header.frame_id = PLANNING_FRAME
+        request.ik_request.pose_stamped.pose.position.x = x
+        request.ik_request.pose_stamped.pose.position.y = y
+        request.ik_request.pose_stamped.pose.position.z = z
+        request.ik_request.pose_stamped.pose.orientation.x = qx
+        request.ik_request.pose_stamped.pose.orientation.y = qy
+        request.ik_request.pose_stamped.pose.orientation.z = qz
+        request.ik_request.pose_stamped.pose.orientation.w = qw
+
+        constraints = Constraints()
+        constraints.position_constraints.append(
+            make_position_constraint(POSE_LINK, PLANNING_FRAME, x, y, z, tolerance=pos_tolerance)
+        )
+        constraints.orientation_constraints.append(
+            make_orientation_constraint(
+                POSE_LINK, PLANNING_FRAME, qx, qy, qz, qw,
+                x_tolerance=xy_tolerance, y_tolerance=xy_tolerance, z_tolerance=z_tolerance)
+        )
+        request.ik_request.constraints = constraints
+
+        future = self._ik_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+        response = future.result()
+        if response is None or response.error_code.val != 1:
+            return None
+
+        js = response.solution.joint_state
+        return dict(zip(js.name, js.position))
+
 
 def build_moveit():
     moveit_config = (
@@ -257,6 +537,7 @@ def build_moveit():
     config_dict["planning_pipelines"] = {"pipeline_names": ["ompl"]}
     config_dict["plan_request_params"] = {
         "planning_time": 10.0,
+        "planning_attempts": 10,
         "planning_pipeline": "ompl",
         "max_velocity_scaling_factor": 1.0,
         "max_acceleration_scaling_factor": 1.0,
@@ -323,22 +604,16 @@ def make_orientation_constraint(link_name, frame_id, qx, qy, qz, qw,
 
 
 def make_grasp_pose(x, y, z):
-    """Pose for Cartesian waypoints: position + the fixed downward grasp orientation."""
+    """Pose for Cartesian waypoints: position + the fixed downward, fixed-yaw grasp orientation."""
     pose = Pose()
     pose.position.x = x
     pose.position.y = y
     pose.position.z = z
-    pose.orientation.x = GRASP_QX
-    pose.orientation.y = GRASP_QY
-    pose.orientation.z = GRASP_QZ
-    pose.orientation.w = GRASP_QW
+    pose.orientation.x = GRIPPER_LOCK_QX
+    pose.orientation.y = GRIPPER_LOCK_QY
+    pose.orientation.z = GRIPPER_LOCK_QZ
+    pose.orientation.w = GRIPPER_LOCK_QW
     return pose
-
-
-def _is_state_colliding(mycobot, state):
-    psm = mycobot.get_planning_scene_monitor()
-    with psm.read_only() as scene:
-        return scene.is_state_colliding(state, GROUP_NAME)
 
 
 def _is_near_joint_limit(state, margin=0.15):
@@ -354,38 +629,79 @@ def _is_near_joint_limit(state, margin=0.15):
     return False, None, None, None, None
 
 
-def solve_ik_state(mycobot, x, y, z, qx, qy, qz, qw):
-    """Try each IK_SEEDS entry in order. Return the first RobotState that
-    both converges and is collision-free, or None if all seeds fail."""
+def _current_joint_seed(mycobot):
+    """Read the robot's ACTUAL current joint configuration as an IK seed.
+    KDL's IK solver is local -- it converges to whichever solution is
+    nearest its seed, not a global search -- and for most of this script's
+    moves (hover -> descend, descend -> retreat, hover -> hover at a new
+    height, etc.) the CURRENT pose is by far the best available guess for
+    the NEXT one: it's often nearly the exact answer already, since these
+    are small, continuous steps. IK_SEEDS below is a fixed set of
+    hand-tuned configurations empirically found for specific past targets;
+    it has no way to adapt to a target none of them were ever tuned for
+    (e.g. after a height correction shifts every target upward), which is
+    why ALL of them can legitimately fail to converge even though a
+    solution clearly exists -- the OMPL constraint-sampling fallback finds
+    one every time. That's a seeding gap, not a reachability problem."""
+    psm = mycobot.get_planning_scene_monitor()
+    with psm.read_only() as scene:
+        values = list(scene.current_state.get_joint_group_positions(GROUP_NAME))
+    return dict(zip(HOME_RADIANS.keys(), values))
+
+
+def solve_ik_state(mycobot, io_client, x, y, z, qx, qy, qz, qw):
+    """Deterministic, downward-orientation IK for an OMPL goal state, using
+    constraint-based IK (a small position sphere + orientation window) seeded
+    from the robot's current state and then each IK_SEEDS entry in order.
+    Returns the first RobotState that converges and isn't pegged at
+    joint6output's limit, or None if every seed fails.
+
+    This used to call RobotState.set_from_ik, which solves for an EXACT
+    position + orientation. On this non-redundant 6-DOF arm that effectively
+    never converged for the downward grasp near (0, +/-0.25, ~0.2): every
+    seed -- including 'current-state' sitting 8cm directly below a target the
+    Cartesian planner then reaches at fraction=1.00 -- failed, because the
+    wrist there is close enough to a singularity that KDL's Newton solve
+    can't land on the exact orientation even though a solution plainly
+    exists. The same targets converge immediately once the orientation is
+    given a small window (IK_ORI_XY_TOLERANCE), which is exactly what the
+    /compute_ik service does and what ik_probe.py used to confirm
+    reachability in the first place. The straight-down orientation is not
+    lost -- it's re-imposed exactly by the Cartesian descent that follows
+    this hover. avoid_collisions=True in compute_ik already rejects
+    self-colliding solutions, so no separate collision check is needed here.
+    """
     robot_model = mycobot.get_robot_model()
-    pose = Pose()
-    pose.position.x = x
-    pose.position.y = y
-    pose.position.z = z
-    pose.orientation.x = qx
-    pose.orientation.y = qy
-    pose.orientation.z = qz
-    pose.orientation.w = qw
+    joint_names = list(HOME_RADIANS.keys())
 
-    for label, seed in IK_SEEDS:
-        state = RobotState(robot_model)
-        state.set_joint_group_positions(GROUP_NAME, list(seed.values()))
-        state.update()
-
-        if not state.set_from_ik(GROUP_NAME, pose, POSE_LINK, timeout=0.5):
+    seeds = [("current-state", _current_joint_seed(mycobot))] + IK_SEEDS
+    for label, seed in seeds:
+        solution = io_client.compute_ik(
+            x, y, z, qx, qy, qz, qw,
+            seed_joint_names=joint_names,
+            seed_positions=[seed[n] for n in joint_names],
+        )
+        if solution is None:
             print(f"[ik] '{label}' seed: IK did not converge")
             continue
 
-        joints = [round(v, 3) for v in state.get_joint_group_positions(GROUP_NAME)]
+        # The service echoes back every joint (arm + gripper); pull the arm
+        # joints in group order to rebuild a goal RobotState for OMPL.
+        try:
+            joint_values = [solution[n] for n in joint_names]
+        except KeyError as missing:
+            print(f"[ik] '{label}' seed: solution missing joint {missing}, skipping")
+            continue
 
+        state = RobotState(robot_model)
+        state.set_joint_group_positions(GROUP_NAME, joint_values)
+        state.update()
+
+        joints = [round(v, 3) for v in joint_values]
         near_limit, lname, lval, llo, lhi = _is_near_joint_limit(state)
         if near_limit:
             print(f"[ik] '{label}' seed: converged to {joints} BUT '{lname}'={lval:.3f} "
                   f"near limit [{llo:.3f},{lhi:.3f}], skipping")
-            continue
-
-        if _is_state_colliding(mycobot, state):
-            print(f"[ik] '{label}' seed: converged to {joints} BUT self-collides, skipping")
             continue
 
         print(f"[ik] '{label}' seed: OK -> {joints}")
@@ -401,6 +717,62 @@ def toggle_gripper(io_client):
         return False
     time.sleep(0.5)
     return io_client.gripper_move_to(GRIPPER_OPEN)
+
+
+def gripper_close_until_contact(io_client, start=GRIPPER_OPEN, closed=GRIPPER_CLOSED,
+                                 step=GRIPPER_STEP, step_duration=GRIPPER_STEP_DURATION,
+                                 fine_zone=GRIPPER_FINE_ZONE, fine_step=GRIPPER_FINE_STEP,
+                                 fine_step_duration=GRIPPER_FINE_STEP_DURATION,
+                                 settle_sec=GRIPPER_SETTLE_SEC,
+                                 effort_threshold=GRIPPER_EFFORT_THRESHOLD):
+    """Close the gripper in small increments, stopping as soon as
+    gripper_controller's measured effort exceeds effort_threshold (contact
+    with the block) instead of always driving to `closed` regardless of
+    what's in the way. Steps are coarse (`step`) until `target` reaches
+    `fine_zone`, then switch to smaller, slower (`fine_step`,
+    `fine_step_duration`) increments -- see GRIPPER_FINE_ZONE comment above
+    for why a single step size can't both close quickly through open air and
+    land precisely on first contact. Falls back to a single move straight to
+    `closed` if no effort reading is available (e.g. the effort
+    state_interface isn't configured), since that's strictly the old
+    behavior, not a new failure mode. Returns True unless a gripper action
+    call itself fails."""
+    target = start
+    got_any_reading = False
+
+    while target > closed:
+        in_fine_zone = target <= fine_zone
+        this_step = fine_step if in_fine_zone else step
+        this_duration = fine_step_duration if in_fine_zone else step_duration
+
+        target = max(closed, target - this_step)
+        if not io_client.gripper_move_to(target, duration_sec=this_duration):
+            return False
+
+        rclpy.spin_once(io_client, timeout_sec=settle_sec)
+        effort = io_client.joint_effort("gripper_controller")
+
+        zone = "fine" if in_fine_zone else "coarse"
+        if effort is None:
+            print(f"[gripper] target={target:.3f} ({zone})  effort=<no reading -- "
+                  f"is the effort state_interface configured?>")
+            continue
+
+        got_any_reading = True
+        print(f"[gripper] target={target:.3f} ({zone})  effort={effort:.3f}")
+        if abs(effort) >= effort_threshold:
+            print(f"[gripper] contact detected (|effort|={abs(effort):.3f} >= "
+                  f"{effort_threshold:.3f}) at position {target:.3f}, stopping close")
+            return True
+
+    if not got_any_reading:
+        print("[gripper] no effort readings received at all -- closed fully to "
+              f"{closed:.3f} without contact detection (old fixed-close behavior)")
+    else:
+        print(f"[gripper] reached fully-closed position {closed:.3f} without "
+              "detecting contact (nothing between the fingers, or "
+              "GRIPPER_EFFORT_THRESHOLD is set too high)")
+    return True
 
 
 def go_home(mycobot, arm, io_client):
@@ -430,7 +802,8 @@ def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
 
     ik_state = None
     if lock_orientation:
-        ik_state = solve_ik_state(mycobot, x, y, z, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+        ik_state = solve_ik_state(mycobot, io_client, x, y, z,
+                                   GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
 
     if ik_state is not None:
         arm.set_goal_state(robot_state=ik_state)
@@ -441,8 +814,14 @@ def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
             make_position_constraint(POSE_LINK, PLANNING_FRAME, x, y, z)
         )
         if lock_orientation:
+            # z_tolerance tightened to match x/y (default is ~free, 3.14) so
+            # the fallback also holds the fixed world yaw instead of letting
+            # OMPL pick any wrist twist -- see GRIPPER_YAW_DEG above.
             constraints.orientation_constraints.append(
-                make_orientation_constraint(POSE_LINK, PLANNING_FRAME, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+                make_orientation_constraint(
+                    POSE_LINK, PLANNING_FRAME,
+                    GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW,
+                    z_tolerance=0.15)
             )
         arm.set_goal_state(motion_plan_constraints=[constraints])
 
@@ -456,9 +835,18 @@ def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
     return io_client.arm_execute(joint_trajectory)
 
 
-def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
+def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90, arm=None):
     """Straight-line Cartesian move from the current pose to (x, y, z),
-    holding the fixed downward grasp orientation throughout."""
+    holding the fixed downward grasp orientation throughout.
+
+    If `arm` is given and the straight-line path falls short of
+    min_fraction, falls back to a joint-space move_arm_to() instead of
+    failing outright. Retreats near the edge of the validated reach
+    envelope routinely land at ~0.85-0.89 -- just under the threshold -- and
+    don't need a dead-straight path the way the delicate grasp/place
+    descent does (a curved joint-space retreat can't knock a held block
+    sideways the way a curved DESCENT could). Only pass `arm` for moves
+    where that's true."""
     psm = mycobot.get_planning_scene_monitor()
     with psm.read_only() as scene:
         joint_values = scene.current_state.get_joint_group_positions(GROUP_NAME)
@@ -468,7 +856,10 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
 
     path_constraints = Constraints()
     path_constraints.orientation_constraints.append(
-        make_orientation_constraint(POSE_LINK, PLANNING_FRAME, GRASP_QX, GRASP_QY, GRASP_QZ, GRASP_QW)
+        make_orientation_constraint(
+            POSE_LINK, PLANNING_FRAME,
+            GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW,
+            z_tolerance=0.15)
     )
 
     # DIAGNOSTIC: try with AND without orientation constraint to isolate
@@ -489,22 +880,57 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
 
     if solution_msg is None or fraction < min_fraction:
         print(f"Cartesian planning FAILED for ({x}, {y}, {z}) (fraction={fraction:.2f})")
-        return False
+        if arm is None:
+            return False
+        print(f"[cartesian] falling back to joint-space move_arm_to for ({x}, {y}, {z})")
+        return move_arm_to(mycobot, arm, io_client, x, y, z)
 
     print(f"Executing Cartesian move to ({x}, {y}, {z}) (fraction={fraction:.2f})...")
 
     return io_client.arm_execute(solution_msg.joint_trajectory)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Pick-and-place demo with hardcoded/known block poses.")
+    parser.add_argument("--pick-position", type=float, nargs=3, metavar=("X", "Y", "Z"),
+                        default=list(PICK_XYZ),
+                        help="pick location, meters. X,Y and the picked-up block's "
+                        "CENTER Z -- same convention spawn_world.py's coordinate "
+                        f"summary prints, paste directly (default: {PICK_XYZ})")
+    parser.add_argument("--place-position", type=float, nargs=3, metavar=("X", "Y", "Z"),
+                        default=list(PLACE_XYZ),
+                        help="place location, meters. X,Y and the SURFACE Z the block "
+                        "should come to rest on -- the table top for a fresh "
+                        "placement, or the top of the block underneath when "
+                        f"stacking (default: {PLACE_XYZ})")
+    parser.add_argument("--block-size", type=float, default=DEFAULT_BLOCK_SIZE,
+                        help="cube side length, meters, used to turn --place-position's "
+                        "surface Z into the block-center Z the flange must descend to "
+                        f"when releasing (default: {DEFAULT_BLOCK_SIZE})")
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+
     rclpy.init(args=["--ros-args", "-p", "use_sim_time:=true"])
 
     mycobot = build_moveit()
     arm = mycobot.get_planning_component(GROUP_NAME)
     io_client = RobotIOClient()
 
-    px, py, pz = PICK_XYZ
-    lx, ly, lz = PLACE_XYZ
+    px, py, pick_center_z = args.pick_position
+    lx, ly, place_surface_z = args.place_position
+
+    # Convert block-center (pick) / resting-surface (place) heights into
+    # actual joint6_flange targets -- see GRASP_OFFSET_Z above.
+    pz = pick_center_z + GRASP_OFFSET_Z
+    lz = place_surface_z + args.block_size / 2.0 + GRASP_OFFSET_Z
+
+    print(f"[pick_place] pick block-center z={pick_center_z:.3f} -> flange target z={pz:.3f}")
+    print(f"[pick_place] place surface z={place_surface_z:.3f} "
+          f"(block size {args.block_size:.3f}) -> flange target z={lz:.3f}")
 
     steps = [
         ("Return to home pose", lambda: go_home(mycobot, arm, io_client)),
@@ -513,16 +939,16 @@ def main():
          lambda: move_arm_to(mycobot, arm, io_client, px, py, pz + APPROACH_HEIGHT)),
         ("Descend to grasp pose (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, px, py, pz)),
-        ("Close gripper (grasp)", lambda: io_client.gripper_move_to(GRIPPER_CLOSED)),
+        ("Close gripper (grasp, stop on contact)", lambda: gripper_close_until_contact(io_client)),
         ("Retreat after grasp (Cartesian)",
-         lambda: cartesian_move_to(mycobot, io_client, px, py, pz + APPROACH_HEIGHT)),
+         lambda: cartesian_move_to(mycobot, io_client, px, py, pz + APPROACH_HEIGHT, arm=arm)),
         ("Move to pre-place (above place)",
          lambda: move_arm_to(mycobot, arm, io_client, lx, ly, lz + APPROACH_HEIGHT)),
         ("Descend to place pose (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz)),
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
         ("Retreat after release (Cartesian)",
-         lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz + APPROACH_HEIGHT)),
+         lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz + APPROACH_HEIGHT, arm=arm)),
         ("Return to home pose (final)", lambda: go_home(mycobot, arm, io_client)),
     ]
 
@@ -533,6 +959,9 @@ def main():
             print(f"Step failed: {name}. Aborting sequence.")
             break
         time.sleep(0.5)
+    
+    print("\n=== Final return to home pose ===")
+    go_home(mycobot, arm, io_client)
 
     print("\nPick-and-place sequence complete.")
     io_client.destroy_node()

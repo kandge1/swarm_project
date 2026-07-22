@@ -51,3 +51,13 @@ gripper_group_controller:
     state_interfaces:
       - position
       - velocity
+    # NOTE: "effort" deliberately NOT listed here. joint_trajectory_controller
+    # only supports position/velocity/acceleration as ITS OWN state_interfaces
+    # -- adding "effort" failed its parameter validation on activation, which
+    # silently killed the whole controller (spawner never got an action
+    # server up: "gripper_group_controller action server not available").
+    # joint_state_broadcaster publishes whatever state interfaces the
+    # hardware exposes (declared in firefighter.ros2_control.xacro)
+    # automatically, with no per-controller opt-in needed -- the "effort"
+    # state_interface on the gripper_controller JOINT there is sufficient by
+    # itself to get effort onto /joint_states.
