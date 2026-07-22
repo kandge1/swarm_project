@@ -96,3 +96,38 @@ source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
 python3 ~/swarm/swarm_project/scripts/spawn_world.py
 # Raw feed is also viewable live in RViz via the "Wrist Camera" Image display
 # (added to moveit.rviz), subscribed to /wrist_camera/image_raw.
+
+### Real hardware ###
+
+# Same demo.launch.py as "RVIZ Everything" above -- UNMODIFIED, still using
+# mock_components/GenericSystem. Do NOT use gazebo.launch.py here. A separate
+# bridge node mirrors /joint_states onto the real arm over pymycobot;
+# controller_manager/MoveIt/pick_place.py's action-server calls don't change.
+#
+# Known limitations: no real position or gripper-force feedback (mock
+# hardware has neither) -- see the docstring in real_arm_bridge.py.
+
+# Terminal 1 — RViz + move_group + controllers (identical to "RVIZ Everything")
+cd ~/swarm/swarm_project/source/ros2_ws
+source /opt/ros/galactic/setup.bash
+colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2
+source install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 demo.launch.py
+
+# Terminal 2 — spawn controllers (identical to "RVIZ Everything")
+source install/setup.bash
+ros2 run controller_manager spawner joint_state_broadcaster
+ros2 run controller_manager spawner arm_group_controller
+ros2 run controller_manager spawner gripper_group_controller
+ros2 control list_controllers
+
+# Terminal 3 — real-arm bridge (mirrors /joint_states -> real motors via pymycobot)
+# Default port/baud (/dev/ttyAMA0 @ 1000000) matches mycobot 280pi's internal
+# UART -- override with -p port:=... -p baud:=... if yours is wired via USB.
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+python3 ~/swarm/swarm_project/scripts/real_arm_bridge.py
+
+# Terminal 4 — run pick_place.py against the real arm
+# --real-hardware disables use_sim_time (no /clock on real hardware)
+source ~/swarm/swarm_project/source/ros2_ws/install/setup.bash
+python3 ~/swarm/swarm_project/scripts/pick_place.py --real-hardware

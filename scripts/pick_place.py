@@ -528,7 +528,7 @@ class RobotIOClient(Node):
         return dict(zip(js.name, js.position))
 
 
-def build_moveit():
+def build_moveit(use_sim_time=True):
     moveit_config = (
         MoveItConfigsBuilder("firefighter", package_name="mycobot_280pi_camera_moveit2")
         .to_moveit_configs()
@@ -544,25 +544,30 @@ def build_moveit():
     }
     _floatify_joint_limits(config_dict)
 
-    # use_sim_time can't go through config_dict: MoveItPy's config_dict path
-    # triggers an upstream bug (moveit2#2220/#2940) where enabling sim time
-    # crashes with "qos_overrides./clock.subscription.durability could not
-    # be set". Loading it through a real YAML file via launch_params_filepaths
-    # goes through the normal rclcpp parameter-file path instead and avoids
-    # that bug. Without this, MoveItPy's clock stays on wall-time while
-    # Gazebo's joint_states are stamped with sim time, so every trajectory
-    # validation fails with "couldn't receive full current joint state
-    # within 1s" even though joint_states is publishing fine.
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yaml", delete=False
-    ) as sim_time_yaml:
-        sim_time_yaml.write("/**:\n  ros__parameters:\n    use_sim_time: true\n")
-        sim_time_yaml_path = sim_time_yaml.name
+    launch_params_filepaths = []
+    if use_sim_time:
+        # use_sim_time can't go through config_dict: MoveItPy's config_dict path
+        # triggers an upstream bug (moveit2#2220/#2940) where enabling sim time
+        # crashes with "qos_overrides./clock.subscription.durability could not
+        # be set". Loading it through a real YAML file via launch_params_filepaths
+        # goes through the normal rclcpp parameter-file path instead and avoids
+        # that bug. Without this, MoveItPy's clock stays on wall-time while
+        # Gazebo's joint_states are stamped with sim time, so every trajectory
+        # validation fails with "couldn't receive full current joint state
+        # within 1s" even though joint_states is publishing fine.
+        #
+        # Real hardware has no /clock publisher at all, so this branch is
+        # skipped there -- see the --real-hardware flag in parse_args().
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as sim_time_yaml:
+            sim_time_yaml.write("/**:\n  ros__parameters:\n    use_sim_time: true\n")
+            launch_params_filepaths = [sim_time_yaml.name]
 
     return MoveItPy(
         node_name="pick_place",
         config_dict=config_dict,
-        launch_params_filepaths=[sim_time_yaml_path],
+        launch_params_filepaths=launch_params_filepaths,
     )
 
 
@@ -908,15 +913,22 @@ def parse_args():
                         help="cube side length, meters, used to turn --place-position's "
                         "surface Z into the block-center Z the flange must descend to "
                         f"when releasing (default: {DEFAULT_BLOCK_SIZE})")
+    parser.add_argument("--real-hardware", action="store_true",
+                        help="Run against the real arm instead of Gazebo: disables "
+                        "use_sim_time, since real hardware has no /clock publisher "
+                        "and MoveItPy would otherwise stall waiting on sim time that "
+                        "never advances. Requires real_arm_bridge.py running "
+                        "alongside demo.launch.py's mock hardware -- see myscript.txt.")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    use_sim_time = not args.real_hardware
 
-    rclpy.init(args=["--ros-args", "-p", "use_sim_time:=true"])
+    rclpy.init(args=["--ros-args", "-p", f"use_sim_time:={'true' if use_sim_time else 'false'}"])
 
-    mycobot = build_moveit()
+    mycobot = build_moveit(use_sim_time=use_sim_time)
     arm = mycobot.get_planning_component(GROUP_NAME)
     io_client = RobotIOClient()
 
