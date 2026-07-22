@@ -3,11 +3,15 @@
 Pick-and-place demo: known start/end block poses, no camera.
 
 - Lateral/approach moves (pre-grasp, pre-place) use joint-space OMPL
-  planning with a deterministic seeded-IK goal state. KDL is seeded from
-  multiple candidate joint configs; the first that is both IK-valid and
-  collision-free is used. This replaces OMPL's randomized constraint
-  sampling, which was landing the arm in a different (often near-singular
-  or self-colliding) configuration each run.
+  planning with a deterministic IK goal state. The goal is solved via
+  MoveIt's /compute_ik service using a small position sphere + orientation
+  window (constraint-based IK), seeded from multiple candidate joint
+  configs; the first collision-free, non-limit-pegged solution is used.
+  This replaces two earlier approaches: exact-pose RobotState.set_from_ik,
+  which effectively never converged for the downward grasp on this
+  non-redundant 6-DOF arm (KDL couldn't land on the exact orientation near
+  the wrist singularity), and raw OMPL constraint sampling, which landed the
+  arm in a different (often near-singular) configuration each run.
 - Vertical pick/place/retreat moves use MoveIt's /compute_cartesian_path
   service directly (moveit_py's PlanningComponent doesn't expose Cartesian
   planning on this MoveIt version), so the end effector travels in a
@@ -31,7 +35,7 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
 from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint
-from moveit_msgs.srv import GetCartesianPath
+from moveit_msgs.srv import GetCartesianPath, GetPositionIK
 from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import FollowJointTrajectory
@@ -75,7 +79,21 @@ from moveit_configs_utils import MoveItConfigsBuilder
 SPAWN_HEIGHT_CORRECTION = 0.035  # m, = old spawn_z (0.055) - new spawn_z (0.02)
 PICK_XYZ = (+0.000, +0.250, 0.030 + SPAWN_HEIGHT_CORRECTION)
 PLACE_XYZ = (+0.000, -0.250, 0.040 + SPAWN_HEIGHT_CORRECTION)
-APPROACH_HEIGHT = 0.08  # how far above pick/place to pre-position, meters
+# APPROACH_HEIGHT is how far above the grasp/place flange target to
+# pre-position for the straight-down descent. It is HARD-CAPPED by the arm's
+# reach, NOT a free choice: at the pick/place radius (0.25m) the flange can
+# only reach at all up to z~=0.21 (measured with scripts/reach_probe.py --
+# 0.21 works, 0.215 is already outside the workspace at ANY orientation).
+# The place flange target (0.16) is the higher of the two, so keep
+# 0.16+APPROACH_HEIGHT <= ~0.205. Anything taller puts the hover outside the
+# reachable workspace, where every IK seed legitimately fails to converge
+# (there is no solution) and the OMPL fallback can only satisfy its 4cm
+# position sphere by parking the flange lower AND tilted -- that was the
+# "all seeds exhausted" + visibly-tilted-hover symptom. 0.04 keeps both
+# hovers (0.18 pick, 0.20 place) comfortably reachable and pointing straight
+# down to within ~3 deg. Re-measure the ceiling with reach_probe.py if the
+# targets, radius, or robot mount height change.
+APPROACH_HEIGHT = 0.04  # meters above the flange target; capped by reach (see above)
 
 # Vertical distance from the commanded joint6_flange position down to where
 # the gripper actually grips a block, i.e. flange_target_z = block_center_z +
@@ -147,6 +165,26 @@ GRASP_QW = 0.0
 
 CARTESIAN_MAX_STEP = 0.005       # 5mm interpolation resolution
 CARTESIAN_JUMP_THRESHOLD = 0.0   # 0 disables jump-threshold filtering
+
+# Tolerances for the constraint-based IK goal search (solve_ik_state).
+# Exact-pose IK (RobotState.set_from_ik) demands the flange hit the target
+# position AND orientation to KDL's tight numeric tolerance; near this arm's
+# downward-grasp wrist configuration that Newton solve fails to converge from
+# every seed -- even the current state sitting 8cm directly below a target on
+# a column the Cartesian planner reaches at fraction=1.00 (see solve_ik_state
+# for the full explanation). Allowing a small position sphere + orientation
+# window -- the same trick ik_probe.py used to confirm reachability -- makes
+# the same targets converge reliably and deterministically. The hover this
+# feeds only needs to be roughly downward; the straight-down orientation is
+# re-imposed exactly by the Cartesian descent that follows.
+IK_POS_TOLERANCE = 0.02          # m, radius of the goal position sphere
+# 0.10 rad (~5.7 deg): at the reachable hover heights straight-down solves to
+# within ~3 deg (measured, reach_probe.py), so this window is comfortably
+# satisfiable while still keeping the hover visibly straight rather than
+# tilted. Widen it only if a target near the reach edge stops converging.
+IK_ORI_XY_TOLERANCE = 0.10       # rad, tilt allowed off straight-down
+IK_ORI_Z_TOLERANCE = 0.15        # rad, yaw window about the approach axis
+IK_SERVICE_TIMEOUT = 0.3         # sec, per-seed /compute_ik solve budget
 
 # Designated home pose (matches reset_arm.py / config/initial_positions.yaml),
 # originally specified in degrees and converted to radians here.
@@ -260,7 +298,33 @@ def _build_ik_seeds():
     s["joint6output_to_joint6"] = 0.0
     seeds.append(("deep-elbow-down", s))
 
+    # Mirrored copies: every seed above biases joint2_to_joint1 (the base
+    # rotation) toward the SAME positive direction (0.324, HOME_RADIANS's
+    # +0.035, or 0.0) -- none bias negative. KDL's IK is a local numeric
+    # solver that converges to whichever solution branch is nearest its
+    # seed, not a global search, so targets needing the base rotated the
+    # OTHER way (e.g. PLACE_XYZ's negative Y) had no seed anywhere near
+    # their true solution and consistently failed to converge on every one
+    # of the seeds above, forcing the slow/unreliable OMPL constraint-
+    # sampling fallback. Appended after the originals (not interleaved) so
+    # positive-Y targets keep converging on the same seed as before with no
+    # behavior change; negative-Y targets now fall through to these instead
+    # of exhausting all 6 originals and failing.
+    seeds += [(f"{label}-mirrored", _mirror_seed(seed)) for label, seed in seeds]
+
     return seeds
+
+
+def _mirror_seed(seed):
+    """Negate the base rotation and wrist-twist as a starting guess for a
+    target on the opposite side of the robot from what `seed` was tuned
+    for. Elbow/wrist bend (joint3/4/5) don't need mirroring -- those only
+    depend on radial distance and height, not which side of the base the
+    target is on."""
+    mirrored = dict(seed)
+    mirrored["joint2_to_joint1"] = -seed["joint2_to_joint1"]
+    mirrored["joint6output_to_joint6"] = -seed["joint6output_to_joint6"]
+    return mirrored
 
 
 IK_SEEDS = _build_ik_seeds()
@@ -290,6 +354,7 @@ class RobotIOClient(Node):
             self, FollowJointTrajectory, "/arm_group_controller/follow_joint_trajectory"
         )
         self._cartesian_client = self.create_client(GetCartesianPath, "/compute_cartesian_path")
+        self._ik_client = self.create_client(GetPositionIK, "/compute_ik")
         self._joint_efforts = {}
         self._joint_state_sub = self.create_subscription(
             JointState, "/joint_states", self._on_joint_state, 10
@@ -397,6 +462,71 @@ class RobotIOClient(Node):
 
         return response.solution, response.fraction
 
+    # ---- Inverse kinematics ----
+    def compute_ik(self, x, y, z, qx, qy, qz, qw, seed_joint_names, seed_positions,
+                   pos_tolerance=IK_POS_TOLERANCE, xy_tolerance=IK_ORI_XY_TOLERANCE,
+                   z_tolerance=IK_ORI_Z_TOLERANCE, timeout_sec=IK_SERVICE_TIMEOUT):
+        """Constraint-based IK via MoveIt's /compute_ik service: find a
+        collision-free joint solution that puts POSE_LINK within a small
+        position sphere + orientation window of the target, seeded from a
+        specific configuration so the numeric solver stays on one solution
+        branch instead of jumping between them per call.
+
+        Returns {joint_name: value} for the whole returned joint_state (arm
+        joints plus whatever else move_group echoes back), or None if the
+        solver found nothing inside the tolerated region. This succeeds on
+        targets that RobotState.set_from_ik (exact pose) cannot -- see
+        solve_ik_state / IK_POS_TOLERANCE above for why.
+        """
+        if not self._ik_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("/compute_ik service not available")
+            return None
+
+        request = GetPositionIK.Request()
+        request.ik_request.group_name = GROUP_NAME
+        request.ik_request.ik_link_name = POSE_LINK
+        request.ik_request.avoid_collisions = True
+        request.ik_request.timeout.sec = int(timeout_sec)
+        request.ik_request.timeout.nanosec = int((timeout_sec % 1) * 1e9)
+
+        # Seed the numeric solver. is_diff=True applies these joint values as
+        # an override on top of the robot's current state, so unspecified
+        # joints (e.g. the gripper) come from the live state rather than 0.
+        request.ik_request.robot_state.is_diff = True
+        request.ik_request.robot_state.joint_state.name = list(seed_joint_names)
+        request.ik_request.robot_state.joint_state.position = list(seed_positions)
+
+        # pose_stamped is required by the message even alongside constraints;
+        # it is the nominal center, the constraints define the tolerated region.
+        request.ik_request.pose_stamped.header.frame_id = PLANNING_FRAME
+        request.ik_request.pose_stamped.pose.position.x = x
+        request.ik_request.pose_stamped.pose.position.y = y
+        request.ik_request.pose_stamped.pose.position.z = z
+        request.ik_request.pose_stamped.pose.orientation.x = qx
+        request.ik_request.pose_stamped.pose.orientation.y = qy
+        request.ik_request.pose_stamped.pose.orientation.z = qz
+        request.ik_request.pose_stamped.pose.orientation.w = qw
+
+        constraints = Constraints()
+        constraints.position_constraints.append(
+            make_position_constraint(POSE_LINK, PLANNING_FRAME, x, y, z, tolerance=pos_tolerance)
+        )
+        constraints.orientation_constraints.append(
+            make_orientation_constraint(
+                POSE_LINK, PLANNING_FRAME, qx, qy, qz, qw,
+                x_tolerance=xy_tolerance, y_tolerance=xy_tolerance, z_tolerance=z_tolerance)
+        )
+        request.ik_request.constraints = constraints
+
+        future = self._ik_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+        response = future.result()
+        if response is None or response.error_code.val != 1:
+            return None
+
+        js = response.solution.joint_state
+        return dict(zip(js.name, js.position))
+
 
 def build_moveit():
     moveit_config = (
@@ -407,6 +537,7 @@ def build_moveit():
     config_dict["planning_pipelines"] = {"pipeline_names": ["ompl"]}
     config_dict["plan_request_params"] = {
         "planning_time": 10.0,
+        "planning_attempts": 10,
         "planning_pipeline": "ompl",
         "max_velocity_scaling_factor": 1.0,
         "max_acceleration_scaling_factor": 1.0,
@@ -485,12 +616,6 @@ def make_grasp_pose(x, y, z):
     return pose
 
 
-def _is_state_colliding(mycobot, state):
-    psm = mycobot.get_planning_scene_monitor()
-    with psm.read_only() as scene:
-        return scene.is_state_colliding(state, GROUP_NAME)
-
-
 def _is_near_joint_limit(state, margin=0.15):
     """Reject IK solutions where joint6output_to_joint6 is near its limit.
     KDL pegs it at -2.4434 rad even when seeded elsewhere; OMPL can't plan
@@ -504,38 +629,79 @@ def _is_near_joint_limit(state, margin=0.15):
     return False, None, None, None, None
 
 
-def solve_ik_state(mycobot, x, y, z, qx, qy, qz, qw):
-    """Try each IK_SEEDS entry in order. Return the first RobotState that
-    both converges and is collision-free, or None if all seeds fail."""
+def _current_joint_seed(mycobot):
+    """Read the robot's ACTUAL current joint configuration as an IK seed.
+    KDL's IK solver is local -- it converges to whichever solution is
+    nearest its seed, not a global search -- and for most of this script's
+    moves (hover -> descend, descend -> retreat, hover -> hover at a new
+    height, etc.) the CURRENT pose is by far the best available guess for
+    the NEXT one: it's often nearly the exact answer already, since these
+    are small, continuous steps. IK_SEEDS below is a fixed set of
+    hand-tuned configurations empirically found for specific past targets;
+    it has no way to adapt to a target none of them were ever tuned for
+    (e.g. after a height correction shifts every target upward), which is
+    why ALL of them can legitimately fail to converge even though a
+    solution clearly exists -- the OMPL constraint-sampling fallback finds
+    one every time. That's a seeding gap, not a reachability problem."""
+    psm = mycobot.get_planning_scene_monitor()
+    with psm.read_only() as scene:
+        values = list(scene.current_state.get_joint_group_positions(GROUP_NAME))
+    return dict(zip(HOME_RADIANS.keys(), values))
+
+
+def solve_ik_state(mycobot, io_client, x, y, z, qx, qy, qz, qw):
+    """Deterministic, downward-orientation IK for an OMPL goal state, using
+    constraint-based IK (a small position sphere + orientation window) seeded
+    from the robot's current state and then each IK_SEEDS entry in order.
+    Returns the first RobotState that converges and isn't pegged at
+    joint6output's limit, or None if every seed fails.
+
+    This used to call RobotState.set_from_ik, which solves for an EXACT
+    position + orientation. On this non-redundant 6-DOF arm that effectively
+    never converged for the downward grasp near (0, +/-0.25, ~0.2): every
+    seed -- including 'current-state' sitting 8cm directly below a target the
+    Cartesian planner then reaches at fraction=1.00 -- failed, because the
+    wrist there is close enough to a singularity that KDL's Newton solve
+    can't land on the exact orientation even though a solution plainly
+    exists. The same targets converge immediately once the orientation is
+    given a small window (IK_ORI_XY_TOLERANCE), which is exactly what the
+    /compute_ik service does and what ik_probe.py used to confirm
+    reachability in the first place. The straight-down orientation is not
+    lost -- it's re-imposed exactly by the Cartesian descent that follows
+    this hover. avoid_collisions=True in compute_ik already rejects
+    self-colliding solutions, so no separate collision check is needed here.
+    """
     robot_model = mycobot.get_robot_model()
-    pose = Pose()
-    pose.position.x = x
-    pose.position.y = y
-    pose.position.z = z
-    pose.orientation.x = qx
-    pose.orientation.y = qy
-    pose.orientation.z = qz
-    pose.orientation.w = qw
+    joint_names = list(HOME_RADIANS.keys())
 
-    for label, seed in IK_SEEDS:
-        state = RobotState(robot_model)
-        state.set_joint_group_positions(GROUP_NAME, list(seed.values()))
-        state.update()
-
-        if not state.set_from_ik(GROUP_NAME, pose, POSE_LINK, timeout=0.5):
+    seeds = [("current-state", _current_joint_seed(mycobot))] + IK_SEEDS
+    for label, seed in seeds:
+        solution = io_client.compute_ik(
+            x, y, z, qx, qy, qz, qw,
+            seed_joint_names=joint_names,
+            seed_positions=[seed[n] for n in joint_names],
+        )
+        if solution is None:
             print(f"[ik] '{label}' seed: IK did not converge")
             continue
 
-        joints = [round(v, 3) for v in state.get_joint_group_positions(GROUP_NAME)]
+        # The service echoes back every joint (arm + gripper); pull the arm
+        # joints in group order to rebuild a goal RobotState for OMPL.
+        try:
+            joint_values = [solution[n] for n in joint_names]
+        except KeyError as missing:
+            print(f"[ik] '{label}' seed: solution missing joint {missing}, skipping")
+            continue
 
+        state = RobotState(robot_model)
+        state.set_joint_group_positions(GROUP_NAME, joint_values)
+        state.update()
+
+        joints = [round(v, 3) for v in joint_values]
         near_limit, lname, lval, llo, lhi = _is_near_joint_limit(state)
         if near_limit:
             print(f"[ik] '{label}' seed: converged to {joints} BUT '{lname}'={lval:.3f} "
                   f"near limit [{llo:.3f},{lhi:.3f}], skipping")
-            continue
-
-        if _is_state_colliding(mycobot, state):
-            print(f"[ik] '{label}' seed: converged to {joints} BUT self-collides, skipping")
             continue
 
         print(f"[ik] '{label}' seed: OK -> {joints}")
@@ -636,7 +802,7 @@ def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
 
     ik_state = None
     if lock_orientation:
-        ik_state = solve_ik_state(mycobot, x, y, z,
+        ik_state = solve_ik_state(mycobot, io_client, x, y, z,
                                    GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
 
     if ik_state is not None:
@@ -669,9 +835,18 @@ def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
     return io_client.arm_execute(joint_trajectory)
 
 
-def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
+def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90, arm=None):
     """Straight-line Cartesian move from the current pose to (x, y, z),
-    holding the fixed downward grasp orientation throughout."""
+    holding the fixed downward grasp orientation throughout.
+
+    If `arm` is given and the straight-line path falls short of
+    min_fraction, falls back to a joint-space move_arm_to() instead of
+    failing outright. Retreats near the edge of the validated reach
+    envelope routinely land at ~0.85-0.89 -- just under the threshold -- and
+    don't need a dead-straight path the way the delicate grasp/place
+    descent does (a curved joint-space retreat can't knock a held block
+    sideways the way a curved DESCENT could). Only pass `arm` for moves
+    where that's true."""
     psm = mycobot.get_planning_scene_monitor()
     with psm.read_only() as scene:
         joint_values = scene.current_state.get_joint_group_positions(GROUP_NAME)
@@ -705,7 +880,10 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90):
 
     if solution_msg is None or fraction < min_fraction:
         print(f"Cartesian planning FAILED for ({x}, {y}, {z}) (fraction={fraction:.2f})")
-        return False
+        if arm is None:
+            return False
+        print(f"[cartesian] falling back to joint-space move_arm_to for ({x}, {y}, {z})")
+        return move_arm_to(mycobot, arm, io_client, x, y, z)
 
     print(f"Executing Cartesian move to ({x}, {y}, {z}) (fraction={fraction:.2f})...")
 
@@ -763,14 +941,14 @@ def main():
          lambda: cartesian_move_to(mycobot, io_client, px, py, pz)),
         ("Close gripper (grasp, stop on contact)", lambda: gripper_close_until_contact(io_client)),
         ("Retreat after grasp (Cartesian)",
-         lambda: cartesian_move_to(mycobot, io_client, px, py, pz + APPROACH_HEIGHT)),
+         lambda: cartesian_move_to(mycobot, io_client, px, py, pz + APPROACH_HEIGHT, arm=arm)),
         ("Move to pre-place (above place)",
          lambda: move_arm_to(mycobot, arm, io_client, lx, ly, lz + APPROACH_HEIGHT)),
         ("Descend to place pose (Cartesian)",
          lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz)),
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
         ("Retreat after release (Cartesian)",
-         lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz + APPROACH_HEIGHT)),
+         lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz + APPROACH_HEIGHT, arm=arm)),
         ("Return to home pose (final)", lambda: go_home(mycobot, arm, io_client)),
     ]
 
