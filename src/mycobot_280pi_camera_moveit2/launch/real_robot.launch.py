@@ -10,7 +10,8 @@ def generate_launch_description():
     # Build MoveIt config with hardware_mode=real so mycobot_hardware/MyCobotSystem is used
     moveit_config = (
         MoveItConfigsBuilder("firefighter")
-        .robot_description(mappings={"hardware_mode": "real"})
+        .robot_description(file_path="config/firefighter.urdf.xacro", mappings={"hardware_mode": "real"})
+        .trajectory_execution(file_path="config/moveit_controllers.yaml")
         .to_moveit_configs()
     )
 

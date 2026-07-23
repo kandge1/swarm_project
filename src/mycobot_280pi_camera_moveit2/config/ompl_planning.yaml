@@ -1,0 +1,28 @@
+# OMPL pipeline config for the "arm_group" planning group (see firefighter.srdf).
+#
+# This file didn't exist before -- on newer ROS2 distros (this project's dev
+# machine runs Jazzy), moveit_configs_utils falls back to MoveIt's built-in
+# OMPL defaults when it's absent, so things worked without it. ROS2 Galactic
+# (which the physical robot runs) hard-requires this file to exist at all
+# (see MoveItConfigsBuilder.planning_pipelines()), so this is a real,
+# necessary addition, not just a compatibility shim -- pick_place.py's
+# plan_motion() (pipeline_id="ompl") relies on this pipeline being
+# registered.
+planning_plugins:
+  - ompl_interface/OMPLPlanner
+request_adapters:
+  - default_planning_request_adapters/ResolveConstraintFrames
+  - default_planning_request_adapters/ValidateWorkspaceBounds
+  - default_planning_request_adapters/CheckStartStateBounds
+  - default_planning_request_adapters/CheckStartStateCollision
+response_adapters:
+  - default_planning_response_adapters/AddTimeOptimalParameterization
+  - default_planning_response_adapters/ValidateSolution
+  - default_planning_response_adapters/DisplayMotionPath
+arm_group:
+  planner_configs:
+    - RRTConnectkConfigDefault
+planner_configs:
+  RRTConnectkConfigDefault:
+    type: geometric::RRTConnect
+    range: 0.0

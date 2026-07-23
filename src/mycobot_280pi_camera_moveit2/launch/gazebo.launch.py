@@ -11,7 +11,8 @@ def generate_launch_description():
     # Build MoveIt config with hardware_mode=gazebo so gz_ros2_control/GazeboSimSystem is used
     moveit_config = (
         MoveItConfigsBuilder("firefighter")
-        .robot_description(mappings={"hardware_mode": "gazebo"})
+        .robot_description(file_path="config/firefighter.urdf.xacro", mappings={"hardware_mode": "gazebo"})
+        .trajectory_execution(file_path="config/moveit_controllers.yaml")
         .to_moveit_configs()
     )
 
