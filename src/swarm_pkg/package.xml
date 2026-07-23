@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>swarm_pkg</name>
+  <version>0.0.0</version>
+  <description>Swarm robotics scripts and utilities for MyCobot 280 Pi</description>
+  <maintainer email="rhishi.kandge@gmail.com">Rhishi Kandge</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>moveit_py</depend>
+  <depend>moveit_msgs</depend>
+  <depend>moveit_configs_utils</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>control_msgs</depend>
+  <depend>trajectory_msgs</depend>
+  <depend>shape_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>mycobot_description</depend>
+  <depend>mycobot_280pi_camera_moveit2</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
