@@ -15,84 +15,31 @@ closely matches config/initial_positions.yaml already in the repo -- that
 file has the same home pose, just wired to MoveIt's "fake" hardware
 interface rather than the live Gazebo/gz_ros2_control system this script
 targets.
+
+Delegates all planning/execution to pick_place.py's RobotIOClient/go_home --
+no moveit_py here, just plain ROS2 services/actions against an externally-
+launched move_group (see pick_place.py's module docstring for why).
 """
 
-import math
+import sys, os
 
 import rclpy
-from moveit.planning import MoveItPy
-from moveit.core.robot_state import RobotState
-from moveit_configs_utils import MoveItConfigsBuilder
 
-
-GROUP_NAME = "arm_group"
-
-HOME_DEGREES = {
-    "joint2_to_joint1": 2,
-    "joint3_to_joint2": 41,
-    "joint4_to_joint3": -89,
-    "joint5_to_joint4": 48,
-    "joint6_to_joint5": -2,
-    "joint6output_to_joint6": 0,
-}
-
-HOME_RADIANS = {name: math.radians(deg) for name, deg in HOME_DEGREES.items()}
-
-
-def _floatify_joint_limits(config_dict):
-    try:
-        joint_limits = config_dict["robot_description_planning"]["joint_limits"]
-    except KeyError:
-        return
-    for limits in joint_limits.values():
-        for key in ("max_velocity", "max_acceleration", "max_position", "min_position"):
-            if key in limits and isinstance(limits[key], int):
-                limits[key] = float(limits[key])
-
-
-def build_moveit():
-    moveit_config = (
-        MoveItConfigsBuilder("firefighter", package_name="mycobot_280pi_camera_moveit2")
-        .to_moveit_configs()
-    )
-    config_dict = moveit_config.to_dict()
-    config_dict["planning_pipelines"] = {"pipeline_names": ["ompl"]}
-    config_dict["plan_request_params"] = {
-        "planning_time": 10.0,
-        "planning_pipeline": "ompl",
-        "max_velocity_scaling_factor": 1.0,
-        "max_acceleration_scaling_factor": 1.0,
-    }
-    _floatify_joint_limits(config_dict)
-    return MoveItPy(node_name="reset_arm", config_dict=config_dict)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pick_place import RobotIOClient, go_home  # noqa: E402
 
 
 def main():
     rclpy.init(args=["--ros-args", "-p", "use_sim_time:=true"])
 
-    mycobot = build_moveit()
-    arm = mycobot.get_planning_component(GROUP_NAME)
+    io_client = RobotIOClient()
 
-    robot_model = mycobot.get_robot_model()
-    goal_state = RobotState(robot_model)
-    goal_state.set_joint_group_positions(GROUP_NAME, list(HOME_RADIANS.values()))
-    goal_state.update()
+    if go_home(io_client):
+        print("Arm reset to home pose.")
+    else:
+        print("Failed to reset arm to home pose.")
 
-    arm.set_start_state_to_current_state()
-    arm.set_goal_state(robot_state=goal_state)
-
-    plan_result = arm.plan()
-    if not plan_result:
-        print("Planning to home pose FAILED.")
-        del mycobot
-        rclpy.shutdown()
-        return
-
-    print("Executing joint-space move to home pose...")
-    mycobot.execute(plan_result.trajectory, controllers=[])
-    print("Arm reset to home pose.")
-
-    del mycobot
+    io_client.destroy_node()
     rclpy.shutdown()
 
 

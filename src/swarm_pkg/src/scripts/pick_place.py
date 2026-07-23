@@ -13,9 +13,13 @@ Pick-and-place demo: known start/end block poses, no camera.
   the wrist singularity), and raw OMPL constraint sampling, which landed the
   arm in a different (often near-singular) configuration each run.
 - Vertical pick/place/retreat moves use MoveIt's /compute_cartesian_path
-  service directly (moveit_py's PlanningComponent doesn't expose Cartesian
-  planning on this MoveIt version), so the end effector travels in a
-  straight line along z instead of an arbitrary curved joint-space path.
+  service directly, so the end effector travels in a straight line along z
+  instead of an arbitrary curved joint-space path.
+- Joint-space planning (pre-grasp/pre-place, home) uses MoveIt's
+  /plan_kinematic_path service against an externally-launched move_group --
+  no moveit_py. This works against any ROS2 distro with MoveIt2, regardless
+  of whether prebuilt moveit_py bindings exist for it (they don't for every
+  distro/platform this project targets).
 - Gripper open/close via a direct FollowJointTrajectory action client to
   gripper_group_controller (bypasses MoveIt planning groups for the gripper).
 - Gripper closing watches gripper_controller's effort on /joint_states and
@@ -27,23 +31,18 @@ Pick-and-place demo: known start/end block poses, no camera.
 
 import argparse
 import math
-import tempfile
 import time
 
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from geometry_msgs.msg import Pose
-from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint
-from moveit_msgs.srv import GetCartesianPath, GetPositionIK
+from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint, JointConstraint
+from moveit_msgs.srv import GetCartesianPath, GetPositionIK, GetMotionPlan, GetStateValidity
 from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
-
-from moveit.planning import MoveItPy
-from moveit.core.robot_state import RobotState
-from moveit_configs_utils import MoveItConfigsBuilder
 
 
 # ---- Tunable poses (defaults; adjust to real measurements later) ----
@@ -330,20 +329,13 @@ def _mirror_seed(seed):
 IK_SEEDS = _build_ik_seeds()
 
 
-def _floatify_joint_limits(config_dict):
-    try:
-        joint_limits = config_dict["robot_description_planning"]["joint_limits"]
-    except KeyError:
-        return
-    for limits in joint_limits.values():
-        for key in ("max_velocity", "max_acceleration", "max_position", "min_position"):
-            if key in limits and isinstance(limits[key], int):
-                limits[key] = float(limits[key])
-
-
 class RobotIOClient(Node):
     """Handles gripper open/close (action), arm trajectory execution (action),
-    and Cartesian path requests (service)."""
+    Cartesian path / IK / motion planning / state validity (services). Talks
+    only to an externally-launched move_group over plain ROS2 services and
+    actions -- no moveit_py, so this works against any ROS2 distro that has
+    MoveIt2, regardless of whether moveit_py bindings were ever packaged for
+    it (see build_motion_plan_request / check_state_validity below)."""
 
     def __init__(self):
         super().__init__("robot_io_client")
@@ -355,7 +347,10 @@ class RobotIOClient(Node):
         )
         self._cartesian_client = self.create_client(GetCartesianPath, "/compute_cartesian_path")
         self._ik_client = self.create_client(GetPositionIK, "/compute_ik")
+        self._motion_plan_client = self.create_client(GetMotionPlan, "/plan_kinematic_path")
+        self._state_validity_client = self.create_client(GetStateValidity, "/check_state_validity")
         self._joint_efforts = {}
+        self._joint_positions = {}
         self._joint_state_sub = self.create_subscription(
             JointState, "/joint_states", self._on_joint_state, 10
         )
@@ -363,12 +358,24 @@ class RobotIOClient(Node):
     def _on_joint_state(self, msg):
         for name, effort in zip(msg.name, msg.effort):
             self._joint_efforts[name] = effort
+        for name, position in zip(msg.name, msg.position):
+            self._joint_positions[name] = position
 
     def joint_effort(self, joint_name):
         """Latest effort reading for joint_name from /joint_states, or None
         if it hasn't been received yet (e.g. no "effort" state_interface
         configured for that joint)."""
         return self._joint_efforts.get(joint_name)
+
+    def current_joint_positions(self, joint_names, timeout_sec=5.0):
+        """Latest /joint_states positions for joint_names, waiting for the
+        first message to arrive if none has been received yet. Replaces the
+        old planning_scene_monitor-based current-state read (moveit_py) --
+        the live /joint_states topic already carries the same values."""
+        end_time = self.get_clock().now().nanoseconds + int(timeout_sec * 1e9)
+        while not self._joint_positions and self.get_clock().now().nanoseconds < end_time:
+            rclpy.spin_once(self, timeout_sec=0.1)
+        return {n: self._joint_positions.get(n, 0.0) for n in joint_names}
 
     # ---- Arm ----
     def arm_execute(self, joint_trajectory):
@@ -527,43 +534,128 @@ class RobotIOClient(Node):
         js = response.solution.joint_state
         return dict(zip(js.name, js.position))
 
+    def compute_ik_exact(self, x, y, z, qx, qy, qz, qw, seed_joint_names, seed_positions,
+                        timeout_sec=0.5):
+        """Exact-pose IK via /compute_ik with no tolerance constraints -- the
+        service-based equivalent of moveit_py's RobotState.set_from_ik used
+        by annulus_test.py's reachability screening, where exact convergence
+        (not a tolerant window) is what's being measured. avoid_collisions is
+        deliberately False here: callers do their own explicit ground-truth
+        collision check afterward via check_state_validity(), kept separate
+        from IK convergence on purpose (see solve_ik_filtered)."""
+        if not self._ik_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("/compute_ik service not available")
+            return None
 
-def build_moveit():
-    moveit_config = (
-        MoveItConfigsBuilder("firefighter", package_name="mycobot_280pi_camera_moveit2")
-        .to_moveit_configs()
-    )
-    config_dict = moveit_config.to_dict()
-    config_dict["planning_pipelines"] = {"pipeline_names": ["ompl"]}
-    config_dict["plan_request_params"] = {
-        "planning_time": 10.0,
-        "planning_attempts": 10,
-        "planning_pipeline": "ompl",
-        "max_velocity_scaling_factor": 1.0,
-        "max_acceleration_scaling_factor": 1.0,
-    }
-    _floatify_joint_limits(config_dict)
+        request = GetPositionIK.Request()
+        request.ik_request.group_name = GROUP_NAME
+        request.ik_request.ik_link_name = POSE_LINK
+        request.ik_request.avoid_collisions = False
+        request.ik_request.timeout.sec = int(timeout_sec)
+        request.ik_request.timeout.nanosec = int((timeout_sec % 1) * 1e9)
 
-    # use_sim_time can't go through config_dict: MoveItPy's config_dict path
-    # triggers an upstream bug (moveit2#2220/#2940) where enabling sim time
-    # crashes with "qos_overrides./clock.subscription.durability could not
-    # be set". Loading it through a real YAML file via launch_params_filepaths
-    # goes through the normal rclcpp parameter-file path instead and avoids
-    # that bug. Without this, MoveItPy's clock stays on wall-time while
-    # Gazebo's joint_states are stamped with sim time, so every trajectory
-    # validation fails with "couldn't receive full current joint state
-    # within 1s" even though joint_states is publishing fine.
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".yaml", delete=False
-    ) as sim_time_yaml:
-        sim_time_yaml.write("/**:\n  ros__parameters:\n    use_sim_time: true\n")
-        sim_time_yaml_path = sim_time_yaml.name
+        request.ik_request.robot_state.is_diff = True
+        request.ik_request.robot_state.joint_state.name = list(seed_joint_names)
+        request.ik_request.robot_state.joint_state.position = list(seed_positions)
 
-    return MoveItPy(
-        node_name="pick_place",
-        config_dict=config_dict,
-        launch_params_filepaths=[sim_time_yaml_path],
-    )
+        request.ik_request.pose_stamped.header.frame_id = PLANNING_FRAME
+        request.ik_request.pose_stamped.pose.position.x = x
+        request.ik_request.pose_stamped.pose.position.y = y
+        request.ik_request.pose_stamped.pose.position.z = z
+        request.ik_request.pose_stamped.pose.orientation.x = qx
+        request.ik_request.pose_stamped.pose.orientation.y = qy
+        request.ik_request.pose_stamped.pose.orientation.z = qz
+        request.ik_request.pose_stamped.pose.orientation.w = qw
+        # No `constraints` set -- exact pose match, not a tolerant region.
+
+        future = self._ik_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+        response = future.result()
+        if response is None or response.error_code.val != 1:
+            return None
+
+        js = response.solution.joint_state
+        return dict(zip(js.name, js.position))
+
+    # ---- Motion planning (replaces moveit_py's PlanningComponent) ----
+    def plan_motion(self, goal_constraints, group_name=GROUP_NAME,
+                    planning_time=10.0, planning_attempts=10,
+                    velocity_scaling=1.0, acceleration_scaling=1.0):
+        """moveit_msgs/GetMotionPlan (/plan_kinematic_path): plan -- but do
+        NOT execute -- a joint-space trajectory from the robot's current
+        state to goal_constraints (a list of moveit_msgs/Constraints, e.g.
+        from make_joint_goal_constraints() or raw position/orientation
+        constraints). Returns a trajectory_msgs/JointTrajectory, or None on
+        failure. This is the plan-only equivalent of moveit_py's
+        PlanningComponent.plan() -- callers still execute the returned
+        trajectory themselves via arm_execute(), exactly as before."""
+        if not self._motion_plan_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("/plan_kinematic_path service not available")
+            return None
+
+        request = GetMotionPlan.Request()
+        mpr = request.motion_plan_request
+        mpr.group_name = group_name
+        # is_diff=True + empty joint_state: plan from the robot's actual
+        # current state, same as moveit_py's set_start_state_to_current_state().
+        mpr.start_state.is_diff = True
+        mpr.goal_constraints = goal_constraints
+        mpr.pipeline_id = "ompl"
+        mpr.num_planning_attempts = planning_attempts
+        mpr.allowed_planning_time = planning_time
+        mpr.max_velocity_scaling_factor = velocity_scaling
+        mpr.max_acceleration_scaling_factor = acceleration_scaling
+
+        future = self._motion_plan_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+        response = future.result()
+        if response is None or response.motion_plan_response.error_code.val != 1:
+            return None
+
+        return response.motion_plan_response.trajectory.joint_trajectory
+
+    # ---- State validity (replaces moveit_py's planning_scene_monitor) ----
+    def check_state_validity(self, joint_dict, group_name=GROUP_NAME):
+        """moveit_msgs/GetStateValidity (/check_state_validity): is this
+        joint configuration self-collision-free? Unspecified joints (outside
+        joint_dict, e.g. the gripper) are left at their live current value
+        (is_diff=True) rather than an arbitrary default.
+
+        Returns (valid: bool, contacts: list[ContactInformation]), or
+        (None, None) if the service call itself failed."""
+        if not self._state_validity_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("/check_state_validity service not available")
+            return None, None
+
+        request = GetStateValidity.Request()
+        request.group_name = group_name
+        request.robot_state.is_diff = True
+        request.robot_state.joint_state.name = list(joint_dict.keys())
+        request.robot_state.joint_state.position = list(joint_dict.values())
+
+        future = self._state_validity_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future)
+        response = future.result()
+        if response is None:
+            return None, None
+
+        return response.valid, response.contacts
+
+
+def make_joint_goal_constraints(joint_dict, tolerance=0.001):
+    """moveit_msgs/Constraints built from {joint_name: value}, for use as a
+    plan_motion() goal -- the service-call equivalent of moveit_py's
+    arm.set_goal_state(robot_state=...)."""
+    constraints = Constraints()
+    for name, value in joint_dict.items():
+        jc = JointConstraint()
+        jc.joint_name = name
+        jc.position = value
+        jc.tolerance_above = tolerance
+        jc.tolerance_below = tolerance
+        jc.weight = 1.0
+        constraints.joint_constraints.append(jc)
+    return constraints
 
 
 def make_position_constraint(link_name, frame_id, x, y, z, tolerance=0.04):
@@ -616,10 +708,15 @@ def make_grasp_pose(x, y, z):
     return pose
 
 
-def _is_state_colliding(mycobot, state):
-    psm = mycobot.get_planning_scene_monitor()
-    with psm.read_only() as scene:
-        return scene.is_state_colliding(state, GROUP_NAME)
+def _is_state_colliding(io_client, joint_dict, group_name=GROUP_NAME):
+    """True if joint_dict (a {joint_name: value} arm configuration) is
+    self-colliding, via MoveIt's /check_state_validity service -- the
+    service-call equivalent of moveit_py's planning_scene_monitor-based
+    scene.is_state_colliding(). Returns None if the service call failed."""
+    valid, _contacts = io_client.check_state_validity(joint_dict, group_name=group_name)
+    if valid is None:
+        return None
+    return not valid
 
 
 def _is_near_joint_limit(state, margin=0.15):
@@ -627,40 +724,19 @@ def _is_near_joint_limit(state, margin=0.15):
     KDL pegs it at -2.4434 rad even when seeded elsewhere; OMPL can't plan
     to a state wedged at a joint limit (no room to sample nearby states)."""
     # joint6output_to_joint6 limits from URDF: lower=-2.4434, upper=3.14159
-    positions = state.joint_positions  # dict: joint_name -> value
-    val = positions.get("joint6output_to_joint6", None)
+    val = state.get("joint6output_to_joint6", None)  # state: dict, joint_name -> value
     if val is not None:
         if val < -2.4434 + margin or val > 3.14159 - margin:
             return True, "joint6output_to_joint6", val, -2.4434, 3.14159
     return False, None, None, None, None
 
 
-def _current_joint_seed(mycobot):
-    """Read the robot's ACTUAL current joint configuration as an IK seed.
-    KDL's IK solver is local -- it converges to whichever solution is
-    nearest its seed, not a global search -- and for most of this script's
-    moves (hover -> descend, descend -> retreat, hover -> hover at a new
-    height, etc.) the CURRENT pose is by far the best available guess for
-    the NEXT one: it's often nearly the exact answer already, since these
-    are small, continuous steps. IK_SEEDS below is a fixed set of
-    hand-tuned configurations empirically found for specific past targets;
-    it has no way to adapt to a target none of them were ever tuned for
-    (e.g. after a height correction shifts every target upward), which is
-    why ALL of them can legitimately fail to converge even though a
-    solution clearly exists -- the OMPL constraint-sampling fallback finds
-    one every time. That's a seeding gap, not a reachability problem."""
-    psm = mycobot.get_planning_scene_monitor()
-    with psm.read_only() as scene:
-        values = list(scene.current_state.get_joint_group_positions(GROUP_NAME))
-    return dict(zip(HOME_RADIANS.keys(), values))
-
-
-def solve_ik_state(mycobot, io_client, x, y, z, qx, qy, qz, qw):
+def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
     """Deterministic, downward-orientation IK for an OMPL goal state, using
     constraint-based IK (a small position sphere + orientation window) seeded
     from the robot's current state and then each IK_SEEDS entry in order.
-    Returns the first RobotState that converges and isn't pegged at
-    joint6output's limit, or None if every seed fails.
+    Returns the first {joint_name: value} goal state that converges and
+    isn't pegged at joint6output's limit, or None if every seed fails.
 
     This used to call RobotState.set_from_ik, which solves for an EXACT
     position + orientation. On this non-redundant 6-DOF arm that effectively
@@ -677,10 +753,10 @@ def solve_ik_state(mycobot, io_client, x, y, z, qx, qy, qz, qw):
     this hover. avoid_collisions=True in compute_ik already rejects
     self-colliding solutions, so no separate collision check is needed here.
     """
-    robot_model = mycobot.get_robot_model()
     joint_names = list(HOME_RADIANS.keys())
 
-    seeds = [("current-state", _current_joint_seed(mycobot))] + IK_SEEDS
+    current_state = io_client.current_joint_positions(joint_names)
+    seeds = [("current-state", current_state)] + IK_SEEDS
     for label, seed in seeds:
         solution = io_client.compute_ik(
             x, y, z, qx, qy, qz, qw,
@@ -692,26 +768,22 @@ def solve_ik_state(mycobot, io_client, x, y, z, qx, qy, qz, qw):
             continue
 
         # The service echoes back every joint (arm + gripper); pull the arm
-        # joints in group order to rebuild a goal RobotState for OMPL.
+        # joints in group order to rebuild a goal state for the motion planner.
         try:
-            joint_values = [solution[n] for n in joint_names]
+            joint_values = {n: solution[n] for n in joint_names}
         except KeyError as missing:
             print(f"[ik] '{label}' seed: solution missing joint {missing}, skipping")
             continue
 
-        state = RobotState(robot_model)
-        state.set_joint_group_positions(GROUP_NAME, joint_values)
-        state.update()
-
-        joints = [round(v, 3) for v in joint_values]
-        near_limit, lname, lval, llo, lhi = _is_near_joint_limit(state)
+        joints = [round(v, 3) for v in joint_values.values()]
+        near_limit, lname, lval, llo, lhi = _is_near_joint_limit(joint_values)
         if near_limit:
             print(f"[ik] '{label}' seed: converged to {joints} BUT '{lname}'={lval:.3f} "
                   f"near limit [{llo:.3f},{lhi:.3f}], skipping")
             continue
 
         print(f"[ik] '{label}' seed: OK -> {joints}")
-        return state
+        return joint_values
 
     print(f"[ik] All seeds exhausted for ({x:.3f},{y:.3f},{z:.3f}) -- falling back to constraint sampling")
     return None
@@ -781,38 +853,27 @@ def gripper_close_until_contact(io_client, start=GRIPPER_OPEN, closed=GRIPPER_CL
     return True
 
 
-def go_home(mycobot, arm, io_client):
+def go_home(io_client):
     """Return the arm to its designated home pose before planning anything else."""
-    robot_model = mycobot.get_robot_model()
-    goal_state = RobotState(robot_model)
-    goal_state.set_joint_group_positions(GROUP_NAME, list(HOME_RADIANS.values()))
-    goal_state.update()
-
-    arm.set_start_state_to_current_state()
-    arm.set_goal_state(robot_state=goal_state)
-
-    plan_result = arm.plan()
-    if not plan_result:
+    joint_trajectory = io_client.plan_motion([make_joint_goal_constraints(HOME_RADIANS)])
+    if joint_trajectory is None:
         print("Planning to home pose FAILED.")
         return False
 
     print("Executing joint-space move to home pose...")
-    joint_trajectory = plan_result.trajectory.get_robot_trajectory_msg().joint_trajectory
     return io_client.arm_execute(joint_trajectory)
 
 
-def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
+def move_arm_to(io_client, x, y, z, lock_orientation=True):
     """Joint-space plan to a target position. Uses deterministic seeded IK
     when possible; falls back to OMPL constraint sampling if all seeds fail."""
-    arm.set_start_state_to_current_state()
-
     ik_state = None
     if lock_orientation:
-        ik_state = solve_ik_state(mycobot, io_client, x, y, z,
+        ik_state = solve_ik_state(io_client, x, y, z,
                                    GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
 
     if ik_state is not None:
-        arm.set_goal_state(robot_state=ik_state)
+        goal_constraints = [make_joint_goal_constraints(ik_state)]
     else:
         print(f"[move_arm_to] No valid IK state found for ({x},{y},{z}), using constraint sampling")
         constraints = Constraints()
@@ -829,34 +890,31 @@ def move_arm_to(mycobot, arm, io_client, x, y, z, lock_orientation=True):
                     GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW,
                     z_tolerance=0.15)
             )
-        arm.set_goal_state(motion_plan_constraints=[constraints])
+        goal_constraints = [constraints]
 
-    plan_result = arm.plan()
-    if not plan_result:
+    joint_trajectory = io_client.plan_motion(goal_constraints)
+    if joint_trajectory is None:
         print(f"Planning FAILED for target ({x}, {y}, {z})")
         return False
 
     print(f"Executing joint-space move to ({x}, {y}, {z})...")
-    joint_trajectory = plan_result.trajectory.get_robot_trajectory_msg().joint_trajectory
     return io_client.arm_execute(joint_trajectory)
 
 
-def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90, arm=None):
+def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=False):
     """Straight-line Cartesian move from the current pose to (x, y, z),
     holding the fixed downward grasp orientation throughout.
 
-    If `arm` is given and the straight-line path falls short of
+    If allow_fallback is True and the straight-line path falls short of
     min_fraction, falls back to a joint-space move_arm_to() instead of
     failing outright. Retreats near the edge of the validated reach
     envelope routinely land at ~0.85-0.89 -- just under the threshold -- and
     don't need a dead-straight path the way the delicate grasp/place
     descent does (a curved joint-space retreat can't knock a held block
-    sideways the way a curved DESCENT could). Only pass `arm` for moves
-    where that's true."""
-    psm = mycobot.get_planning_scene_monitor()
-    with psm.read_only() as scene:
-        joint_values = scene.current_state.get_joint_group_positions(GROUP_NAME)
-        print(f"[cartesian] joints at start: {[round(v, 4) for v in joint_values]}")
+    sideways the way a curved DESCENT could). Only pass allow_fallback=True
+    for moves where that's true."""
+    joint_values = io_client.current_joint_positions(list(HOME_RADIANS.keys()))
+    print(f"[cartesian] joints at start: {[round(v, 4) for v in joint_values.values()]}")
 
     target = make_grasp_pose(x, y, z)
 
@@ -886,10 +944,10 @@ def cartesian_move_to(mycobot, io_client, x, y, z, min_fraction=0.90, arm=None):
 
     if solution_msg is None or fraction < min_fraction:
         print(f"Cartesian planning FAILED for ({x}, {y}, {z}) (fraction={fraction:.2f})")
-        if arm is None:
+        if not allow_fallback:
             return False
         print(f"[cartesian] falling back to joint-space move_arm_to for ({x}, {y}, {z})")
-        return move_arm_to(mycobot, arm, io_client, x, y, z)
+        return move_arm_to(io_client, x, y, z)
 
     print(f"Executing Cartesian move to ({x}, {y}, {z}) (fraction={fraction:.2f})...")
 
@@ -922,8 +980,6 @@ def main():
 
     rclpy.init(args=["--ros-args", "-p", "use_sim_time:=true"])
 
-    mycobot = build_moveit()
-    arm = mycobot.get_planning_component(GROUP_NAME)
     io_client = RobotIOClient()
 
     px, py, pick_center_z = args.pick_position
@@ -939,23 +995,23 @@ def main():
           f"(block size {args.block_size:.3f}) -> flange target z={lz:.3f}")
 
     steps = [
-        ("Return to home pose", lambda: go_home(mycobot, arm, io_client)),
+        ("Return to home pose", lambda: go_home(io_client)),
         ("Toggle gripper (pre-start)", lambda: toggle_gripper(io_client)),
         ("Move to pre-grasp (above pick)",
-         lambda: move_arm_to(mycobot, arm, io_client, px, py, pz + APPROACH_HEIGHT)),
+         lambda: move_arm_to(io_client, px, py, pz + APPROACH_HEIGHT)),
         ("Descend to grasp pose (Cartesian)",
-         lambda: cartesian_move_to(mycobot, io_client, px, py, pz)),
+         lambda: cartesian_move_to(io_client, px, py, pz)),
         ("Close gripper (grasp, stop on contact)", lambda: gripper_close_until_contact(io_client)),
         ("Retreat after grasp (Cartesian)",
-         lambda: cartesian_move_to(mycobot, io_client, px, py, pz + APPROACH_HEIGHT, arm=arm)),
+         lambda: cartesian_move_to(io_client, px, py, pz + APPROACH_HEIGHT, allow_fallback=True)),
         ("Move to pre-place (above place)",
-         lambda: move_arm_to(mycobot, arm, io_client, lx, ly, lz + APPROACH_HEIGHT)),
+         lambda: move_arm_to(io_client, lx, ly, lz + APPROACH_HEIGHT)),
         ("Descend to place pose (Cartesian)",
-         lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz)),
+         lambda: cartesian_move_to(io_client, lx, ly, lz)),
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
         ("Retreat after release (Cartesian)",
-         lambda: cartesian_move_to(mycobot, io_client, lx, ly, lz + APPROACH_HEIGHT, arm=arm)),
-        ("Return to home pose (final)", lambda: go_home(mycobot, arm, io_client)),
+         lambda: cartesian_move_to(io_client, lx, ly, lz + APPROACH_HEIGHT, allow_fallback=True)),
+        ("Return to home pose (final)", lambda: go_home(io_client)),
     ]
 
     for name, action in steps:
@@ -965,13 +1021,12 @@ def main():
             print(f"Step failed: {name}. Aborting sequence.")
             break
         time.sleep(0.5)
-    
+
     print("\n=== Final return to home pose ===")
-    go_home(mycobot, arm, io_client)
+    go_home(io_client)
 
     print("\nPick-and-place sequence complete.")
     io_client.destroy_node()
-    del mycobot
     rclpy.shutdown()
 
 

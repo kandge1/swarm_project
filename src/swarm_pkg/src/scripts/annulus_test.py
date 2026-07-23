@@ -49,7 +49,6 @@ import rclpy
 from geometry_msgs.msg import Pose, Point
 from std_msgs.msg import ColorRGBA
 from visualization_msgs.msg import Marker, MarkerArray
-from moveit.core.robot_state import RobotState
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -62,7 +61,7 @@ from pick_place import (  # noqa: E402
     HOME_RADIANS,
     IK_SEEDS,
     RobotIOClient,
-    build_moveit,
+    make_joint_goal_constraints,
     go_home,
     _is_near_joint_limit,
     _is_state_colliding,
@@ -500,7 +499,7 @@ def publish_workzone(topic, frame_id, r_inner, r_outer, yaw_min, yaw_max,
 _UNSET = object()
 
 
-def solve_ik_filtered(mycobot, x, y, z, quat, verbose=False,
+def solve_ik_filtered(io_client, x, y, z, quat, verbose=False,
                       elbow_ceiling=_UNSET, wrist_ceiling=_UNSET):
     """Seeded IK with the spiral-sweep filters applied.
 
@@ -515,10 +514,9 @@ def solve_ik_filtered(mycobot, x, y, z, quat, verbose=False,
     Pass elbow_ceiling=None / wrist_ceiling=None to disable a ceiling entirely
     and let collision be the only arbiter.
 
-    Returns (RobotState|None, seed_label|None, reject_reason|None).
+    Returns ({joint_name: value}|None, seed_label|None, reject_reason|None).
     """
-    robot_model = mycobot.get_robot_model()
-    pose = make_pose(x, y, z, quat)
+    joint_names = JOINT_ORDER
 
     if elbow_ceiling is _UNSET:
         elbow_ceiling = ELBOW_CEILING
@@ -528,26 +526,29 @@ def solve_ik_filtered(mycobot, x, y, z, quat, verbose=False,
     last_reason = "no seed converged"
 
     for label, seed in IK_SEEDS:
-        state = RobotState(robot_model)
-        state.set_joint_group_positions(GROUP_NAME, list(seed.values()))
-        state.update()
-
-        if not state.set_from_ik(GROUP_NAME, pose, POSE_LINK, timeout=0.5):
+        # compute_ik_exact is the service-call equivalent of moveit_py's
+        # RobotState.set_from_ik: exact pose match (no tolerance window),
+        # seeded from `seed` exactly like the old in-process solve.
+        solution = io_client.compute_ik_exact(
+            x, y, z, *quat,
+            seed_joint_names=joint_names,
+            seed_positions=[seed[n] for n in joint_names],
+        )
+        if solution is None:
             if verbose:
                 print(f"    [ik] '{label}': no convergence")
             continue
 
-        # CRITICAL: moveit_py's set_from_ik does not reliably refresh the
-        # collision-body transforms. Without this update() the collision check
-        # below evaluates the SEED pose, not the IK solution -- and since every
-        # IK_SEEDS entry is a sane non-colliding pose, the checker then returns
-        # False for literally everything. That produced a sweep with zero
-        # self-collisions across ~1200 evaluations, which is what exposed it.
-        state.update()
+        try:
+            joint_values = {n: solution[n] for n in joint_names}
+        except KeyError:
+            if verbose:
+                print(f"    [ik] '{label}': solution missing a joint, skipping")
+            continue
 
-        joints = list(state.get_joint_group_positions(GROUP_NAME))
+        joints = [joint_values[n] for n in joint_names]
 
-        near_limit, lname, lval, llo, lhi = _is_near_joint_limit(state)
+        near_limit, lname, lval, llo, lhi = _is_near_joint_limit(joint_values)
         if near_limit:
             last_reason = f"{lname}={lval:.3f} near limit"
             if verbose:
@@ -562,7 +563,7 @@ def solve_ik_filtered(mycobot, x, y, z, quat, verbose=False,
             continue
 
         # Ground truth first, so we can tell whether a ceiling reject was real.
-        colliding = _is_state_colliding(mycobot, state)
+        colliding = _is_state_colliding(io_client, joint_values)
 
         elbow = joints[ELBOW_JOINT_INDEX]
         wrist = joints[WRIST_JOINT_INDEX]
@@ -588,12 +589,12 @@ def solve_ik_filtered(mycobot, x, y, z, quat, verbose=False,
 
         if verbose:
             print(f"    [ik] '{label}': OK -> {[round(v, 3) for v in joints]}")
-        return state, label, None
+        return joint_values, label, None
 
     return None, None, last_reason
 
 
-def screen_boundary(mycobot, points, verbose=False):
+def screen_boundary(io_client, points, verbose=False):
     """IK-screen every vertex. Returns list of result dicts."""
     results = []
     for p in points:
@@ -601,14 +602,14 @@ def screen_boundary(mycobot, points, verbose=False):
             continue
         quat = yaw_rotated_grasp_quat(p["yaw"])
         state, label, reason = solve_ik_filtered(
-            mycobot, p["x"], p["y"], p["z"], quat, verbose=verbose)
+            io_client, p["x"], p["y"], p["z"], quat, verbose=verbose)
 
         row = dict(p)
         row["ik_ok"] = state is not None
         row["seed"] = label or ""
         row["reject"] = reason or ""
         if state is not None:
-            joints = list(state.get_joint_group_positions(GROUP_NAME))
+            joints = [state[n] for n in JOINT_ORDER]
             row["joints"] = [round(v, 4) for v in joints]
             row["base_j1"] = round(joints[BASE_JOINT_INDEX], 4)
             row["elbow_j4"] = round(joints[ELBOW_JOINT_INDEX], 4)
@@ -691,7 +692,7 @@ def write_csv(results, path):
 # Collision checker self-test
 # ---------------------------------------------------------------------------
 
-def selftest_collision(mycobot, n_random=400, verbose=False):
+def selftest_collision(io_client, n_random=400, verbose=False):
     """Prove the collision checker actually works before trusting any verdict.
 
     WHY THIS EXISTS: the first (r,z) sweep reported 181 ceiling rejects of
@@ -709,20 +710,15 @@ def selftest_collision(mycobot, n_random=400, verbose=False):
     Probe 3 is the real one. If 0/N random configurations collide, the checker
     is dead and every reachability conclusion so far is void.
     """
-    robot_model = mycobot.get_robot_model()
-
     print("\n" + "=" * 68)
     print("COLLISION CHECKER SELF-TEST")
     print("=" * 68)
 
-    def check(state):
-        state.update()
-        return _is_state_colliding(mycobot, state)
+    def check(joint_dict):
+        return _is_state_colliding(io_client, joint_dict)
 
     # ---- Probe 1: home ----
-    home = RobotState(robot_model)
-    home.set_joint_group_positions(GROUP_NAME, list(HOME_RADIANS.values()))
-    home_colliding = check(home)
+    home_colliding = check(dict(HOME_RADIANS))
     print(f"  [1] home pose            -> colliding={home_colliding}   "
           f"(expected False)")
 
@@ -743,27 +739,20 @@ def selftest_collision(mycobot, n_random=400, verbose=False):
     ]
     any_folded_collide = False
     for label, cfg in folded_cases:
-        s = RobotState(robot_model)
-        s.set_joint_group_positions(GROUP_NAME, [cfg[n] for n in JOINT_ORDER])
-        c = check(s)
+        c = check(cfg)
         any_folded_collide = any_folded_collide or c
         print(f"  [2] {label:24s} -> colliding={c}")
 
     # ---- Probe 3: random configuration collision rate ----
+    import random
+
     n_collide = 0
     n_ok = 0
     failures = 0
     for i in range(n_random):
-        s = RobotState(robot_model)
+        vals = {n: random.uniform(-2.8, 2.8) for n in JOINT_ORDER}
         try:
-            s.set_to_random_positions()
-        except Exception:
-            # Fallback: uniform sample inside conservative joint ranges.
-            import random
-            vals = [random.uniform(-2.8, 2.8) for _ in JOINT_ORDER]
-            s.set_joint_group_positions(GROUP_NAME, vals)
-        try:
-            if check(s):
+            if check(vals):
                 n_collide += 1
             else:
                 n_ok += 1
@@ -785,9 +774,8 @@ def selftest_collision(mycobot, n_random=400, verbose=False):
         print("  0.13 m inner boundary from --no-elbow-ceiling is UNPROVEN.")
         print("  Do not relax ELBOW_CEILING on the strength of that number.")
         print("  Next: check _is_state_colliding in pick_place.py -- confirm")
-        print("  scene.is_state_colliding(state, GROUP_NAME) is the right")
-        print("  signature on this moveit_py build, and that the ACM isn't")
-        print("  disabling every pair. Try passing verbose=True to it.")
+        print("  /check_state_validity is being called correctly and the ACM")
+        print("  isn't disabling every pair. Try passing verbose=True to it.")
         return False
     if home_colliding:
         print("SUSPECT.")
@@ -802,8 +790,7 @@ def selftest_collision(mycobot, n_random=400, verbose=False):
         return False
     print("CHECKER IS LIVE.")
     print(f"  {rate:.1f}% of random configs collide and home does not. Verdicts")
-    print("  from the sweep can be trusted. Re-run --sweep-rz now that")
-    print("  set_from_ik is followed by state.update().")
+    print("  from the sweep can be trusted.")
     return True
 
 
@@ -811,7 +798,7 @@ def selftest_collision(mycobot, n_random=400, verbose=False):
 # (r, z) sweep -- finds the real inner boundary
 # ---------------------------------------------------------------------------
 
-def sweep_rz(mycobot, r_lo, r_hi, r_step, z_list, yaw_list,
+def sweep_rz(io_client, r_lo, r_hi, r_step, z_list, yaw_list,
              elbow_ceiling, wrist_ceiling, outdir, verbose=False):
     """Screen an (r, z) grid to locate the inner radius cliff.
 
@@ -856,11 +843,11 @@ def sweep_rz(mycobot, r_lo, r_hi, r_step, z_list, yaw_list,
                 quat = yaw_rotated_grasp_quat(yaw)
                 x, y = r * math.cos(yaw), r * math.sin(yaw)
                 state, label, reason = solve_ik_filtered(
-                    mycobot, x, y, z, quat, verbose=verbose,
+                    io_client, x, y, z, quat, verbose=verbose,
                     elbow_ceiling=elbow_ceiling, wrist_ceiling=wrist_ceiling)
 
                 if state is not None:
-                    joints = list(state.get_joint_group_positions(GROUP_NAME))
+                    joints = [state[n] for n in JOINT_ORDER]
                     elbow = round(joints[ELBOW_JOINT_INDEX], 3)
                     wrist = round(joints[WRIST_JOINT_INDEX], 3)
                     code = "#"
@@ -990,30 +977,26 @@ def sweep_rz(mycobot, r_lo, r_hi, r_step, z_list, yaw_list,
 # Motion
 # ---------------------------------------------------------------------------
 
-def move_to_vertex(mycobot, arm, io_client, point, z_override=None, verbose=False):
+def move_to_vertex(io_client, point, z_override=None, verbose=False):
     """Joint-space plan to a single boundary vertex using seeded IK."""
     z = point["z"] if z_override is None else z_override
     quat = yaw_rotated_grasp_quat(point["yaw"])
 
     state, label, reason = solve_ik_filtered(
-        mycobot, point["x"], point["y"], z, quat, verbose=verbose)
+        io_client, point["x"], point["y"], z, quat, verbose=verbose)
     if state is None:
         print(f"    IK failed ({reason})")
         return False
 
-    arm.set_start_state_to_current_state()
-    arm.set_goal_state(robot_state=state)
-
-    plan_result = arm.plan()
-    if not plan_result:
+    joint_trajectory = io_client.plan_motion([make_joint_goal_constraints(state)])
+    if joint_trajectory is None:
         print(f"    OMPL planning FAILED (IK seed '{label}' was valid)")
         return False
 
-    joint_trajectory = plan_result.trajectory.get_robot_trajectory_msg().joint_trajectory
     return io_client.arm_execute(joint_trajectory)
 
 
-def cartesian_edge(mycobot, io_client, edge_points, z_override=None,
+def cartesian_edge(io_client, edge_points, z_override=None,
                    execute=True, min_fraction=CARTESIAN_MIN_FRACTION):
     """One compute_cartesian_path call for a whole edge.
 
@@ -1055,7 +1038,7 @@ def cartesian_edge(mycobot, io_client, edge_points, z_override=None,
     return fraction, True
 
 
-def joint_chain_edge(mycobot, arm, io_client, edge_points, z_override=None, verbose=False,
+def joint_chain_edge(io_client, edge_points, z_override=None, verbose=False,
                      dwell_sec=DWELL_SEC):
     """Chained joint-space plans, vertex to vertex, no go_home() in between.
     Each step is a small increment, which is what kept planning reliable in
@@ -1063,7 +1046,7 @@ def joint_chain_edge(mycobot, arm, io_client, edge_points, z_override=None, verb
     reached = 0
     for p in edge_points:
         print(f"    -> [{p['index']:3d}] r={p['r']:.3f} yaw={p['yaw_deg']:+7.2f}")
-        if not move_to_vertex(mycobot, arm, io_client, p, z_override=z_override, verbose=verbose):
+        if not move_to_vertex(io_client, p, z_override=z_override, verbose=verbose):
             print(f"    STOPPED at vertex {p['index']}")
             break
         reached += 1
@@ -1071,7 +1054,7 @@ def joint_chain_edge(mycobot, arm, io_client, edge_points, z_override=None, verb
     return reached
 
 
-def probe_edges(mycobot, io_client, edges, z_override=None):
+def probe_edges(io_client, edges, z_override=None):
     """Cartesian fraction per edge, no execution. Note the fractions are
     measured from whatever the current state is, so this is a rough signal --
     run --execute for the real answer."""
@@ -1080,7 +1063,7 @@ def probe_edges(mycobot, io_client, edges, z_override=None):
     print("=" * 68)
     for edge in edges:
         print(f"\n  {edge[0]['edge']} ({len(edge)} waypoints)")
-        cartesian_edge(mycobot, io_client, edge, z_override=z_override,
+        cartesian_edge(io_client, edge, z_override=z_override,
                        execute=False, min_fraction=2.0)  # min>1 => never executes
 
 
@@ -1182,8 +1165,8 @@ def main():
     yaw_max = math.radians(args.yaw_max)
 
     # --- --rviz needs the boundary geometry (for the traced-outline overlay)
-    # but NOT MoveIt -- no build_moveit(), no planning scene, so it stays
-    # lightweight and can't be affected by the MoveItCpp teardown segfault.
+    # but NOT MoveIt -- no RobotIOClient, no planning scene, so it stays
+    # lightweight.
     if args.rviz:
         points, _edges = generate_boundary(
             r_inner=args.r_inner, r_outer=args.r_outer,
@@ -1211,23 +1194,20 @@ def main():
     if args.sweep_rz or args.selftest_collision:
         rclpy.init(args=["--ros-args", "-p", "use_sim_time:=true"])
         time.sleep(1.5)
-        mycobot = build_moveit()
+        io_client = RobotIOClient()
         if args.selftest_collision:
-            selftest_collision(mycobot, n_random=args.selftest_n,
+            selftest_collision(io_client, n_random=args.selftest_n,
                                verbose=args.verbose)
         else:
-            sweep_rz(mycobot,
+            sweep_rz(io_client,
                      args.sweep_r_lo, args.sweep_r_hi, args.sweep_r_step,
                      list(args.sweep_z),
                      [math.radians(v) for v in args.sweep_yaw],
                      ELBOW_CEILING, WRIST_CEILING,
                      args.outdir, verbose=args.verbose)
-        # Exit BEFORE MoveItCpp teardown. moveit_py segfaults inside
-        # ~MoveItCpp; the previous os._exit() was placed after `del mycobot`
-        # and so never ran. All work is done and flushed by this point.
-        sys.stdout.flush()
-        sys.stderr.flush()
-        os._exit(0)
+        io_client.destroy_node()
+        rclpy.shutdown()
+        return
 
 
     points, edges = generate_boundary(
@@ -1272,22 +1252,20 @@ def main():
     rclpy.init(args=["--ros-args", "-p", "use_sim_time:=true"])
     time.sleep(1.5)
 
-    mycobot = build_moveit()
-    arm = mycobot.get_planning_component(GROUP_NAME)
     io_client = RobotIOClient()
 
     try:
         # ---- SCREEN ----
         if args.screen:
             print("\n=== IK screen ===")
-            results = screen_boundary(mycobot, points, verbose=args.verbose)
+            results = screen_boundary(io_client, points, verbose=args.verbose)
             report_screen(results, edges)
             write_csv(results, os.path.join(args.outdir, "annulus_screen.csv"))
             return
 
         # ---- Everything below moves or plans against move_group ----
         print("\n=== Return to home pose ===")
-        if not go_home(mycobot, arm, io_client):
+        if not go_home(io_client):
             print("Could not reach home. Aborting.")
             return
 
@@ -1299,20 +1277,20 @@ def main():
 
         # ---- PROBE ----
         if args.probe:
-            probe_edges(mycobot, io_client, edges, z_override=args.z)
+            probe_edges(io_client, edges, z_override=args.z)
             return
 
         # ---- EXECUTE ----
         first = edges[0][0]
 
         print("\n=== Move to hover above first vertex ===")
-        if not move_to_vertex(mycobot, arm, io_client, first,
+        if not move_to_vertex(io_client, first,
                               z_override=args.z + HOVER_DZ, verbose=args.verbose):
             print("Could not reach the start hover pose. Aborting.")
             return
 
         print("\n=== Descend to trace plane (Cartesian) ===")
-        frac, ok = cartesian_edge(mycobot, io_client, [first], z_override=args.z)
+        frac, ok = cartesian_edge(io_client, [first], z_override=args.z)
         if not ok:
             print("Could not descend to the trace plane. Aborting.")
             return
@@ -1322,13 +1300,13 @@ def main():
             name = edge[0]["edge"]
             print(f"\n=== Edge: {name} ({len(edge)} waypoints) ===")
             if args.strategy == "cartesian":
-                frac, ok = cartesian_edge(mycobot, io_client, edge, z_override=args.z)
+                frac, ok = cartesian_edge(io_client, edge, z_override=args.z)
                 summary.append((name, f"fraction={frac:.3f}", "executed" if ok else "skipped"))
                 if not ok:
                     print("    edge not executed -- stopping trace here")
                     break
             else:
-                reached = joint_chain_edge(mycobot, arm, io_client, edge,
+                reached = joint_chain_edge(io_client, edge,
                                            z_override=args.z, verbose=args.verbose,
                                            dwell_sec=args.dwell)
                 summary.append((name, f"{reached}/{len(edge)} vertices", ""))
@@ -1338,10 +1316,10 @@ def main():
 
         print("\n=== Retreat to hover ===")
         last = edges[-1][-1] if summary else first
-        cartesian_edge(mycobot, io_client, [last], z_override=args.z + HOVER_DZ)
+        cartesian_edge(io_client, [last], z_override=args.z + HOVER_DZ)
 
         print("\n=== Return to home pose (final) ===")
-        go_home(mycobot, arm, io_client)
+        go_home(io_client)
 
         print("\n" + "=" * 68)
         print("TRACE SUMMARY")
@@ -1351,12 +1329,7 @@ def main():
 
     finally:
         io_client.destroy_node()
-        # Exit BEFORE MoveItCpp teardown -- see note in the sweep branch.
-        # Deliberately NOT calling `del mycobot` / rclpy.shutdown(): that is
-        # what segfaults, and os._exit() placed after them never runs.
-        sys.stdout.flush()
-        sys.stderr.flush()
-        os._exit(0)
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":
