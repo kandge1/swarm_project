@@ -101,7 +101,14 @@ def generate_launch_description():
         package="rviz2",
         executable="rviz2",
         output="log",
-        arguments=["-d", str(moveit_config.package_path / "config/moveit.rviz")],
+        # Resolved via get_package_share_directory rather than
+        # moveit_config.package_path: that attribute doesn't exist on ROS2
+        # Galactic's MoveItConfigs -- it's a newer addition. Doesn't matter
+        # for Gazebo itself (dev-workstation-only, never runs on Galactic),
+        # but kept consistent with real_robot.launch.py's fix.
+        arguments=["-d", os.path.join(
+            get_package_share_directory("mycobot_280pi_camera_moveit2"),
+            "config", "moveit.rviz")],
         parameters=[
             moveit_config.robot_description,
             moveit_config.robot_description_semantic,
