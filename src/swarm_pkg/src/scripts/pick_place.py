@@ -612,7 +612,9 @@ class RobotIOClient(Node):
         if response is None or response.motion_plan_response.error_code.val != 1:
             return None
 
-        return response.motion_plan_response.trajectory.joint_trajectory
+        joint_trajectory = response.motion_plan_response.trajectory.joint_trajectory
+        _ensure_monotonic_timing(joint_trajectory)
+        return joint_trajectory
 
     # ---- State validity (replaces moveit_py's planning_scene_monitor) ----
     def check_state_validity(self, joint_dict, group_name=GROUP_NAME):
@@ -656,6 +658,68 @@ def make_joint_goal_constraints(joint_dict, tolerance=0.001):
         jc.weight = 1.0
         constraints.joint_constraints.append(jc)
     return constraints
+
+
+# Fallback time parameterization, in rad/s -- deliberately conservative,
+# well under joint_limits.yaml's 1.0 rad/s per-joint max (which itself
+# defaults to a further 0.1 scaling factor project-wide). Only ever used as
+# a safety net; see _ensure_monotonic_timing's docstring for when it kicks in.
+_FALLBACK_MAX_JOINT_SPEED = 0.2  # rad/s
+_FALLBACK_MIN_SEGMENT_SEC = 0.1  # floor per waypoint, avoids zero-length segments
+
+
+def _duration_to_sec(duration):
+    return duration.sec + duration.nanosec * 1e-9
+
+
+def _sec_to_duration(seconds, duration):
+    duration.sec = int(seconds)
+    duration.nanosec = int((seconds % 1) * 1e9)
+
+
+def _ensure_monotonic_timing(joint_trajectory):
+    """Recompute strictly-increasing time_from_start for every waypoint if
+    the planner returned a raw geometric path with no time parameterization
+    applied at all (every point at time_from_start=0). Observed on ROS2
+    Galactic's /plan_kinematic_path: the response_adapters config key that
+    normally adds time parameterization (AddTimeOptimalParameterization) had
+    to be dropped from ompl_planning.yaml entirely, because Galactic and
+    Jazzy require opposite, mutually incompatible types for that parameter
+    (a plain string vs. a string array) -- see ompl_planning.yaml's comment.
+    Jazzy's own fallback still applies proper timing without it; Galactic's
+    doesn't, and joint_trajectory_controller then rejects the trajectory
+    outright ("Time between points 0 and 1 is not strictly increasing").
+
+    This is a pure safety net: if the trajectory already has strictly
+    increasing times (Jazzy, Gazebo, or once a real per-distro fix exists),
+    this is a no-op. When it does need to act, it assigns each waypoint a
+    time delta from the previous one based on the largest single-joint
+    angular step and a conservative constant speed -- not true time-optimal
+    parameterization, just enough to produce a valid, safely-paced
+    trajectory for the controller to execute."""
+    points = joint_trajectory.points
+    if len(points) < 2:
+        return
+
+    already_monotonic = all(
+        _duration_to_sec(points[i + 1].time_from_start) > _duration_to_sec(points[i].time_from_start)
+        for i in range(len(points) - 1)
+    )
+    if already_monotonic:
+        return
+
+    t = 0.0
+    _sec_to_duration(t, points[0].time_from_start)
+    prev_positions = list(points[0].positions)
+    for point in points[1:]:
+        max_delta = max(
+            (abs(a - b) for a, b in zip(point.positions, prev_positions)),
+            default=0.0,
+        )
+        dt = max(_FALLBACK_MIN_SEGMENT_SEC, max_delta / _FALLBACK_MAX_JOINT_SPEED)
+        t += dt
+        _sec_to_duration(t, point.time_from_start)
+        prev_positions = list(point.positions)
 
 
 def make_position_constraint(link_name, frame_id, x, y, z, tolerance=0.04):
