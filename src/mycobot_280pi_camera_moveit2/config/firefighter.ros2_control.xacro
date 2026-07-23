@@ -1,7 +1,14 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
     <xacro:macro name="firefighter_ros2_control" params="name initial_positions_file hardware_mode:=mock">
-        <xacro:property name="initial_positions" value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
+        <!-- Bare load_yaml(), not xacro.load_yaml(): ROS2 Galactic's xacro
+             (which the physical robot runs) doesn't expose the "xacro"
+             module inside expressions at all, only the bare function; the
+             xacro.-prefixed form is fatal there. Newer xacro (this
+             project's dev machine runs Jazzy) still accepts the bare form,
+             just with a deprecation warning, so this one spelling works on
+             both distros. -->
+        <xacro:property name="initial_positions" value="${load_yaml(initial_positions_file)['initial_positions']}"/>
 
         <ros2_control name="${name}" type="system">
             <hardware>
