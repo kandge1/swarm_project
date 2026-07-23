@@ -85,7 +85,7 @@ ps aux | grep -iE "gz sim|parameter_bridge|move_group|robot_state_publisher" | g
 ```bash
 cd ~/swarm/swarm_project
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2
+colcon build
 source install/setup.bash
 ros2 launch mycobot_280pi_camera_moveit2 gazebo.launch.py
 ```
@@ -345,4 +345,14 @@ ros2 pkg list | grep mycobot_280pi_camera_moveit2
   reading, so `gripper_close_until_contact()`'s contact detection can't
   work as written against real hardware. See "Known gaps" under Real
   Hardware Workflow above.
+
+### `arm_group_controller`: "Time between points 0 and 1 is not strictly increasing"
+- Fixed (Fix 6) -- was caused by dropping `ompl_planning.yaml`'s
+  `response_adapters` (Fix 5, for the Galactic/Jazzy type conflict), which
+  also dropped time parameterization on Galactic. `pick_place.py`'s
+  `plan_motion()` now has a `_ensure_monotonic_timing()` safety net that
+  recomputes valid waypoint timing when the planner returns none -- a
+  no-op on Jazzy/Gazebo, where trajectories already come back properly
+  timed. If this resurfaces, check whether `/plan_kinematic_path`'s
+  response has all-zero `time_from_start` again.
 
