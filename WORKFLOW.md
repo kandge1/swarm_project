@@ -132,6 +132,11 @@ persistent Python process using `pymycobot`, elephantrobotics' vendor
 driver) over a Unix domain socket. **This only builds/runs on the robot
 itself (ROS2 Galactic)** -- see the note under Setup above.
 
+**Path note:** the robot's clone of this repo lives at `~/swarm_project`
+(no `swarm/` parent directory) -- different from mars, where it's
+`~/swarm/swarm_project`. The commands below use the robot's actual path;
+adjust if yours differs.
+
 ### Known gaps -- read before running against real hardware
 
 - **Gripper contact detection will not work as-is.** `pick_place.py`'s
@@ -143,22 +148,18 @@ itself (ROS2 Galactic)** -- see the note under Setup above.
   behave as if nothing is ever touched. A real fix needs a different signal
   (e.g. `is_gripper_moving()` going to 0 mid-close as a stall/contact proxy)
   and hasn't been built yet.
-- **Serial port and baud rate are unverified guesses.**
-  `mycobot_bridge.py`'s `DEFAULT_SERIAL_PORT`/`DEFAULT_BAUD_RATE` need
-  confirming against this exact Pi's onboard UART before trusting them.
 - **Joint velocity is always reported as `0.0`** -- pymycobot exposes no
   velocity reading. Controllers here only rely on position tracking, so
   this is a placeholder, not a bug, but worth knowing.
-- **Not yet compiled on the actual target.** `mycobot_system.cpp` was
-  written and structurally verified against Galactic's documented API
-  (confirmed via control.ros.org), and a scratch copy with Jazzy's
-  newer `read()`/`write()` signature compiled clean on mars -- but the
-  real, Galactic-exact build has not been run on the Pi yet. Expect to
-  debug real compiler errors there.
+
+Confirmed working on the real robot: `mycobot_hardware` builds clean on
+Galactic, `mycobot_bridge.py` connects to the arm at `/dev/ttyAMA0 @
+1000000` baud, and `move_group`/RViz/controllers all come up (see
+Troubleshooting below for the `libbackward.so` fix that was needed first).
 
 ### Terminal 1: Build and launch (on the robot, Galactic)
 ```bash
-cd ~/swarm/swarm_project
+cd ~/swarm_project
 source /opt/ros/galactic/setup.bash
 colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
 source install/setup.bash
@@ -170,15 +171,12 @@ This starts, in order: `mycobot_bridge.py` (opens the serial connection),
 connects to the bridge's socket), `move_group`, `rviz2`, then -- after a
 3s delay for the above to come up -- the controller spawners.
 
-Verify:
+### Terminal 2: Verify, then run pick_place.py / annulus_test.py
 ```bash
-ros2 control list_controllers
-```
-
-### Terminal 2: Run pick_place.py / annulus_test.py
-```bash
-source ~/swarm/swarm_project/install/setup.bash
-python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
+source ~/swarm_project/install/setup.bash
+ros2 node list                    # /move_group must be present
+ros2 control list_controllers     # all three should show "active"
+python3 ~/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
 ```
 
 Same scripts as the RViz/Gazebo workflows -- they talk to `move_group` over
@@ -318,11 +316,22 @@ ros2 pkg list | grep mycobot_280pi_camera_moveit2
 - **On mars:** expected. It targets Galactic's `hardware_interface` API,
   which differs from Jazzy's `read()`/`write()` signature. Always build
   with `--packages-skip mycobot_hardware` on mars.
-- **On the robot (Galactic):** not expected -- this hasn't been built on
-  real Galactic yet (only structurally verified against docs + a scratch
-  Jazzy build). If it fails here, that's a real bug; check the exact
-  compiler error against `control.ros.org/galactic`'s `SystemInterface`
-  docs first.
+- **On the robot (Galactic):** confirmed working -- builds cleanly.
+
+### `move_group` dies instantly: `libbackward.so: cannot open shared object file`
+- Known Galactic packaging gap: `ros-galactic-moveit-ros-move-group`
+  should pull in `ros-galactic-backward-ros` but doesn't always.
+  `pi_setup/install_pi_galactic.sh` now installs it explicitly; if you
+  set up the robot before this was added:
+  ```bash
+  sudo apt install ros-galactic-backward-ros
+  ```
+- **Symptom to watch for:** RViz's Motion Planning panel can still load
+  and show the robot model even with `move_group` dead -- that's RViz's
+  own internal preview, not proof move_group is running. The real
+  tell is `Failed to call service get_planning_scene, have you launched
+  move_group...?` in the RViz log, or `ros2 node list` not showing
+  `/move_group`.
 
 ### Real hardware: `mycobot_bridge.py` can't open the serial port
 - Confirm `DEFAULT_SERIAL_PORT`/`DEFAULT_BAUD_RATE` in

@@ -61,6 +61,7 @@ sudo apt install -y \
     ros-galactic-moveit-planners \
     ros-galactic-moveit-ros-planning \
     ros-galactic-moveit-ros-move-group \
+    ros-galactic-backward-ros \
     ros-galactic-moveit-ros-visualization \
     ros-galactic-moveit-kinematics \
     ros-galactic-moveit-configs-utils \

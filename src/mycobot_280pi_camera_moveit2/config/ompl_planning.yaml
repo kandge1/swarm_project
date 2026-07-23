@@ -10,15 +10,16 @@
 # registered.
 planning_plugins:
   - ompl_interface/OMPLPlanner
-request_adapters:
-  - default_planning_request_adapters/ResolveConstraintFrames
-  - default_planning_request_adapters/ValidateWorkspaceBounds
-  - default_planning_request_adapters/CheckStartStateBounds
-  - default_planning_request_adapters/CheckStartStateCollision
-response_adapters:
-  - default_planning_response_adapters/AddTimeOptimalParameterization
-  - default_planning_response_adapters/ValidateSolution
-  - default_planning_response_adapters/DisplayMotionPath
+# request_adapters/response_adapters deliberately NOT set here: ROS2
+# Galactic's PlanningPipeline C++ constructor reads them as a single STRING
+# parameter (throws InvalidParameterTypeException on a list), while Jazzy's
+# reads them as a string ARRAY (throws ParameterTypeException on a plain
+# string) -- confirmed by hitting both exceptions in turn. No single value
+# satisfies both distros' strict parameter typing. Omitting the keys
+# entirely sidesteps the conflict: both distros fall back to their own
+# built-in default adapter list when the parameter isn't set at all (this is
+# exactly what happened before this file existed, when Jazzy had no
+# ompl_planning.yaml whatsoever and worked fine on built-in defaults).
 arm_group:
   planner_configs:
     - RRTConnectkConfigDefault
