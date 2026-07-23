@@ -9,7 +9,7 @@ import os
 def generate_launch_description():
     # Build MoveIt config with hardware_mode=real so mycobot_hardware/MyCobotSystem is used
     moveit_config = (
-        MoveItConfigsBuilder("firefighter", package_name="mycobot_280pi_camera_moveit2")
+        MoveItConfigsBuilder("firefighter")
         .robot_description(mappings={"hardware_mode": "real"})
         .to_moveit_configs()
     )

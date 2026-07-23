@@ -10,7 +10,7 @@ import os
 def generate_launch_description():
     # Build MoveIt config with hardware_mode=gazebo so gz_ros2_control/GazeboSimSystem is used
     moveit_config = (
-        MoveItConfigsBuilder("firefighter", package_name="mycobot_280pi_camera_moveit2")
+        MoveItConfigsBuilder("firefighter")
         .robot_description(mappings={"hardware_mode": "gazebo"})
         .to_moveit_configs()
     )
