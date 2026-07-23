@@ -1,18 +1,26 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-    <xacro:macro name="firefighter_ros2_control" params="name initial_positions_file use_sim:=false">
+    <xacro:macro name="firefighter_ros2_control" params="name initial_positions_file hardware_mode:=mock">
         <xacro:property name="initial_positions" value="${xacro.load_yaml(initial_positions_file)['initial_positions']}"/>
 
         <ros2_control name="${name}" type="system">
             <hardware>
-                <xacro:if value="${use_sim}">
+                <!-- hardware_mode selects exactly one of: mock (RViz-only),
+                     gazebo (Gazebo Harmonic sim), real (physical mycobot 280
+                     Pi hardware). Same URDF/ros2_control joint list serves
+                     all three; only the plugin underneath differs. -->
+                <xacro:if value="${hardware_mode == 'gazebo'}">
                     <!-- Gazebo Harmonic physics-coupled hardware interface -->
                     <plugin>gz_ros2_control/GazeboSimSystem</plugin>
                 </xacro:if>
-                <xacro:unless value="${use_sim}">
+                <xacro:if value="${hardware_mode == 'real'}">
+                    <!-- Physical mycobot 280 Pi hardware interface -->
+                    <plugin>mycobot_hardware/MyCobotSystem</plugin>
+                </xacro:if>
+                <xacro:if value="${hardware_mode == 'mock'}">
                     <!-- Mock hardware for RViz-only mode -->
                     <plugin>mock_components/GenericSystem</plugin>
-                </xacro:unless>
+                </xacro:if>
             </hardware>
             <joint name="joint2_to_joint1">
                 <command_interface name="position">

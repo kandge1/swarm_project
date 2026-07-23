@@ -5,9 +5,18 @@
 ```bash
 cd ~/swarm/swarm_project
 source /opt/ros/jazzy/setup.bash
-colcon build  # Only if code changed
+colcon build --packages-skip mycobot_hardware  # Only if code changed
 source install/setup.bash
 ```
+
+**On mars (Jazzy), always skip `mycobot_hardware`.** It's a `ros2_control`
+plugin for the physical arm, written against ROS2 Galactic's
+`hardware_interface` API (which the actual robot runs) -- Galactic and
+Jazzy disagree on the `read()`/`write()` method signature, so this package
+can only build on Galactic. Plain `colcon build` with no flags will now
+fail on this one package; that's expected on mars, not a regression. On the
+robot itself (Galactic), build it normally -- see "Real Hardware Workflow"
+below.
 
 ---
 
@@ -114,6 +123,70 @@ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/spawn_world.py
 
 ---
 
+## Real Hardware Workflow
+
+Runs against the physical mycobot 280 Pi instead of Gazebo or RViz-mock, via
+the `mycobot_hardware/MyCobotSystem` `ros2_control` plugin
+(`src/mycobot_hardware/`), which bridges to `mycobot_bridge.py` (a
+persistent Python process using `pymycobot`, elephantrobotics' vendor
+driver) over a Unix domain socket. **This only builds/runs on the robot
+itself (ROS2 Galactic)** -- see the note under Setup above.
+
+### Known gaps -- read before running against real hardware
+
+- **Gripper contact detection will not work as-is.** `pick_place.py`'s
+  `gripper_close_until_contact()` relies on reading `gripper_controller`'s
+  effort off `/joint_states`, but pymycobot's gripper API
+  (`set_gripper_value`/`get_gripper_value`, a 0-100 scale) exposes no
+  force/effort reading at all. `mycobot_bridge.py` reports a constant `0.0`
+  placeholder for gripper effort, so the contact-detection loop will always
+  behave as if nothing is ever touched. A real fix needs a different signal
+  (e.g. `is_gripper_moving()` going to 0 mid-close as a stall/contact proxy)
+  and hasn't been built yet.
+- **Serial port and baud rate are unverified guesses.**
+  `mycobot_bridge.py`'s `DEFAULT_SERIAL_PORT`/`DEFAULT_BAUD_RATE` need
+  confirming against this exact Pi's onboard UART before trusting them.
+- **Joint velocity is always reported as `0.0`** -- pymycobot exposes no
+  velocity reading. Controllers here only rely on position tracking, so
+  this is a placeholder, not a bug, but worth knowing.
+- **Not yet compiled on the actual target.** `mycobot_system.cpp` was
+  written and structurally verified against Galactic's documented API
+  (confirmed via control.ros.org), and a scratch copy with Jazzy's
+  newer `read()`/`write()` signature compiled clean on mars -- but the
+  real, Galactic-exact build has not been run on the Pi yet. Expect to
+  debug real compiler errors there.
+
+### Terminal 1: Build and launch (on the robot, Galactic)
+```bash
+cd ~/swarm/swarm_project
+source /opt/ros/galactic/setup.bash
+colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
+source install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 real_robot.launch.py
+```
+
+This starts, in order: `mycobot_bridge.py` (opens the serial connection),
+`robot_state_publisher`, `ros2_control_node` (loads `MyCobotSystem`, which
+connects to the bridge's socket), `move_group`, `rviz2`, then -- after a
+3s delay for the above to come up -- the controller spawners.
+
+Verify:
+```bash
+ros2 control list_controllers
+```
+
+### Terminal 2: Run pick_place.py / annulus_test.py
+```bash
+source ~/swarm/swarm_project/install/setup.bash
+python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
+```
+
+Same scripts as the RViz/Gazebo workflows -- they talk to `move_group` over
+the same services/actions regardless of which `hardware_mode` is actually
+moving the arm underneath.
+
+---
+
 ## Project Structure
 
 ```
@@ -147,22 +220,37 @@ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/spawn_world.py
 │   │       ├── adaptive_gripper/    (7 .dae mesh files)
 │   │       └── mycobot_280_pi/      (11 .dae mesh files)
 │   │
-│   └── mycobot_280pi_camera_moveit2/  # MoveIt config
-│       ├── package.xml
+│   ├── mycobot_280pi_camera_moveit2/  # MoveIt config
+│   │   ├── package.xml
+│   │   ├── CMakeLists.txt
+│   │   ├── config/
+│   │   │   ├── firefighter.urdf.xacro       # hardware_mode: mock|gazebo|real
+│   │   │   ├── firefighter.srdf
+│   │   │   ├── firefighter.ros2_control.xacro
+│   │   │   ├── joint_limits.yaml
+│   │   │   ├── kinematics.yaml
+│   │   │   ├── initial_positions.yaml
+│   │   │   ├── moveit_controllers.yaml
+│   │   │   ├── ros2_controllers.yaml
+│   │   │   ├── pilz_cartesian_limits.yaml
+│   │   │   └── moveit.rviz
+│   │   ├── launch/
+│   │   │   ├── demo.launch.py         # hardware_mode=mock (default)
+│   │   │   ├── gazebo.launch.py       # hardware_mode=gazebo
+│   │   │   └── real_robot.launch.py   # hardware_mode=real
+│   │   └── worlds/
+│   │
+│   └── mycobot_hardware/        # ros2_control plugin for REAL hardware
+│       ├── package.xml          # Galactic-only -- see Setup note above
 │       ├── CMakeLists.txt
-│       ├── config/
-│       │   ├── firefighter.urdf.xacro
-│       │   ├── firefighter.srdf
-│       │   ├── firefighter.ros2_control.xacro
-│       │   ├── joint_limits.yaml
-│       │   ├── kinematics.yaml
-│       │   ├── initial_positions.yaml
-│       │   ├── moveit_controllers.yaml
-│       │   ├── ros2_controllers.yaml
-│       │   ├── pilz_cartesian_limits.yaml
-│       │   └── moveit.rviz
-│       ├── launch/
-│       └── worlds/
+│       ├── mycobot_hardware.xml # pluginlib description
+│       ├── include/mycobot_hardware/mycobot_system.hpp
+│       ├── src/mycobot_system.cpp
+│       └── scripts/mycobot_bridge.py  # pymycobot bridge daemon
+│
+├── pi_setup/                    # Robot-side install (Ubuntu 20.04/Galactic)
+│   ├── install_pi_galactic.sh
+│   └── requirements.txt
 │
 ├── legacy/                      # Old code (keep for reference)
 ├── build/                       # Build artifacts (auto-generated)
@@ -177,8 +265,11 @@ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/spawn_world.py
 ## Quick Commands
 
 ```bash
-# Build everything
-cd ~/swarm/swarm_project && colcon build
+# Build everything (on mars/Jazzy: mycobot_hardware will NOT build -- see below)
+cd ~/swarm/swarm_project && colcon build --packages-skip mycobot_hardware
+
+# On the robot (Galactic), mycobot_hardware builds normally -- include it:
+colcon build
 
 # Build only robot packages
 colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2
@@ -222,4 +313,27 @@ ros2 pkg list | grep mycobot_280pi_camera_moveit2
 - Kill old processes: `pkill -9 -f "gz sim"`
 - Clean shared memory: `rm -rf /dev/shm/fastrtps_* /dev/shm/ros_*`
 - Launch fresh: `ros2 launch mycobot_280pi_camera_moveit2 gazebo.launch.py`
+
+### `mycobot_hardware` fails to build
+- **On mars:** expected. It targets Galactic's `hardware_interface` API,
+  which differs from Jazzy's `read()`/`write()` signature. Always build
+  with `--packages-skip mycobot_hardware` on mars.
+- **On the robot (Galactic):** not expected -- this hasn't been built on
+  real Galactic yet (only structurally verified against docs + a scratch
+  Jazzy build). If it fails here, that's a real bug; check the exact
+  compiler error against `control.ros.org/galactic`'s `SystemInterface`
+  docs first.
+
+### Real hardware: `mycobot_bridge.py` can't open the serial port
+- Confirm `DEFAULT_SERIAL_PORT`/`DEFAULT_BAUD_RATE` in
+  `src/mycobot_hardware/scripts/mycobot_bridge.py` actually match this
+  Pi's onboard UART -- both are unverified placeholders.
+- Check permissions on the serial device (may need the user in the
+  `dialout` group, or `sudo chmod`).
+
+### Real hardware: gripper never reports contact
+- Expected for now -- pymycobot's gripper API has no effort/force
+  reading, so `gripper_close_until_contact()`'s contact detection can't
+  work as written against real hardware. See "Known gaps" under Real
+  Hardware Workflow above.
 
