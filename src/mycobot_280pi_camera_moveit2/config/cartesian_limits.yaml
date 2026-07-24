@@ -1,0 +1,12 @@
+# Standard MoveIt cartesian_limits.yaml filename/schema. Content mirrors
+# pilz_cartesian_limits.yaml (same numbers, same "cartesian_limits:" key) --
+# kept as a separate file because ROS2 Galactic's moveit_configs_utils
+# hard-requires this exact filename for .cartesian_limits() (called by
+# to_moveit_configs()), while pilz_cartesian_limits.yaml is what's actually
+# wired into moveit_controllers.yaml for the Pilz planner. Keep both in sync
+# by hand if these numbers ever change.
+cartesian_limits:
+  max_trans_vel: 1.0
+  max_trans_acc: 2.25
+  max_trans_dec: -5.0
+  max_rot_vel: 1.57

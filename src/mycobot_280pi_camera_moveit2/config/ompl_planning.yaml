@@ -1,0 +1,29 @@
+# OMPL pipeline config for the "arm_group" planning group (see firefighter.srdf).
+#
+# This file didn't exist before -- on newer ROS2 distros (this project's dev
+# machine runs Jazzy), moveit_configs_utils falls back to MoveIt's built-in
+# OMPL defaults when it's absent, so things worked without it. ROS2 Galactic
+# (which the physical robot runs) hard-requires this file to exist at all
+# (see MoveItConfigsBuilder.planning_pipelines()), so this is a real,
+# necessary addition, not just a compatibility shim -- pick_place.py's
+# plan_motion() (pipeline_id="ompl") relies on this pipeline being
+# registered.
+planning_plugins:
+  - ompl_interface/OMPLPlanner
+# request_adapters/response_adapters deliberately NOT set here: ROS2
+# Galactic's PlanningPipeline C++ constructor reads them as a single STRING
+# parameter (throws InvalidParameterTypeException on a list), while Jazzy's
+# reads them as a string ARRAY (throws ParameterTypeException on a plain
+# string) -- confirmed by hitting both exceptions in turn. No single value
+# satisfies both distros' strict parameter typing. Omitting the keys
+# entirely sidesteps the conflict: both distros fall back to their own
+# built-in default adapter list when the parameter isn't set at all (this is
+# exactly what happened before this file existed, when Jazzy had no
+# ompl_planning.yaml whatsoever and worked fine on built-in defaults).
+arm_group:
+  planner_configs:
+    - RRTConnectkConfigDefault
+planner_configs:
+  RRTConnectkConfigDefault:
+    type: geometric::RRTConnect
+    range: 0.0

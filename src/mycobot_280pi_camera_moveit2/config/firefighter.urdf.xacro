@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="firefighter">
+    <xacro:arg name="initial_positions_file" default="initial_positions.yaml" />
+    <!-- hardware_mode: "mock" (RViz-only, default) | "gazebo" (Gazebo Harmonic
+         sim) | "real" (physical mycobot 280 Pi hardware) -->
+    <xacro:arg name="hardware_mode" default="mock" />
+
+    <!-- Import firefighter urdf file (camera flange + adaptive gripper) -->
+    <xacro:include filename="$(find mycobot_description)/urdf/mycobot_280_pi/mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf" />
+
+    <!-- Import Gazebo camera plugin (harmless outside Gazebo: gazebo tags
+         are ignored by robot_state_publisher/MoveIt/real hardware alike) -->
+    <xacro:include filename="$(find mycobot_description)/urdf/mycobot_280_pi/mycobot_280_pi_camera_flange_plus_gripper.gazebo" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="firefighter.ros2_control.xacro" />
+
+    <xacro:firefighter_ros2_control name="FirefighterSystem" initial_positions_file="$(arg initial_positions_file)" hardware_mode="$(arg hardware_mode)"/>
+
+</robot>

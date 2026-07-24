@@ -1,0 +1,10 @@
+<library path="mycobot_hardware">
+  <class name="mycobot_hardware/MyCobotSystem"
+         type="mycobot_hardware::MyCobotSystem"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      ros2_control hardware interface for the physical mycobot 280 Pi.
+      Bridges to a pymycobot-based Python process over a Unix domain socket.
+    </description>
+  </class>
+</library>

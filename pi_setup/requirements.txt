@@ -1,0 +1,8 @@
+# Python (pip) dependencies NOT available via apt/rosdep.
+#
+# Everything else this project needs (rclpy, moveit_msgs, moveit_py, cv_bridge,
+# opencv, numpy via python3-opencv, etc.) comes from ROS2 apt packages --
+# see install_pi_humble.sh. Only true pip-only packages belong here.
+
+pymycobot>=3.6.1
+packaging
