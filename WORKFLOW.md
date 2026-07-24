@@ -225,6 +225,79 @@ moving the arm underneath.
 
 ---
 
+## Split-Compute Real Hardware Workflow (planning on mars, execution on the robot)
+
+Same physical setup as the single-machine Real Hardware Workflow above, but
+`move_group` (IK, OMPL planning) and `rviz2` run on mars instead of the Pi --
+the Pi is CPU-constrained for planning, especially on failed/infeasible
+queries that burn the full planning timeout. Trajectory *execution* still
+happens entirely on the Pi via `ros2_control`: mars sends one complete
+planned trajectory per motion over a `FollowJointTrajectory` action goal,
+and the Pi's local controller interpolates and executes it in real time
+without needing the network mid-motion. `/joint_states` and action feedback
+stream back from the Pi to mars at ~50-100Hz for visualization/monitoring.
+
+This requires DDS unicast discovery working between mars and the robot --
+see "DDS Unicast Discovery" under Setup above and the `swarm_network`
+package. Both machines must have the DDS environment variables set
+(`RMW_IMPLEMENTATION`, `ROS_DOMAIN_ID`, `CYCLONEDDS_URI`) before launching
+either half below -- if they're in `.bashrc` already, a fresh terminal on
+each machine is enough.
+
+Two new launch files replace the monolithic `real_robot.launch.py` for this
+mode: `real_robot_hardware.launch.py` (robot side: bridge,
+`robot_state_publisher`, `ros2_control_node`, controller spawners -- no
+`move_group`, no `rviz`) and `real_robot_planning.launch.py` (workstation
+side: `move_group` and `rviz` only, built with `hardware_mode=real` so
+`robot_description` matches the robot even though mars can't build the
+Galactic-only `mycobot_hardware` plugin itself -- `move_group` never loads
+that plugin, only `ros2_control_node` does, and that stays on the robot).
+
+### Terminal 1: Hardware (on the robot, Galactic)
+```bash
+cd ~/swarm_project
+source /opt/ros/galactic/setup.bash
+# DDS env already in .bashrc -- skip these exports if so:
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+
+colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
+source install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 real_robot_hardware.launch.py
+```
+
+### Terminal 2: Planning + RViz (on mars, Jazzy)
+```bash
+cd ~/swarm/swarm_project
+source /opt/ros/jazzy/setup.bash
+# DDS env already in .bashrc -- skip these exports if so:
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+
+colcon build --packages-skip mycobot_hardware
+source install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 real_robot_planning.launch.py
+```
+
+### Terminal 3: Verify, then run pick_place.py / annulus_test.py (on mars)
+```bash
+source ~/swarm/swarm_project/install/setup.bash
+ros2 node list                    # /move_group must be present, plus the robot's nodes
+ros2 control list_controllers     # all three should show "active" (queried over DDS from the robot)
+ros2 topic hz /joint_states       # should show ~50-100Hz streaming from the Pi
+python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
+```
+
+If `/move_group` doesn't see the robot's controllers, or `ros2 node list`
+on mars is missing the robot's nodes (`/controller_manager`,
+`/robot_state_publisher`, etc.), re-run the DDS verification test under
+Troubleshooting before debugging further -- this almost always means
+discovery isn't working, not a MoveIt/controller problem.
+
+---
+
 ## Project Structure
 
 ```
