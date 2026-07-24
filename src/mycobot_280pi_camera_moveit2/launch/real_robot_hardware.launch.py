@@ -46,48 +46,39 @@ def generate_launch_description():
         output="screen",
     )
 
-    # Spawners are staggered (3.0s, 5.0s, 7.0s) rather than fired together at
-    # one TimerAction. With Cyclone DDS (see swarm_network's cyclonedds.xml),
-    # each spawner is a short-lived CLI process that must complete SPDP
-    # discovery of ros2_control_node's participant before it can call
-    # get_node_names_and_namespaces() -- three of them starting in the same
-    # instant on the Pi's limited CPU turned into a discovery race, with the
-    # losers crashing ("empty node name returned by the RMW layer"). This
-    # was never an issue with the default RMW (Fast DDS), only appeared once
-    # Cyclone DDS was introduced for cross-machine unicast discovery.
-    delayed_joint_state_broadcaster = TimerAction(
-        period=3.0,
-        actions=[
-            Node(
-                package="controller_manager",
-                executable="spawner",
-                arguments=["joint_state_broadcaster"],
-                output="screen",
-            ),
-        ],
-    )
-    delayed_arm_group_controller = TimerAction(
-        period=5.0,
-        actions=[
-            Node(
-                package="controller_manager",
-                executable="spawner",
-                arguments=["arm_group_controller"],
-                output="screen",
-            ),
-        ],
-    )
-    delayed_gripper_group_controller = TimerAction(
-        period=7.0,
-        actions=[
-            Node(
-                package="controller_manager",
-                executable="spawner",
-                arguments=["gripper_group_controller"],
-                output="screen",
-            ),
-        ],
-    )
+    # rmw_cyclonedds_cpp has a known, unfixed upstream discovery-timing race
+    # (ros2/rclpy#1448, ros2/ros2#489): a spawner can call
+    # get_node_names_and_namespaces() a moment before ros2_control_node's ROS
+    # graph metadata has fully propagated over DDS, and rcl hard-fails on
+    # that with "empty node name returned by the RMW layer" instead of
+    # retrying internally. This is strictly a timing race, not a sign
+    # anything is misconfigured -- there is no CycloneDDS XML setting that
+    # eliminates it (confirmed against the upstream issue threads); the
+    # community workaround is to retry at the call site. Our static unicast
+    # peers (see swarm_network's cyclonedds.xml) widen the race window
+    # versus LAN multicast, so each spawner is both staggered (3s apart) and
+    # retried a few times via a shell loop.
+    def retrying_spawner(controller_name, delay):
+        return TimerAction(
+            period=delay,
+            actions=[
+                ExecuteProcess(
+                    cmd=["bash", "-c", (
+                        "for i in 1 2 3 4 5; do "
+                        f"ros2 run controller_manager spawner {controller_name} && exit 0; "
+                        "echo \"[retrying_spawner] attempt $i for "
+                        f"{controller_name} failed, retrying in 2s...\"; "
+                        "sleep 2; "
+                        "done; exit 1"
+                    )],
+                    output="screen",
+                ),
+            ],
+        )
+
+    delayed_joint_state_broadcaster = retrying_spawner("joint_state_broadcaster", 3.0)
+    delayed_arm_group_controller = retrying_spawner("arm_group_controller", 6.0)
+    delayed_gripper_group_controller = retrying_spawner("gripper_group_controller", 9.0)
 
     return LaunchDescription([
         mycobot_bridge,
