@@ -6,8 +6,10 @@
 #include <poll.h>
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <sstream>
+#include <thread>
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -175,21 +177,43 @@ hardware_interface::return_type MyCobotSystem::write()
 
 bool MyCobotSystem::connect_bridge()
 {
-  socket_fd_ = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (socket_fd_ < 0) {
-    return false;
-  }
+  // real_robot.launch.py starts mycobot_bridge.py and ros2_control_node at
+  // the same time. The bridge needs real wall-clock time to import
+  // pymycobot and open the actual serial connection before its socket
+  // exists at all -- a single connect() attempt right after process start
+  // reliably loses that race (confirmed: on_activate() failed to connect on
+  // every real-hardware test run so far, silently leaving read()/write() as
+  // no-ops for the rest of the process's life -- the controller still
+  // reported trajectory completion from elapsed time, not real feedback,
+  // so nothing physically moved despite "Goal reached" in the logs). Retry
+  // for up to ~10s instead of giving up after one attempt.
+  const int max_attempts = 50;
+  const int retry_delay_ms = 200;
 
-  sockaddr_un addr{};
-  addr.sun_family = AF_UNIX;
-  std::strncpy(addr.sun_path, socket_path_.c_str(), sizeof(addr.sun_path) - 1);
+  for (int attempt = 0; attempt < max_attempts; ++attempt) {
+    socket_fd_ = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (socket_fd_ < 0) {
+      return false;
+    }
 
-  if (connect(socket_fd_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    std::strncpy(addr.sun_path, socket_path_.c_str(), sizeof(addr.sun_path) - 1);
+
+    if (connect(socket_fd_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0) {
+      if (attempt > 0) {
+        RCLCPP_INFO(logger(), "Connected to mycobot_bridge.py after %d retr%s",
+                    attempt, attempt == 1 ? "y" : "ies");
+      }
+      return true;
+    }
+
     close(socket_fd_);
     socket_fd_ = -1;
-    return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(retry_delay_ms));
   }
-  return true;
+
+  return false;
 }
 
 void MyCobotSystem::disconnect_bridge()

@@ -340,6 +340,21 @@ ros2 pkg list | grep mycobot_280pi_camera_moveit2
 - Check permissions on the serial device (may need the user in the
   `dialout` group, or `sudo chmod`).
 
+### Real hardware: "Goal reached, success!" in the logs but the arm never moved
+- Fixed (Fix 7) -- `real_robot.launch.py` starts `mycobot_bridge.py` and
+  `ros2_control_node` at the same time. The bridge needs real wall-clock
+  time to import `pymycobot` and open the serial connection before its
+  socket exists; `MyCobotSystem::on_activate()` was trying to connect
+  immediately and only once, reliably losing that race. `connect_bridge()`
+  now retries for up to ~10s. **Important, independent of this fix:**
+  Galactic's `controller_manager` does not appear to block controller
+  activation even when a hardware component's `on_activate()` returns an
+  error -- `arm_group_controller` spawned and reported "Goal reached,
+  success!" even while `mycobot_hardware` was logging "Could not connect to
+  mycobot_bridge.py" every single run. **The ROS logs alone are not
+  sufficient proof of real motion on this setup -- always visually confirm
+  the arm actually moved.**
+
 ### Real hardware: gripper never reports contact
 - Expected for now -- pymycobot's gripper API has no effort/force
   reading, so `gripper_close_until_contact()`'s contact detection can't
