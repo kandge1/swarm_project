@@ -2,7 +2,17 @@
 <CycloneDDS>
   <Domain>
     <General>
-      <AllowMulticast>false</AllowMulticast>
+      <!-- spdp (not false): the campus Wi-Fi blocks multicast between
+           machines regardless, so this has no effect on mars<->robot
+           discovery (the static Peers list below handles that) -- but
+           same-machine/loopback DDS participants (e.g. ros2_control_node's
+           controller_manager and the controller_manager spawner CLI
+           processes on the robot) rely on multicast for SPDP discovery.
+           AllowMulticast=false broke that: spawners crashed with
+           "empty node name returned by the RMW layer" because they
+           could not discover ros2_control_node's participant on the
+           same host. -->
+      <AllowMulticast>spdp</AllowMulticast>
     </General>
     <Discovery>
       <Peers>
