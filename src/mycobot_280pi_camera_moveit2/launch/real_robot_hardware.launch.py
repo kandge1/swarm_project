@@ -46,7 +46,16 @@ def generate_launch_description():
         output="screen",
     )
 
-    delayed_controllers = TimerAction(
+    # Spawners are staggered (3.0s, 5.0s, 7.0s) rather than fired together at
+    # one TimerAction. With Cyclone DDS (see swarm_network's cyclonedds.xml),
+    # each spawner is a short-lived CLI process that must complete SPDP
+    # discovery of ros2_control_node's participant before it can call
+    # get_node_names_and_namespaces() -- three of them starting in the same
+    # instant on the Pi's limited CPU turned into a discovery race, with the
+    # losers crashing ("empty node name returned by the RMW layer"). This
+    # was never an issue with the default RMW (Fast DDS), only appeared once
+    # Cyclone DDS was introduced for cross-machine unicast discovery.
+    delayed_joint_state_broadcaster = TimerAction(
         period=3.0,
         actions=[
             Node(
@@ -55,12 +64,22 @@ def generate_launch_description():
                 arguments=["joint_state_broadcaster"],
                 output="screen",
             ),
+        ],
+    )
+    delayed_arm_group_controller = TimerAction(
+        period=5.0,
+        actions=[
             Node(
                 package="controller_manager",
                 executable="spawner",
                 arguments=["arm_group_controller"],
                 output="screen",
             ),
+        ],
+    )
+    delayed_gripper_group_controller = TimerAction(
+        period=7.0,
+        actions=[
             Node(
                 package="controller_manager",
                 executable="spawner",
@@ -74,5 +93,7 @@ def generate_launch_description():
         mycobot_bridge,
         rsp,
         ros2_control_node,
-        delayed_controllers,
+        delayed_joint_state_broadcaster,
+        delayed_arm_group_controller,
+        delayed_gripper_group_controller,
     ])
