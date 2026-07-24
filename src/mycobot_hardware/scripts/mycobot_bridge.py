@@ -93,11 +93,27 @@ class Bridge:
         print("[mycobot_bridge] connected.")
 
     def read_state(self):
-        angles_deg = self.arm.get_angles() or [0.0] * 6
+        # pymycobot's get_* calls commonly return -1 (a truthy int, not
+        # None/0/[]) on a communication error/timeout instead of raising --
+        # observed for real over serial: `get_angles()` returned a bare int,
+        # which crashed here (and took the whole bridge process down with
+        # it, since nothing caught it) when iterated as if it were the
+        # expected 6-element list. Validate shape explicitly rather than
+        # relying on truthiness.
+        angles_deg = self.arm.get_angles()
+        if not isinstance(angles_deg, (list, tuple)) or len(angles_deg) != 6:
+            print(f"[mycobot_bridge] WARNING: get_angles() returned "
+                  f"{angles_deg!r}, expected a 6-element list -- using last "
+                  f"known/zero positions for this read")
+            angles_deg = [0.0] * 6
         positions = [math.radians(a) for a in angles_deg]
 
         gripper_value = self.arm.get_gripper_value()
-        gripper_rad = gripper_value_to_rad(gripper_value) if gripper_value is not None else 0.0
+        if not isinstance(gripper_value, (int, float)):
+            print(f"[mycobot_bridge] WARNING: get_gripper_value() returned "
+                  f"{gripper_value!r}, expected a number -- treating as 0")
+            gripper_value = 0
+        gripper_rad = gripper_value_to_rad(gripper_value)
         positions.append(gripper_rad)
 
         velocities = [0.0] * len(JOINT_ORDER)  # see module docstring
@@ -138,13 +154,23 @@ class Bridge:
             return
 
         cmd = request.get("cmd")
-        if cmd == "read":
-            reply = self.read_state()
-        elif cmd == "write":
-            self.write_command(request.get("positions", []))
-            reply = {"ok": True}
-        else:
-            reply = {"error": f"unknown cmd {cmd!r}"}
+        try:
+            if cmd == "read":
+                reply = self.read_state()
+            elif cmd == "write":
+                self.write_command(request.get("positions", []))
+                reply = {"ok": True}
+            else:
+                reply = {"error": f"unknown cmd {cmd!r}"}
+        except Exception as exc:
+            # A single bad hardware read/write (pymycobot raising, a serial
+            # hiccup, etc.) must not take the whole bridge process down --
+            # that previously cascaded into killing ros2_control_node too
+            # (SIGPIPE, writing to the now-dead bridge socket). Log it, reply
+            # with an error, and keep the connection alive so the next
+            # read()/write() cycle gets a fresh chance.
+            print(f"[mycobot_bridge] ERROR handling {cmd!r}: {exc!r}")
+            reply = {"error": str(exc)}
 
         conn.sendall((json.dumps(reply) + "\n").encode())
 
