@@ -421,19 +421,50 @@ class RobotIOClient(Node):
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = joint_trajectory
+        return self._send_goal_with_retry(self._arm_client, goal, "arm")
 
-        future = self._arm_client.send_goal_async(goal)
-        goal_handle = self._spin_until_complete(future, what="arm goal acceptance")
-        if goal_handle is None:
-            return False
-        if not goal_handle.accepted:
-            self.get_logger().error("Arm goal rejected")
-            return False
+    def _send_goal_with_retry(self, client, goal, label, attempts=4,
+                              accept_timeout=15.0, result_timeout=45.0):
+        """Send a FollowJointTrajectory goal, retrying from scratch if the
+        goal's ACCEPTANCE reply never comes back within accept_timeout.
 
-        result_future = goal_handle.get_result_async()
-        if self._spin_until_complete(result_future, what="arm goal result") is None:
-            return False
-        return True
+        Confirmed on real split-compute hardware: over the cross-machine
+        Cyclone DDS unicast link, an action goal's acceptance reply
+        intermittently just never arrives on mars even though the robot's
+        controller is up and healthy (the robot-side log shows no "Received
+        new action goal" at all for the dropped attempt) -- a lost message,
+        not a rejection. Re-sending punches through it, same idea as the
+        controller-spawner retry loop in real_robot_hardware.launch.py.
+
+        Only acceptance is retried by re-sending; once a goal is accepted we
+        wait result_timeout for the result (a real arm move can legitimately
+        take many seconds), and a lost RESULT is reported but not re-sent --
+        re-sending after the arm already started moving could double-execute
+        a motion, so that case fails loudly instead."""
+        for attempt in range(1, attempts + 1):
+            future = client.send_goal_async(goal)
+            goal_handle = self._spin_until_complete(
+                future, timeout_sec=accept_timeout, what=f"{label} goal acceptance")
+            if goal_handle is None:
+                self.get_logger().warn(
+                    f"{label} goal acceptance timed out (attempt {attempt}/{attempts}), "
+                    f"resending..." if attempt < attempts else
+                    f"{label} goal acceptance timed out on final attempt {attempt}/{attempts}")
+                continue
+            if not goal_handle.accepted:
+                self.get_logger().error(f"{label} goal rejected")
+                return False
+
+            result_future = goal_handle.get_result_async()
+            if self._spin_until_complete(
+                    result_future, timeout_sec=result_timeout,
+                    what=f"{label} goal result") is None:
+                return False
+            return True
+
+        self.get_logger().error(
+            f"{label} goal never accepted after {attempts} attempts -- giving up")
+        return False
 
     # ---- Gripper ----
     def gripper_move_to(self, position, duration_sec=1.0):
@@ -450,18 +481,7 @@ class RobotIOClient(Node):
         point.time_from_start.nanosec = int((duration_sec % 1) * 1e9)
         goal.trajectory.points = [point]
 
-        future = self._gripper_client.send_goal_async(goal)
-        goal_handle = self._spin_until_complete(future, what="gripper goal acceptance")
-        if goal_handle is None:
-            return False
-        if not goal_handle.accepted:
-            self.get_logger().error("Gripper goal rejected")
-            return False
-
-        result_future = goal_handle.get_result_async()
-        if self._spin_until_complete(result_future, what="gripper goal result") is None:
-            return False
-        return True
+        return self._send_goal_with_retry(self._gripper_client, goal, "gripper")
 
     # ---- Cartesian path ----
     def compute_cartesian_path(self, waypoints, avoid_collisions=True, path_constraints=None):
