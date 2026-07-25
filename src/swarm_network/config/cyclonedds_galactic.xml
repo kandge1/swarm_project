@@ -30,5 +30,28 @@
         <Peer address="172.27.89.157"/>
       </Peers>
     </Discovery>
+    <Internal>
+      <!-- Confirmed on real hardware (2026-07-26): small trajectories (2-3
+           waypoints, ~1KB serialized) always deliver fine; a 30-waypoint
+           pre-grasp trajectory (~9KB serialized) never arrives at all,
+           and robot_state_publisher/ros2_control_node both immediately
+           start logging repeated serdata.cpp:354 "invalid data size" /
+           "string data is not null-terminated" errors right after -- on
+           EVERY subsequent sample, not just the one that failed. Cyclone
+           DDS's default FragmentSize (~1456B, one Ethernet MTU) means the
+           small trajectories never fragment but the large one needs
+           several fragments reassembled over a lossy/high-latency Wi-Fi
+           unicast link -- Galactic's Cyclone DDS (0.22.6) is the older,
+           less-patched build on this link, and reassembly-related
+           deserialization bugs in old builds are a known category of
+           issue there. Raising both limits well above anything this
+           project will ever send avoids fragmentation entirely instead
+           of trying to make reassembly reliable. Must match the value in
+           cyclonedds_jazzy.xml -- FragmentSize/MaxMessageSize are
+           effectively a wire-compatible pair between both ends of a
+           connection. -->
+      <FragmentSize>65500B</FragmentSize>
+      <MaxMessageSize>65500B</MaxMessageSize>
+    </Internal>
   </Domain>
 </CycloneDDS>
