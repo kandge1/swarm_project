@@ -19,6 +19,20 @@ Two named poses, all six arm joints (gripper untouched):
   squat -- the project's designated home/rest pose (matches reset_arm.py /
            pick_place.py's HOME_RADIANS / config/initial_positions.yaml).
 
+MOTION SMOOTHNESS: a trajectory with only one JointTrajectoryPoint at
+t=duration lets joint_trajectory_controller interpolate smoothly in
+software, but on real hardware mycobot_bridge.py's background loop turns
+each interpolated 100Hz sample into its own pymycobot send_angles(...,
+speed) call -- an onboard, speed-profiled point-to-point move on the arm's
+own MCU, not a raw position write. A fast stream of slightly-different
+targets means each onboard move gets superseded by the next before
+finishing, which looks like visible discrete jumps rather than one smooth
+sweep. Sending several waypoints spaced WAYPOINT_INTERVAL_SEC apart (instead
+of one point at the end) gives each intermediate onboard move enough time to
+actually get most of the way there before the next target arrives, which is
+what actually smooths out the motion -- see also DEFAULT_SPEED lowered in
+mycobot_bridge.py for the same reason.
+
 Usage:
   python3 joint_trajectory_test.py                  # squat -> zero -> squat, once
   python3 joint_trajectory_test.py --cycles 5        # repeat 5 times
@@ -46,22 +60,43 @@ POSES_RADIANS = {
     "squat": dict(HOME_RADIANS),
 }
 
+# How far apart (in time) consecutive waypoints are. See the module
+# docstring's MOTION SMOOTHNESS note for why this matters on real hardware.
+WAYPOINT_INTERVAL_SEC = 0.25
 
-def make_trajectory(target_radians, duration_sec):
+
+def make_trajectory(start_radians, target_radians, duration_sec):
     traj = JointTrajectory()
     traj.joint_names = ARM_JOINT_NAMES
-    point = JointTrajectoryPoint()
-    point.positions = [target_radians[name] for name in ARM_JOINT_NAMES]
-    point.velocities = [0.0] * len(ARM_JOINT_NAMES)
-    point.time_from_start.sec = int(duration_sec)
-    point.time_from_start.nanosec = int((duration_sec % 1) * 1e9)
-    traj.points = [point]
+
+    n_waypoints = max(1, round(duration_sec / WAYPOINT_INTERVAL_SEC))
+    points = []
+    for i in range(1, n_waypoints + 1):
+        t = min(i * WAYPOINT_INTERVAL_SEC, duration_sec)
+        frac = t / duration_sec if duration_sec > 0 else 1.0
+        point = JointTrajectoryPoint()
+        point.positions = [
+            start_radians[name] + frac * (target_radians[name] - start_radians[name])
+            for name in ARM_JOINT_NAMES
+        ]
+        point.velocities = [0.0] * len(ARM_JOINT_NAMES)
+        point.time_from_start.sec = int(t)
+        point.time_from_start.nanosec = int((t % 1) * 1e9)
+        points.append(point)
+    # Make sure the final waypoint lands exactly at duration_sec/target_radians
+    # even if duration_sec isn't an exact multiple of WAYPOINT_INTERVAL_SEC.
+    points[-1].positions = [target_radians[name] for name in ARM_JOINT_NAMES]
+    points[-1].time_from_start.sec = int(duration_sec)
+    points[-1].time_from_start.nanosec = int((duration_sec % 1) * 1e9)
+
+    traj.points = points
     return traj
 
 
 def move_to(io_client, pose_name, duration_sec):
     print(f"[joint_trajectory_test] moving to {pose_name!r} pose over {duration_sec}s...")
-    trajectory = make_trajectory(POSES_RADIANS[pose_name], duration_sec)
+    start_radians = io_client.current_joint_positions(ARM_JOINT_NAMES)
+    trajectory = make_trajectory(start_radians, POSES_RADIANS[pose_name], duration_sec)
     ok = io_client.arm_execute(trajectory)
     if ok:
         print(f"[joint_trajectory_test] reached {pose_name!r} (controller reported success -- "

@@ -92,7 +92,17 @@ GRIPPER_CLOSED_RAD = -0.60
 DEFAULT_SOCKET_PATH = "/tmp/mycobot_hardware_bridge.sock"
 DEFAULT_SERIAL_PORT = "/dev/ttyAMA0"  # UNVERIFIED -- confirm on real hardware
 DEFAULT_BAUD_RATE = 1000000
-DEFAULT_SPEED = 50  # 0-100, pymycobot's joint/gripper move speed
+# 0-100, pymycobot's joint/gripper move speed. send_angles(angles, speed) is
+# an onboard, speed-profiled point-to-point move on the arm's own MCU, not a
+# raw position write -- when the background loop re-issues it every time
+# ros2_control's 100Hz stream nudges the target (see SharedState/
+# COMMAND_CHANGE_EPSILON_RAD above), each onboard move gets superseded by
+# the next one before finishing. A high speed here makes each individual
+# jump larger and more visible (confirmed on real hardware: 50 produced
+# clearly discrete steps rather than a smooth sweep for a several-second
+# move). Lower is smoother at the cost of being slower to reach a target
+# when there's no follow-up command superseding it.
+DEFAULT_SPEED = 20
 
 # Position command must change by at least this much (radians) before the
 # background loop bothers re-sending it to the arm -- avoids spamming
