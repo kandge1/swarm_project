@@ -165,20 +165,14 @@ class Bridge:
         # expected 6-element list. Validate shape explicitly rather than
         # relying on truthiness.
         try:
-            t0 = time.monotonic()
             angles_deg = self.arm.get_angles()
-            t1 = time.monotonic()
-            print(f"[mycobot_bridge] TIMING get_angles() took {(t1 - t0) * 1000:.1f}ms")
             if not isinstance(angles_deg, (list, tuple)) or len(angles_deg) != 6:
                 print(f"[mycobot_bridge] WARNING: get_angles() returned "
                       f"{angles_deg!r}, expected a 6-element list -- keeping "
                       f"last known positions for this read")
                 angles_deg = None
 
-            t2 = time.monotonic()
             gripper_value = self.arm.get_gripper_value()
-            t3 = time.monotonic()
-            print(f"[mycobot_bridge] TIMING get_gripper_value() took {(t3 - t2) * 1000:.1f}ms")
             if not isinstance(gripper_value, (int, float)):
                 print(f"[mycobot_bridge] WARNING: get_gripper_value() returned "
                       f"{gripper_value!r}, expected a number -- keeping last "
@@ -208,17 +202,11 @@ class Bridge:
 
         arm_degrees = [math.degrees(p) for p in positions[:6]]
         try:
-            t0 = time.monotonic()
             self.arm.send_angles(arm_degrees, self.speed)
-            t1 = time.monotonic()
-            print(f"[mycobot_bridge] TIMING send_angles() took {(t1 - t0) * 1000:.1f}ms")
 
             gripper_rad = positions[6]
             gripper_value = gripper_rad_to_value(gripper_rad)
-            t2 = time.monotonic()
             self.arm.set_gripper_value(gripper_value, self.speed)
-            t3 = time.monotonic()
-            print(f"[mycobot_bridge] TIMING set_gripper_value() took {(t3 - t2) * 1000:.1f}ms")
         except Exception as exc:
             print(f"[mycobot_bridge] ERROR during serial write: {exc!r}")
 
@@ -253,7 +241,6 @@ class Bridge:
     def handle_client(self, conn):
         buf = b""
         while True:
-            recv_t = time.monotonic()
             chunk = conn.recv(4096)
             if not chunk:
                 return
@@ -261,10 +248,9 @@ class Bridge:
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
                 if line.strip():
-                    self._handle_line(conn, line, recv_t)
+                    self._handle_line(conn, line)
 
-    def _handle_line(self, conn, line, recv_t):
-        arrival_lag_ms = (time.monotonic() - recv_t) * 1000
+    def _handle_line(self, conn, line):
         try:
             request = json.loads(line)
         except json.JSONDecodeError as exc:
@@ -272,7 +258,6 @@ class Bridge:
             return
 
         cmd = request.get("cmd")
-        t_start = time.monotonic()
         if cmd == "read":
             reply = self.read_state()
         elif cmd == "write":
@@ -286,10 +271,6 @@ class Bridge:
         # gave up waiting on -- see send_request()'s comment in
         # mycobot_system.cpp for why that matters.
         reply["id"] = request.get("id")
-
-        total_ms = (time.monotonic() - t_start) * 1000
-        print(f"[mycobot_bridge] TIMING {cmd!r} id={reply['id']} total={total_ms:.1f}ms "
-              f"queued_before_dispatch={arrival_lag_ms:.1f}ms")
 
         conn.sendall((json.dumps(reply) + "\n").encode())
 

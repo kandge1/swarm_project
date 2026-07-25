@@ -163,18 +163,7 @@ MyCobotSystem::CallbackReturn MyCobotSystem::on_deactivate(const rclcpp_lifecycl
 
 hardware_interface::return_type MyCobotSystem::read()
 {
-  auto now = std::chrono::steady_clock::now();
-  double since_last_read_ms = last_read_time_.time_since_epoch().count() == 0
-    ? 0.0
-    : std::chrono::duration<double, std::milli>(now - last_read_time_).count();
-  last_read_time_ = now;
-
-  auto t0 = std::chrono::steady_clock::now();
   std::string reply = send_request(R"({"cmd":"read"})");
-  auto t1 = std::chrono::steady_clock::now();
-  double round_trip_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-  RCLCPP_INFO(logger(), "TIMING read() round_trip=%.1fms since_last_read=%.1fms reply_empty=%d",
-              round_trip_ms, since_last_read_ms, reply.empty());
 
   if (reply.empty()) {
     // Bridge unreachable or timed out this cycle -- keep last-known state
@@ -196,12 +185,6 @@ hardware_interface::return_type MyCobotSystem::read()
 
 hardware_interface::return_type MyCobotSystem::write()
 {
-  auto now = std::chrono::steady_clock::now();
-  double since_last_write_ms = last_write_time_.time_since_epoch().count() == 0
-    ? 0.0
-    : std::chrono::duration<double, std::milli>(now - last_write_time_).count();
-  last_write_time_ = now;
-
   std::ostringstream req;
   req << R"({"cmd":"write","positions":[)";
   for (size_t i = 0; i < position_commands_.size(); ++i) {
@@ -210,13 +193,7 @@ hardware_interface::return_type MyCobotSystem::write()
   }
   req << "]}";
 
-  auto t0 = std::chrono::steady_clock::now();
-  std::string reply = send_request(req.str());
-  auto t1 = std::chrono::steady_clock::now();
-  double round_trip_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-  RCLCPP_INFO(logger(), "TIMING write() round_trip=%.1fms since_last_write=%.1fms reply_empty=%d",
-              round_trip_ms, since_last_write_ms, reply.empty());
-
+  send_request(req.str());
   return hardware_interface::return_type::OK;
 }
 
