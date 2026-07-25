@@ -482,9 +482,20 @@ class RobotIOClient(Node):
               f"~{serialized_len} chars serialized (str() estimate)")
         return self._send_goal_with_retry(self._arm_client, goal, "arm")
 
-    def _send_goal_with_retry(self, client, goal, label, attempts=4,
-                              accept_timeout=15.0, result_timeout=45.0):
-        """Send a FollowJointTrajectory goal and track it to completion via
+    def _send_goal_with_retry(self, client, goal, label, attempts=8,
+                              accept_timeout=20.0, result_timeout=60.0):
+        """attempts/accept_timeout bumped from 4/15s -> 8/20s (2026-07-26,
+        late-night session): after fixing the QoS durability bug above (the
+        subscription itself now provably receives every live status update,
+        confirmed with a standalone probe), goals still intermittently never
+        land on the robot at all, especially larger ones (e.g. the 30-point
+        pre-grasp trajectory). This looks like genuine, plain packet loss on
+        the campus Wi-Fi unicast link, not a code/QoS bug -- more attempts
+        over a longer window is a blunt mitigation for that, not a fix; if
+        it's still not reliable enough, the next place to look is the
+        cyclonedds XML configs themselves (retransmit/heartbeat tuning).
+
+        Send a FollowJointTrajectory goal and track it to completion via
         the controller's own /follow_joint_trajectory/_action/status topic,
         NOT via send_goal_async()'s/get_result_async()'s futures.
 
