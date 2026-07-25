@@ -449,6 +449,15 @@ class RobotIOClient(Node):
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = joint_trajectory
+        # Diagnostic: correlate trajectory size with goals that never reach
+        # the robot at all (see _send_goal_with_retry's "no status seen"
+        # case) -- checking whether this is a DDS message-size/fragmentation
+        # issue rather than the earlier-confirmed lost-reply issue.
+        n_points = len(joint_trajectory.points)
+        n_joints = len(joint_trajectory.joint_names)
+        serialized_len = len(str(joint_trajectory))
+        print(f"[arm_execute] trajectory: {n_points} points x {n_joints} joints, "
+              f"~{serialized_len} chars serialized (str() estimate)")
         return self._send_goal_with_retry(self._arm_client, goal, "arm")
 
     def _send_goal_with_retry(self, client, goal, label, attempts=4,
