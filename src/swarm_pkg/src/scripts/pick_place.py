@@ -37,6 +37,7 @@ import uuid
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy
 from action_msgs.msg import GoalStatusArray, GoalStatus
 from geometry_msgs.msg import Pose
 from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint, JointConstraint
@@ -363,14 +364,35 @@ class RobotIOClient(Node):
         # servers' own /_action/status topics -- see _send_goal_with_retry's
         # docstring for why goal completion is tracked this way instead of
         # via send_goal_async()/get_result_async()'s own futures.
+        #
+        # QoS must be explicit here, not a bare depth int: passing a plain
+        # int to create_subscription() defaults every other QoS setting to
+        # its default, which is VOLATILE durability -- but action servers
+        # publish .../_action/status with TRANSIENT_LOCAL durability (the
+        # standard ROS2 action convention, confirmed against this exact
+        # topic with `ros2 topic info --verbose`). A VOLATILE subscriber
+        # against a TRANSIENT_LOCAL publisher is a QoS INCOMPATIBILITY, not
+        # a soft mismatch -- DDS is allowed to simply never deliver
+        # anything to it, silently, no error. Confirmed on real hardware:
+        # this made every goal after the very first (which likely slipped
+        # through during an early, differently-raced discovery window)
+        # appear to vanish completely, with pick_place.py's own retry loop
+        # reporting "no status seen at all" even though the robot's
+        # controller genuinely received/accepted/executed every goal.
+        goal_status_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
         self._goal_statuses = {}
         self._arm_status_sub = self.create_subscription(
             GoalStatusArray, "/arm_group_controller/follow_joint_trajectory/_action/status",
-            self._on_goal_status, 10
+            self._on_goal_status, goal_status_qos
         )
         self._gripper_status_sub = self.create_subscription(
             GoalStatusArray, "/gripper_group_controller/follow_joint_trajectory/_action/status",
-            self._on_goal_status, 10
+            self._on_goal_status, goal_status_qos
         )
 
     def _on_goal_status(self, msg):
