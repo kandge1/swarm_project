@@ -32,10 +32,12 @@ Pick-and-place demo: known start/end block poses, no camera.
 import argparse
 import math
 import time
+import uuid
 
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from action_msgs.msg import GoalStatusArray, GoalStatus
 from geometry_msgs.msg import Pose
 from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint, JointConstraint
 from moveit_msgs.srv import GetCartesianPath, GetPositionIK, GetMotionPlan, GetStateValidity
@@ -43,6 +45,7 @@ from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
+from unique_identifier_msgs.msg import UUID
 
 
 # ---- Tunable poses (defaults; adjust to real measurements later) ----
@@ -355,6 +358,25 @@ class RobotIOClient(Node):
             JointState, "/joint_states", self._on_joint_state, 10
         )
 
+        # goal_id (16-byte uuid, as bytes) -> latest action_msgs/GoalStatus.status
+        # int seen for it. Populated by _on_goal_status from the action
+        # servers' own /_action/status topics -- see _send_goal_with_retry's
+        # docstring for why goal completion is tracked this way instead of
+        # via send_goal_async()/get_result_async()'s own futures.
+        self._goal_statuses = {}
+        self._arm_status_sub = self.create_subscription(
+            GoalStatusArray, "/arm_group_controller/follow_joint_trajectory/_action/status",
+            self._on_goal_status, 10
+        )
+        self._gripper_status_sub = self.create_subscription(
+            GoalStatusArray, "/gripper_group_controller/follow_joint_trajectory/_action/status",
+            self._on_goal_status, 10
+        )
+
+    def _on_goal_status(self, msg):
+        for status in msg.status_list:
+            self._goal_statuses[bytes(status.goal_info.goal_id.uuid)] = status.status
+
     def _on_joint_state(self, msg):
         for name, effort in zip(msg.name, msg.effort):
             self._joint_efforts[name] = effort
@@ -425,45 +447,76 @@ class RobotIOClient(Node):
 
     def _send_goal_with_retry(self, client, goal, label, attempts=4,
                               accept_timeout=15.0, result_timeout=45.0):
-        """Send a FollowJointTrajectory goal, retrying from scratch if the
-        goal's ACCEPTANCE reply never comes back within accept_timeout.
+        """Send a FollowJointTrajectory goal and track it to completion via
+        the controller's own /follow_joint_trajectory/_action/status topic,
+        NOT via send_goal_async()'s/get_result_async()'s futures.
 
-        Confirmed on real split-compute hardware: over the cross-machine
-        Cyclone DDS unicast link, an action goal's acceptance reply
-        intermittently just never arrives on mars even though the robot's
-        controller is up and healthy (the robot-side log shows no "Received
-        new action goal" at all for the dropped attempt) -- a lost message,
-        not a rejection. Re-sending punches through it, same idea as the
-        controller-spawner retry loop in real_robot_hardware.launch.py.
+        Confirmed on real split-compute hardware (2026-07-26): those futures
+        can simply never resolve client-side over the cross-machine Cyclone
+        DDS unicast link -- but the SAME goal genuinely reaches the robot,
+        gets accepted, executes, and reaches STATUS_SUCCEEDED, and that
+        status *is* reliably visible on mars via a plain topic subscription
+        (confirmed with `ros2 topic echo .../_action/status` alongside a
+        "timed out" pick_place.py run: the exact goal it reported as timed
+        out showed status 4/SUCCEEDED on the topic). This matches the same
+        category of cross-machine unreliability already seen in this project
+        for other request/reply service calls (e.g. `ros2 control
+        list_controllers`) -- the underlying goal-acceptance/result exchange
+        is itself implemented as service calls in rclpy's ActionClient, which
+        is the flaky part; the plain pub/sub status topic is not.
 
-        Only acceptance is retried by re-sending; once a goal is accepted we
-        wait result_timeout for the result (a real arm move can legitimately
-        take many seconds), and a lost RESULT is reported but not re-sent --
-        re-sending after the arm already started moving could double-execute
-        a motion, so that case fails loudly instead."""
+        We generate the goal's UUID ourselves so we know what to look for in
+        _goal_statuses (populated by _on_goal_status), then poll that dict
+        instead of waiting on any future. If nothing shows up in
+        accept_timeout at all (not even STATUS_ACCEPTED), we resend on the
+        assumption the goal message itself, not just its acknowledgement,
+        may have been dropped -- once ANY status is observed for a goal we
+        stop resending it (the goal is confirmed live) and just keep
+        polling the same UUID for it to reach a terminal status."""
+        terminal = {
+            GoalStatus.STATUS_SUCCEEDED, GoalStatus.STATUS_CANCELED, GoalStatus.STATUS_ABORTED,
+        }
+
         for attempt in range(1, attempts + 1):
-            future = client.send_goal_async(goal)
-            goal_handle = self._spin_until_complete(
-                future, timeout_sec=accept_timeout, what=f"{label} goal acceptance")
-            if goal_handle is None:
-                self.get_logger().warn(
-                    f"{label} goal acceptance timed out (attempt {attempt}/{attempts}), "
-                    f"resending..." if attempt < attempts else
-                    f"{label} goal acceptance timed out on final attempt {attempt}/{attempts}")
-                continue
-            if not goal_handle.accepted:
-                self.get_logger().error(f"{label} goal rejected")
-                return False
+            goal_uuid = UUID(uuid=list(uuid.uuid4().bytes))
+            client.send_goal_async(goal, goal_uuid=goal_uuid)
+            key = bytes(goal_uuid.uuid)
 
-            result_future = goal_handle.get_result_async()
-            if self._spin_until_complete(
-                    result_future, timeout_sec=result_timeout,
-                    what=f"{label} goal result") is None:
-                return False
-            return True
+            deadline = self.get_clock().now().nanoseconds + int(accept_timeout * 1e9)
+            seen_any_status = False
+            while self.get_clock().now().nanoseconds < deadline:
+                rclpy.spin_once(self, timeout_sec=0.1)
+                if key in self._goal_statuses:
+                    seen_any_status = True
+                    break
+
+            if not seen_any_status:
+                self.get_logger().warn(
+                    f"{label} goal: no status seen at all within {accept_timeout}s "
+                    f"(attempt {attempt}/{attempts}), " +
+                    ("resending..." if attempt < attempts else "giving up"))
+                continue
+
+            # A status has been seen for this goal -- it is confirmed live on
+            # the robot, so from here on we only wait, never resend (a resend
+            # now could command a second, overlapping trajectory).
+            deadline = self.get_clock().now().nanoseconds + int(result_timeout * 1e9)
+            while self.get_clock().now().nanoseconds < deadline:
+                status = self._goal_statuses.get(key)
+                if status in terminal:
+                    if status == GoalStatus.STATUS_SUCCEEDED:
+                        return True
+                    self.get_logger().error(f"{label} goal ended with status {status}")
+                    return False
+                rclpy.spin_once(self, timeout_sec=0.1)
+
+            self.get_logger().error(
+                f"{label} goal accepted but did not reach a terminal status within "
+                f"{result_timeout}s")
+            return False
 
         self.get_logger().error(
-            f"{label} goal never accepted after {attempts} attempts -- giving up")
+            f"{label} goal: no status ever observed after {attempts} attempts -- giving up")
         return False
 
     # ---- Gripper ----
