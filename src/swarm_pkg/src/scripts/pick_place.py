@@ -391,7 +391,12 @@ class RobotIOClient(Node):
         pattern already used for the gripper below) skips that check
         entirely.
         """
-        if not self._arm_client.wait_for_server(timeout_sec=5.0):
+        # 20s, not 5s: cross-machine action-server discovery over the
+        # split-compute Cyclone DDS unicast link has repeatedly needed more
+        # than 5s in practice (confirmed: the action was genuinely reachable
+        # via `ros2 action list` moments after a 5s wait_for_server() timed
+        # out) -- not a real unavailability, just slow first-discovery.
+        if not self._arm_client.wait_for_server(timeout_sec=20.0):
             self.get_logger().error("arm_group_controller action server not available")
             return False
 
@@ -411,7 +416,8 @@ class RobotIOClient(Node):
 
     # ---- Gripper ----
     def gripper_move_to(self, position, duration_sec=1.0):
-        if not self._gripper_client.wait_for_server(timeout_sec=5.0):
+        # See arm_execute()'s comment on why this is 20s, not 5s.
+        if not self._gripper_client.wait_for_server(timeout_sec=20.0):
             self.get_logger().error("gripper_group_controller action server not available")
             return False
 
