@@ -377,6 +377,25 @@ class RobotIOClient(Node):
             rclpy.spin_once(self, timeout_sec=0.1)
         return {n: self._joint_positions.get(n, 0.0) for n in joint_names}
 
+    def _spin_until_complete(self, future, timeout_sec=30.0, what=""):
+        """rclpy.spin_until_future_complete() with a bounded timeout.
+        Confirmed on real split-compute hardware (mars planning, robot
+        executing over the Cyclone DDS unicast link): an action's goal
+        acceptance can arrive fine while its RESULT message never does, even
+        though the robot-side controller genuinely finished ("Goal reached,
+        success!" in ros2_control_node's log) -- some message classes are
+        just less reliable cross-machine on this DDS setup than others
+        (matches the already-documented flakiness of the
+        `ros2 control list_controllers` service). Without a timeout here,
+        that silently hangs the whole script forever with no way to tell
+        what's stuck. Returns future.result(), or None on timeout (logged)."""
+        rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
+        if not future.done():
+            self.get_logger().error(
+                f"Timed out after {timeout_sec}s waiting for {what or 'a response'}")
+            return None
+        return future.result()
+
     # ---- Arm ----
     def arm_execute(self, joint_trajectory):
         """Send a trajectory_msgs/JointTrajectory straight to
@@ -404,14 +423,16 @@ class RobotIOClient(Node):
         goal.trajectory = joint_trajectory
 
         future = self._arm_client.send_goal_async(goal)
-        rclpy.spin_until_future_complete(self, future)
-        goal_handle = future.result()
+        goal_handle = self._spin_until_complete(future, what="arm goal acceptance")
+        if goal_handle is None:
+            return False
         if not goal_handle.accepted:
             self.get_logger().error("Arm goal rejected")
             return False
 
         result_future = goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, result_future)
+        if self._spin_until_complete(result_future, what="arm goal result") is None:
+            return False
         return True
 
     # ---- Gripper ----
@@ -430,14 +451,16 @@ class RobotIOClient(Node):
         goal.trajectory.points = [point]
 
         future = self._gripper_client.send_goal_async(goal)
-        rclpy.spin_until_future_complete(self, future)
-        goal_handle = future.result()
+        goal_handle = self._spin_until_complete(future, what="gripper goal acceptance")
+        if goal_handle is None:
+            return False
         if not goal_handle.accepted:
             self.get_logger().error("Gripper goal rejected")
             return False
 
         result_future = goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, result_future)
+        if self._spin_until_complete(result_future, what="gripper goal result") is None:
+            return False
         return True
 
     # ---- Cartesian path ----
@@ -466,8 +489,7 @@ class RobotIOClient(Node):
             request.path_constraints = path_constraints
 
         future = self._cartesian_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future)
-        response = future.result()
+        response = self._spin_until_complete(future, what="/compute_cartesian_path response")
 
         if response is None:
             self.get_logger().error("Cartesian path service call failed (no response)")
@@ -532,8 +554,7 @@ class RobotIOClient(Node):
         request.ik_request.constraints = constraints
 
         future = self._ik_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future)
-        response = future.result()
+        response = self._spin_until_complete(future, what="/compute_ik response")
         if response is None or response.error_code.val != 1:
             return None
 
@@ -575,8 +596,7 @@ class RobotIOClient(Node):
         # No `constraints` set -- exact pose match, not a tolerant region.
 
         future = self._ik_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future)
-        response = future.result()
+        response = self._spin_until_complete(future, what="/compute_ik (exact) response")
         if response is None or response.error_code.val != 1:
             return None
 
@@ -613,8 +633,12 @@ class RobotIOClient(Node):
         mpr.max_acceleration_scaling_factor = acceleration_scaling
 
         future = self._motion_plan_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future)
-        response = future.result()
+        # Generous margin over planning_time itself (not just the default
+        # 30s) -- OMPL's allowed_planning_time is move_group's internal
+        # solve budget, separate from how long the response then takes to
+        # actually arrive back over the cross-machine DDS link.
+        response = self._spin_until_complete(
+            future, timeout_sec=planning_time + 20.0, what="/plan_kinematic_path response")
         if response is None or response.motion_plan_response.error_code.val != 1:
             return None
 
@@ -642,8 +666,7 @@ class RobotIOClient(Node):
         request.robot_state.joint_state.position = list(joint_dict.values())
 
         future = self._state_validity_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future)
-        response = future.result()
+        response = self._spin_until_complete(future, what="/check_state_validity response")
         if response is None:
             return None, None
 
