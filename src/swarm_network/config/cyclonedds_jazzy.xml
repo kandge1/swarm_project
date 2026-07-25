@@ -26,13 +26,5 @@
         <Peer address="172.27.89.157"/>
       </Peers>
     </Discovery>
-    <Internal>
-      <!-- Must match cyclonedds_galactic.xml's Internal block -- see that
-           file's comment for why (fragmentation/reassembly bug suspected
-           on large FollowJointTrajectory goals over this link; raising
-           these avoids fragmenting this project's messages at all). -->
-      <FragmentSize>65500B</FragmentSize>
-      <MaxMessageSize>65500B</MaxMessageSize>
-    </Internal>
   </Domain>
 </CycloneDDS>
