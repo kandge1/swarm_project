@@ -80,12 +80,32 @@ private:
   std::chrono::steady_clock::time_point last_read_time_{};
   std::chrono::steady_clock::time_point last_write_time_{};
 
+  // Every request carries a monotonically increasing id, echoed back by the
+  // bridge in its reply. Needed because send_request() can time out and
+  // return before the bridge's reply for that request actually arrives on
+  // the wire -- without an id, the NEXT send_request() call would read that
+  // late reply and mistake it for the answer to a different, newer request,
+  // silently desyncing request/reply pairing forever after. See
+  // send_request()'s comment for how this is used to self-heal.
+  int next_request_id_ = 0;
+  // Bytes read from the socket but not yet split into complete lines --
+  // persists across send_request() calls since a stale reply drained while
+  // looking for one request's answer may contain the start of the next
+  // reply too.
+  std::string recv_buf_;
+
   bool connect_bridge();
   void disconnect_bridge();
-  // Sends `request` (a raw JSON string, no trailing newline) and returns the
-  // reply line (without trailing newline), or an empty string on any
-  // failure/timeout. timeout_ms bounds the blocking read.
-  std::string send_request(const std::string & request, int timeout_ms = 200);
+  // Sends `request` (a JSON object missing its "id" field, no trailing
+  // newline -- send_request() adds both) and returns the matching reply
+  // line (without trailing newline), or an empty string on failure/timeout.
+  // timeout_ms bounds the total time spent waiting, including time spent
+  // discarding any stale replies left over from a previous timed-out call.
+  std::string send_request(const std::string & request_body, int timeout_ms = 200);
+  // Reads and returns one newline-delimited line from the socket, blocking
+  // up to `deadline`. Returns empty string on timeout/error. Pulls from
+  // recv_buf_ first before touching the socket.
+  std::string read_line(std::chrono::steady_clock::time_point deadline);
 };
 
 }  // namespace mycobot_hardware

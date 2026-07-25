@@ -281,8 +281,14 @@ class Bridge:
         else:
             reply = {"error": f"unknown cmd {cmd!r}"}
 
+        # Echo the request's id back so mycobot_system.cpp can tell this
+        # reply apart from a stale one left over from a request it already
+        # gave up waiting on -- see send_request()'s comment in
+        # mycobot_system.cpp for why that matters.
+        reply["id"] = request.get("id")
+
         total_ms = (time.monotonic() - t_start) * 1000
-        print(f"[mycobot_bridge] TIMING {cmd!r} total={total_ms:.1f}ms "
+        print(f"[mycobot_bridge] TIMING {cmd!r} id={reply['id']} total={total_ms:.1f}ms "
               f"queued_before_dispatch={arrival_lag_ms:.1f}ms")
 
         conn.sendall((json.dumps(reply) + "\n").encode())
