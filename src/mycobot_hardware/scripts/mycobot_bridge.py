@@ -210,9 +210,15 @@ class Bridge:
         # expected 6-element list. Validate shape explicitly rather than
         # relying on truthiness.
         try:
+            t0 = time.monotonic()
             with self.arm_lock:
+                t_lock = time.monotonic()
                 angles_deg = self.arm.get_angles()
                 gripper_value = self.arm.get_gripper_value()
+            t1 = time.monotonic()
+            if t1 - t0 > 0.1:
+                print(f"[mycobot_bridge] TIMING read: waited {(t_lock - t0) * 1000:.0f}ms for "
+                      f"arm_lock, calls took {(t1 - t_lock) * 1000:.0f}ms")
 
             if not isinstance(angles_deg, (list, tuple)) or len(angles_deg) != 6:
                 print(f"[mycobot_bridge] WARNING: get_angles() returned "
@@ -251,9 +257,15 @@ class Bridge:
         gripper_rad = positions[6]
         gripper_value = gripper_rad_to_value(gripper_rad)
         try:
+            t0 = time.monotonic()
             with self.arm_lock:
+                t_lock = time.monotonic()
                 self.arm.send_angles(arm_degrees, self.speed)
                 self.arm.set_gripper_value(gripper_value, self.speed)
+            t1 = time.monotonic()
+            print(f"[mycobot_bridge] TIMING write: waited {(t_lock - t0) * 1000:.0f}ms for "
+                  f"arm_lock, calls took {(t1 - t_lock) * 1000:.0f}ms, "
+                  f"target_deg={[round(d, 1) for d in arm_degrees]}")
         except Exception as exc:
             print(f"[mycobot_bridge] ERROR during serial write: {exc!r}")
 
