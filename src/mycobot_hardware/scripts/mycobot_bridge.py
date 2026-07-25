@@ -37,29 +37,16 @@ ARCHITECTURE -- background serial thread, non-blocking socket handler:
   commands executing many seconds after ros2_control already reported the
   goal as complete.
 
-  Fix: two background threads (read, write) own the arm exclusively and
-  loop continuously, completely decoupled from the socket. The socket
-  handler thread(s) never touch the arm -- they only read/write a small
-  shared state object under a lock and reply immediately. This means
-  read() always returns the most recent state a background thread managed
-  to fetch (which may be up to one loop-iteration stale, but that
+  Fix: a single background thread owns the arm exclusively and loops
+  continuously (read state, write latest pending command if changed),
+  completely decoupled from the socket. The socket handler thread(s)
+  never touch the arm -- they only read/write a small shared state
+  object under a lock and reply immediately. This means read() always
+  returns the most recent state the background thread managed to fetch
+  (which may be up to one background-loop-iteration stale, but that
   iteration proceeds at whatever pace the serial link can actually
   sustain, unblocked by anything else) and write() always records the
   latest desired command in O(1), never blocking on send_angles().
-
-  Read and write run on SEPARATE threads (not one loop doing read-then-
-  write), each serializing its own arm.* calls through arm_lock (pymycobot
-  has no internal locking of its own, and two threads mid-call at the same
-  instant could interleave partial serial frames). This was added after
-  confirming on real hardware that a single combined read+write loop
-  starved writes: get_angles()/get_gripper_value() together commonly take
-  20-80ms, so a trajectory sent as many closely-spaced waypoints (e.g.
-  every 0.25s from joint_trajectory_test.py) still only produced a handful
-  of visible jerks over several seconds -- most waypoints were silently
-  overwritten in SharedState.command (writes only ever send the latest
-  command, never a queue) before the loop got around to a write iteration.
-  Two independent threads let a write go out as soon as the arm is free,
-  without waiting on the read side's cadence.
 
 KNOWN GAPS -- confirmed against pymycobot's documented API, NOT yet verified
 against the physical hardware in this project:
@@ -166,39 +153,17 @@ class Bridge:
         print("[mycobot_bridge] connected.")
         self.state = SharedState(len(JOINT_ORDER))
         self._stop = threading.Event()
-        # pymycobot's MyCobot280 talks over a single blocking pyserial
-        # connection with no internal locking of its own -- two threads
-        # calling into it at the same instant (one reading, one writing)
-        # could interleave partial command bytes on the wire and corrupt the
-        # protocol. This lock only serializes the actual arm.* calls, not
-        # the read/write *scheduling* -- see serial_read_loop/
-        # serial_write_loop below for why they still run as two threads.
-        self.arm_lock = threading.Lock()
 
-    # ---- background threads: own the arm exclusively ----
-    #
-    # Reads and writes used to run sequentially in one loop (read, then
-    # write-if-dirty, repeat). That meant a write could only go out once per
-    # read cycle -- and get_angles()/get_gripper_value() together commonly
-    # take 20-80ms, occasionally 500ms+ on this hardware (see git history).
-    # Confirmed on real hardware: a trajectory sent as many closely-spaced
-    # waypoints (0.25s apart) still moved in ~4 visible jerks over several
-    # seconds, roughly matching how few writes/sec the combined read+write
-    # loop could actually dispatch -- most waypoints were silently
-    # overwritten in SharedState.command before ever being sent (writes only
-    # send the LATEST command, not a queue -- see write_command()). Splitting
-    # into two independent threads means a write no longer has to wait for
-    # the next read to finish before it can go out, so far more of the
-    # trajectory's intermediate waypoints actually reach the arm.
+    # ---- background thread: owns the arm exclusively ----
 
-    def serial_read_loop(self):
-        print("[mycobot_bridge] serial read loop starting")
+    def serial_loop(self):
+        """Runs continuously on its own thread for the lifetime of the
+        process. Never touched by the socket handler -- this is the only
+        code that calls into pymycobot, so a slow/stalled serial call here
+        blocks nothing except this loop's own next iteration."""
+        print("[mycobot_bridge] serial loop starting")
         while not self._stop.is_set():
             self._serial_read_once()
-
-    def serial_write_loop(self):
-        print("[mycobot_bridge] serial write loop starting")
-        while not self._stop.is_set():
             self._serial_write_once_if_dirty()
 
     def _serial_read_once(self):
@@ -210,16 +175,14 @@ class Bridge:
         # expected 6-element list. Validate shape explicitly rather than
         # relying on truthiness.
         try:
-            with self.arm_lock:
-                angles_deg = self.arm.get_angles()
-                gripper_value = self.arm.get_gripper_value()
-
+            angles_deg = self.arm.get_angles()
             if not isinstance(angles_deg, (list, tuple)) or len(angles_deg) != 6:
                 print(f"[mycobot_bridge] WARNING: get_angles() returned "
                       f"{angles_deg!r}, expected a 6-element list -- keeping "
                       f"last known positions for this read")
                 angles_deg = None
 
+            gripper_value = self.arm.get_gripper_value()
             if not isinstance(gripper_value, (int, float)):
                 print(f"[mycobot_bridge] WARNING: get_gripper_value() returned "
                       f"{gripper_value!r}, expected a number -- keeping last "
@@ -248,12 +211,12 @@ class Bridge:
             self.state.command_dirty = False
 
         arm_degrees = [math.degrees(p) for p in positions[:6]]
-        gripper_rad = positions[6]
-        gripper_value = gripper_rad_to_value(gripper_rad)
         try:
-            with self.arm_lock:
-                self.arm.send_angles(arm_degrees, self.speed)
-                self.arm.set_gripper_value(gripper_value, self.speed)
+            self.arm.send_angles(arm_degrees, self.speed)
+
+            gripper_rad = positions[6]
+            gripper_value = gripper_rad_to_value(gripper_rad)
+            self.arm.set_gripper_value(gripper_value, self.speed)
         except Exception as exc:
             print(f"[mycobot_bridge] ERROR during serial write: {exc!r}")
 
@@ -341,10 +304,8 @@ def main():
     # background thread's first iteration and return all-zero positions.
     bridge._serial_read_once()
 
-    read_thread = threading.Thread(target=bridge.serial_read_loop, daemon=True)
-    write_thread = threading.Thread(target=bridge.serial_write_loop, daemon=True)
-    read_thread.start()
-    write_thread.start()
+    serial_thread = threading.Thread(target=bridge.serial_loop, daemon=True)
+    serial_thread.start()
 
     if os.path.exists(args.socket_path):
         os.remove(args.socket_path)
