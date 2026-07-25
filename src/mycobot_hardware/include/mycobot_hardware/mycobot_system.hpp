@@ -1,6 +1,7 @@
 #ifndef MYCOBOT_HARDWARE__MYCOBOT_SYSTEM_HPP_
 #define MYCOBOT_HARDWARE__MYCOBOT_SYSTEM_HPP_
 
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -72,6 +73,12 @@ private:
   std::string socket_path_;
   int socket_fd_ = -1;
   rclcpp::Clock clock_{RCL_STEADY_TIME};
+
+  // Debug timing only -- measures actual interval between successive
+  // read()/write() calls to see if the control loop itself is falling
+  // behind its 100Hz nominal rate, vs. the bridge round-trip being slow.
+  std::chrono::steady_clock::time_point last_read_time_{};
+  std::chrono::steady_clock::time_point last_write_time_{};
 
   bool connect_bridge();
   void disconnect_bridge();

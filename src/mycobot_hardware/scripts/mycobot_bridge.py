@@ -45,6 +45,7 @@ import json
 import math
 import os
 import socket
+import time
 
 JOINT_ORDER = [
     "joint2_to_joint1",
@@ -100,7 +101,10 @@ class Bridge:
         # it, since nothing caught it) when iterated as if it were the
         # expected 6-element list. Validate shape explicitly rather than
         # relying on truthiness.
+        t0 = time.monotonic()
         angles_deg = self.arm.get_angles()
+        t1 = time.monotonic()
+        print(f"[mycobot_bridge] TIMING get_angles() took {(t1 - t0) * 1000:.1f}ms")
         if not isinstance(angles_deg, (list, tuple)) or len(angles_deg) != 6:
             print(f"[mycobot_bridge] WARNING: get_angles() returned "
                   f"{angles_deg!r}, expected a 6-element list -- using last "
@@ -108,7 +112,10 @@ class Bridge:
             angles_deg = [0.0] * 6
         positions = [math.radians(a) for a in angles_deg]
 
+        t2 = time.monotonic()
         gripper_value = self.arm.get_gripper_value()
+        t3 = time.monotonic()
+        print(f"[mycobot_bridge] TIMING get_gripper_value() took {(t3 - t2) * 1000:.1f}ms")
         if not isinstance(gripper_value, (int, float)):
             print(f"[mycobot_bridge] WARNING: get_gripper_value() returned "
                   f"{gripper_value!r}, expected a number -- treating as 0")
@@ -128,15 +135,22 @@ class Bridge:
             return
 
         arm_degrees = [math.degrees(p) for p in positions[:6]]
+        t0 = time.monotonic()
         self.arm.send_angles(arm_degrees, self.speed)
+        t1 = time.monotonic()
+        print(f"[mycobot_bridge] TIMING send_angles() took {(t1 - t0) * 1000:.1f}ms")
 
         gripper_rad = positions[6]
         gripper_value = gripper_rad_to_value(gripper_rad)
+        t2 = time.monotonic()
         self.arm.set_gripper_value(gripper_value, self.speed)
+        t3 = time.monotonic()
+        print(f"[mycobot_bridge] TIMING set_gripper_value() took {(t3 - t2) * 1000:.1f}ms")
 
     def handle_client(self, conn):
         buf = b""
         while True:
+            recv_t = time.monotonic()
             chunk = conn.recv(4096)
             if not chunk:
                 return
@@ -144,9 +158,13 @@ class Bridge:
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
                 if line.strip():
-                    self._handle_line(conn, line)
+                    # If more than one line is already sitting in buf when we
+                    # get here, requests are backing up faster than we can
+                    # process them -- that's queuing, logged explicitly.
+                    self._handle_line(conn, line, recv_t)
 
-    def _handle_line(self, conn, line):
+    def _handle_line(self, conn, line, recv_t):
+        arrival_lag_ms = (time.monotonic() - recv_t) * 1000
         try:
             request = json.loads(line)
         except json.JSONDecodeError as exc:
@@ -154,6 +172,7 @@ class Bridge:
             return
 
         cmd = request.get("cmd")
+        t_start = time.monotonic()
         try:
             if cmd == "read":
                 reply = self.read_state()
@@ -171,6 +190,10 @@ class Bridge:
             # read()/write() cycle gets a fresh chance.
             print(f"[mycobot_bridge] ERROR handling {cmd!r}: {exc!r}")
             reply = {"error": str(exc)}
+
+        total_ms = (time.monotonic() - t_start) * 1000
+        print(f"[mycobot_bridge] TIMING {cmd!r} total={total_ms:.1f}ms "
+              f"queued_before_dispatch={arrival_lag_ms:.1f}ms")
 
         conn.sendall((json.dumps(reply) + "\n").encode())
 
