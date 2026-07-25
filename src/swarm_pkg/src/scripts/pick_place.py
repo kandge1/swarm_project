@@ -394,8 +394,14 @@ class RobotIOClient(Node):
         first message to arrive if none has been received yet. Replaces the
         old planning_scene_monitor-based current-state read (moveit_py) --
         the live /joint_states topic already carries the same values."""
-        end_time = self.get_clock().now().nanoseconds + int(timeout_sec * 1e9)
-        while not self._joint_positions and self.get_clock().now().nanoseconds < end_time:
+        # time.monotonic(), not self.get_clock() -- this node runs with
+        # use_sim_time:=true (needed elsewhere for Gazebo), and with no
+        # /clock publisher in the real-hardware split-compute setup,
+        # self.get_clock().now() never advances at all, which silently
+        # turns this into an infinite loop instead of a 5s wait. See
+        # _send_goal_with_retry's comment for the same bug found there.
+        end_time = time.monotonic() + timeout_sec
+        while not self._joint_positions and time.monotonic() < end_time:
             rclpy.spin_once(self, timeout_sec=0.1)
         return {n: self._joint_positions.get(n, 0.0) for n in joint_names}
 
@@ -482,9 +488,16 @@ class RobotIOClient(Node):
             client.send_goal_async(goal, goal_uuid=goal_uuid)
             key = bytes(goal_uuid.uuid)
 
-            deadline = self.get_clock().now().nanoseconds + int(accept_timeout * 1e9)
+            # time.monotonic(), not self.get_clock() -- this node runs with
+            # use_sim_time:=true (needed elsewhere for Gazebo), and with no
+            # /clock publisher in the real-hardware split-compute setup,
+            # self.get_clock().now() never advances at all. That turned this
+            # deadline check into an unconditional True forever, silently
+            # hanging the whole script for 20+ minutes with zero output
+            # instead of ever timing out -- confirmed on real hardware.
+            deadline = time.monotonic() + accept_timeout
             seen_any_status = False
-            while self.get_clock().now().nanoseconds < deadline:
+            while time.monotonic() < deadline:
                 rclpy.spin_once(self, timeout_sec=0.1)
                 if key in self._goal_statuses:
                     seen_any_status = True
@@ -500,8 +513,8 @@ class RobotIOClient(Node):
             # A status has been seen for this goal -- it is confirmed live on
             # the robot, so from here on we only wait, never resend (a resend
             # now could command a second, overlapping trajectory).
-            deadline = self.get_clock().now().nanoseconds + int(result_timeout * 1e9)
-            while self.get_clock().now().nanoseconds < deadline:
+            deadline = time.monotonic() + result_timeout
+            while time.monotonic() < deadline:
                 status = self._goal_statuses.get(key)
                 if status in terminal:
                     if status == GoalStatus.STATUS_SUCCEEDED:
