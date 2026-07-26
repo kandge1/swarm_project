@@ -412,6 +412,19 @@ class RobotIOClient(Node):
         configured for that joint)."""
         return self._joint_efforts.get(joint_name)
 
+    def wait_for_joint_states(self, timeout_sec=10.0):
+        """Block until the first /joint_states message arrives. True if one
+        did.
+
+        Separate from current_joint_positions so callers can distinguish "no
+        data yet" from "data, but this joint is absent" -- current_joint_positions
+        returns 0.0 for both, which is indistinguishable from a joint genuinely
+        at zero."""
+        end_time = time.monotonic() + timeout_sec
+        while not self._joint_positions and time.monotonic() < end_time:
+            rclpy.spin_once(self, timeout_sec=0.1)
+        return bool(self._joint_positions)
+
     def current_joint_positions(self, joint_names, timeout_sec=5.0):
         """Latest /joint_states positions for joint_names, waiting for the
         first message to arrive if none has been received yet. Replaces the
@@ -685,10 +698,28 @@ class RobotIOClient(Node):
                     max_excursion = max(max_excursion, abs(p - p0))
             if time.monotonic() - last_print > 5.0:
                 last_print = time.monotonic()
-                current = {n: round(self._joint_positions.get(n, float("nan")), 4)
-                          for n in target}
-                print(f"[{label}] waiting... current joint positions: {current}  "
-                      f"(max movement so far {max_excursion:.4f} rad)")
+                if not self._joint_positions:
+                    # NOT a sensor fault. An empty dict means no /joint_states
+                    # message has EVER arrived, so every joint falls back to its
+                    # default. Printing float("nan") for that default made the
+                    # failure look like corrupted readings from the arm, and
+                    # sent a debugging session to the robot -- whose own log was
+                    # completely clean, because the robot was publishing fine
+                    # and the subscription simply never matched over DDS.
+                    print(f"[{label}] waiting... NO /joint_states MESSAGE HAS "
+                          f"EVER ARRIVED ({self.count_publishers('/joint_states')} "
+                          f"publisher(s) currently visible). This is a DDS "
+                          f"discovery failure on this end, not an arm fault -- "
+                          f"the arm may well be moving. Nothing can converge "
+                          f"until it is fixed.")
+                else:
+                    current = {n: round(self._joint_positions[n], 4)
+                               for n in target if n in self._joint_positions}
+                    missing = [n for n in target if n not in self._joint_positions]
+                    missing_note = f", NOT REPORTED: {missing}" if missing else ""
+                    print(f"[{label}] waiting... current joint positions: {current}"
+                          f"{missing_note}  "
+                          f"(max movement so far {max_excursion:.4f} rad)")
             if reached and time.monotonic() >= earliest_done:
                 return True
 
@@ -702,6 +733,16 @@ class RobotIOClient(Node):
         # its commanded value). Logging an ERROR per increment there buried the
         # real output under ~20 alarming-but-meaningless messages per grasp.
         if not log_failure:
+            return False
+
+        if not self._joint_positions:
+            print(f"[{label}] TIMED OUT, but NOT because of the arm: no "
+                  f"/joint_states message arrived during the entire wait "
+                  f"({self.count_publishers('/joint_states')} publisher(s) "
+                  f"visible). The goal was accepted, so the robot very likely "
+                  f"executed it -- this process just cannot see the result. "
+                  f"Check DDS discovery on this machine before touching "
+                  f"anything on the robot.")
             return False
 
         errors = {n: round(self._joint_positions.get(n, float("nan")) - p, 4)
@@ -1704,6 +1745,25 @@ def main():
     print(f"[pick_place] pick block-center z={pick_center_z:.3f} -> flange target z={pz:.3f}")
     print(f"[pick_place] place surface z={place_surface_z:.3f} "
           f"(block size {args.block_size:.3f}) -> flange target z={lz:.3f}")
+
+    # Refuse to start blind. Without /joint_states nothing in this script can
+    # verify that anything happened: every convergence check needs a measured
+    # position, so each goal burns its full timeout and the run reports a
+    # motion failure for what is actually a discovery failure on THIS machine.
+    # Observed 2026-07-27 across three consecutive runs, each of which sent
+    # real goals the robot really executed while its own log stayed clean.
+    if not io_client.wait_for_joint_states(timeout_sec=10.0):
+        print("\nABORTING: no /joint_states received in 10s "
+              f"({io_client.count_publishers('/joint_states')} publisher(s) "
+              "visible).\n"
+              "  The robot is probably fine -- this is DDS discovery on this\n"
+              "  machine. Check that real_robot_hardware.launch.py is up, that\n"
+              "  joint_state_broadcaster started, and that CYCLONEDDS_URI is\n"
+              "  set here. `ros2 topic hz /joint_states` should show traffic\n"
+              "  before this script is worth running.")
+        io_client.destroy_node()
+        rclpy.shutdown()
+        return
 
     steps = [
         ("Return to home pose", lambda: go_home(io_client)),
