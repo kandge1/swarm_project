@@ -66,6 +66,7 @@ against the physical hardware in this project:
 """
 
 import argparse
+import inspect
 import json
 import math
 import os
@@ -220,10 +221,39 @@ DEFAULT_MAX_COMMAND_RATE_HZ = 30.0
 # run at full rate (every loop iteration) whenever it is not. See
 # _serial_read_once_if_due() for the measurements behind this.
 #
-# UNVERIFIED as an optimum. Raising it buys command rate at the cost of a
-# staler /joint_states during motion; lowering it does the reverse. Sweep with
-# --motion-read-interval, and set it to 0 to restore reading every iteration.
-DEFAULT_MOTION_READ_INTERVAL_SEC = 0.5
+# Raised 0.5 -> 1.5 on 2026-07-27. At 0.5 the dt= column showed the cost
+# directly: a steady stream of dt=34-36ms commands interrupted every half
+# second by a single dt=551ms one, across which a joint target jumped 11
+# degrees and another 15.6. Nothing can be written while a read holds the
+# serial link, JTC's trajectory clock keeps running through the blackout, and
+# the next command to land is wherever the trajectory has got to by then -- so
+# the arm stops and then lurches. A 5s move at a 0.5s interval gives about
+# five of those, which is exactly the "4 or 5 jerks per move" reported from
+# the hardware.
+#
+# This only makes the blackouts RARER. See DEFAULT_READ_TIMEOUT_SEC for the
+# other half, which makes each one shorter.
+DEFAULT_MOTION_READ_INTERVAL_SEC = 1.5
+
+# Cap on how long a single pymycobot read may block, in seconds.
+#
+# pymycobot's common.py read() hardcodes wait_time=0.5 on Linux and its
+# caller _res() retries three times, so one get_angles() can hold the serial
+# link for 1.5s -- observed as `loop_rate=1.3Hz (last read 1507ms)` followed
+# by `get_angles() returned -1`. While it is blocked, no position command can
+# be written, which is what the arm sees as a jerk.
+#
+# read() does accept a `timeout` argument that overrides wait_time, but
+# nothing in the call chain from get_angles() passes one, so the only way to
+# supply it is to wrap _read (see _install_read_timeout). The arm answers a
+# healthy read in 10-25ms, so 0.1s is generous for a good reply while cutting
+# a bad one from 500ms to 100ms and a fully failed one from 1.5s to 0.3s.
+#
+# The cost is that a genuinely slow-but-valid reply now gets abandoned, making
+# the reported state staler. That is the right trade here: nothing closes a
+# loop on measured position during a trajectory, and _serial_read_once already
+# keeps the last known values when a read returns -1.
+DEFAULT_READ_TIMEOUT_SEC = 0.1
 
 # Position command must change by at least this much (radians) before the
 # background loop bothers re-sending it to the arm -- avoids spamming
@@ -285,7 +315,8 @@ class Bridge:
     def __init__(self, serial_port, baud_rate, speed, log_timing=True,
                  async_writes=True, max_command_rate_hz=DEFAULT_MAX_COMMAND_RATE_HZ,
                  motion_read_interval=DEFAULT_MOTION_READ_INTERVAL_SEC,
-                 min_speed=MIN_SPEED):
+                 min_speed=MIN_SPEED,
+                 read_timeout=DEFAULT_READ_TIMEOUT_SEC):
         from pymycobot import MyCobot280  # imported here so --help works without hardware attached
 
         self.speed = speed
@@ -298,9 +329,43 @@ class Bridge:
         print(f"[mycobot_bridge] connecting to {serial_port} @ {baud_rate}...")
         self.arm = MyCobot280(serial_port, baud_rate)
         print("[mycobot_bridge] connected.")
+        self._install_read_timeout(read_timeout)
         self.state = SharedState(len(JOINT_ORDER))
         self._stop = threading.Event()
         self._read_count = 0
+
+    def _install_read_timeout(self, timeout_sec):
+        """Wrap pymycobot's _read so every read carries an explicit timeout.
+
+        read() already supports one -- `if timeout is not None: wait_time =
+        timeout` -- but no call path from get_angles()/get_gripper_value()
+        supplies it, so the hardcoded 0.5s Linux default always wins. Wrapping
+        the bound method is the least invasive way to inject it: no vendor file
+        is edited, and if a future pymycobot drops the parameter this detects
+        that and leaves the default in place rather than raising."""
+        if not timeout_sec or timeout_sec <= 0:
+            print("[mycobot_bridge] read timeout: using pymycobot's default "
+                  "(0.5s per attempt, 3 attempts)")
+            return
+
+        original_read = self.arm._read
+        try:
+            parameters = inspect.signature(original_read).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        if "timeout" not in parameters:
+            print("[mycobot_bridge] WARNING: this pymycobot's _read takes no "
+                  "'timeout' argument -- leaving its default in place. Reads "
+                  "may block up to 1.5s and cause visible jerks.")
+            return
+
+        def read_with_timeout(genre, *args, **kwargs):
+            kwargs.setdefault("timeout", timeout_sec)
+            return original_read(genre, *args, **kwargs)
+
+        self.arm._read = read_with_timeout
+        print(f"[mycobot_bridge] read timeout capped at {timeout_sec}s per "
+              f"attempt (pymycobot's Linux default is 0.5s)")
 
     # ---- background thread: owns the arm exclusively ----
 
@@ -806,6 +871,14 @@ def main():
                              "aborts and restarts the move in progress, so this "
                              "trades tracking accuracy against re-commanding the "
                              "servos so often they buzz instead of moving.")
+    parser.add_argument("--read-timeout", type=float,
+                        default=DEFAULT_READ_TIMEOUT_SEC,
+                        help="cap on how long one pymycobot read may block, in "
+                             "seconds (default %(default)s, 0 keeps pymycobot's "
+                             "hardcoded 0.5s per attempt with 3 attempts). No "
+                             "position command can be written while a read holds "
+                             "the serial link, so this bounds the command "
+                             "blackout that the arm feels as a jerk.")
     parser.add_argument("--min-speed", type=int, default=MIN_SPEED,
                         help="floor for the speed matching (default %(default)s). "
                              "25 was chosen on 2026-07-26 for the OLD regime, "
@@ -840,7 +913,8 @@ def main():
                     async_writes=args.async_writes,
                     max_command_rate_hz=args.max_command_rate,
                     motion_read_interval=args.motion_read_interval,
-                    min_speed=args.min_speed)
+                    min_speed=args.min_speed,
+                    read_timeout=args.read_timeout)
     print(f"[mycobot_bridge] writes={'async' if args.async_writes else 'sync (blocking)'}, "
           f"max command rate={args.max_command_rate}Hz, "
           f"motion read interval={args.motion_read_interval}s, "
