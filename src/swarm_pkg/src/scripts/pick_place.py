@@ -159,6 +159,28 @@ GRIPPER_EFFORT_THRESHOLD = 0.2   # N*m -- see below: never fires on real hardwar
 # (0.005 rad, i.e. under one quantum) can't be mistaken for contact on its own.
 GRIPPER_STALL_EPS = 0.003        # rad of closing progress that counts as "moved"
 GRIPPER_STALL_STEPS = 3          # consecutive stalled steps before declaring contact
+
+# Primary contact signal: how far the jaw is allowed to trail its commanded
+# position before we call it contact. Faster and gentler than stall counting,
+# which needs GRIPPER_STALL_STEPS increments to be sure and squeezes that much
+# harder in the meantime. From the first full grasp (2026-07-26), lag while
+# closing through open air never exceeded +0.045 rad, then jumped the instant
+# the block stopped the jaw:
+#     free:    +0.0075 +0.030 +0.030 +0.030 +0.0375 ... +0.045 +0.045
+#     blocked: +0.0675 +0.0975 +0.1275 +0.1575   <- stall count only fired here
+# 0.06 sits above the free-running maximum and below the first blocked
+# reading, so it fires 3 increments (0.09 rad of squeeze) earlier than stall
+# detection did. Stall counting is kept as a backup for a jaw that creeps one
+# quantum at a time instead of stopping cleanly.
+GRIPPER_CONTACT_LAG = 0.06       # rad the jaw may trail its command
+
+# Fine (slow, 0.005 rad) stepping near the closed end. DISABLED (2026-07-26):
+# it was tuned in simulation for landing precisely on a 1 inch cube, and on
+# real hardware a fine step is smaller than the 0.0075 rad readback quantum,
+# so it cannot even be measured -- it just adds ~20 extra increments and
+# roughly a minute per grasp. Re-enable once a real force/contact signal
+# exists and precise closing actually buys something.
+GRIPPER_FINE_ENABLED = False
 # Per-increment timeout. The 60s default is right for an arm move but wrong
 # here: a stalled increment waits the whole budget, ~40 times over, which is
 # what made a single grasp hang for minutes before aborting.
@@ -371,6 +393,9 @@ class RobotIOClient(Node):
         self._state_validity_client = self.create_client(GetStateValidity, "/check_state_validity")
         self._joint_efforts = {}
         self._joint_positions = {}
+        # Action clients whose DDS writer has already been given time to match
+        # -- see _DDS_MATCH_SETTLE_SEC / _deliver_goal.
+        self._warmed_clients = set()
         self._joint_state_sub = self.create_subscription(
             JointState, "/joint_states", self._on_joint_state, 10
         )
@@ -454,13 +479,16 @@ class RobotIOClient(Node):
     # error, no retry, and no log line anywhere -- the request simply
     # evaporates.
     #
-    # That is exactly the 2026-07-26 failure: pick_place.py planned,
-    # discovered the server, and fired its goal ~250ms after process start
-    # (1785077664.658 -> ~.9), the robot logged no "Received new action goal"
-    # at all, and the acceptance future timed out 10s later.
-    # joint_trajectory_test.py survives on luck -- it has no
-    # /plan_kinematic_path round trip reshaping when its send lands relative
-    # to discovery.
+    # PAID ONCE PER ACTION CLIENT, NOT PER GOAL (2026-07-26). This was
+    # originally applied to every send, on the theory that a matching race was
+    # what made goals vanish. That theory was wrong -- the real cause was
+    # RTPS messages exceeding the MTU (see cyclonedds_galactic.xml) -- and at
+    # ~30 goals per pick-and-place run a per-goal settle was costing ~45s of
+    # pure sleeping, most of it inside the gripper closing loop.
+    #
+    # A brief settle on FIRST use of a client is still worth keeping: that is
+    # the only moment the underlying DDS writer genuinely has not matched yet,
+    # and _deliver_goal's retry covers the rare case where it still races.
     _DDS_MATCH_SETTLE_SEC = 1.5
 
     def _deliver_goal(self, client_attr, action_name, goal, label, attempts=3):
@@ -494,10 +522,14 @@ class RobotIOClient(Node):
                     f"{label} action server {action_name} not available")
                 return None
 
-            # Let DDS matching actually complete -- see _DDS_MATCH_SETTLE_SEC.
-            settle_until = time.monotonic() + self._DDS_MATCH_SETTLE_SEC
-            while time.monotonic() < settle_until:
-                rclpy.spin_once(self, timeout_sec=0.05)
+            # Let DDS matching complete, but only the first time this client is
+            # used (or the first time after a retry recreated it) -- see
+            # _DDS_MATCH_SETTLE_SEC.
+            if client_attr not in self._warmed_clients:
+                settle_until = time.monotonic() + self._DDS_MATCH_SETTLE_SEC
+                while time.monotonic() < settle_until:
+                    rclpy.spin_once(self, timeout_sec=0.05)
+                self._warmed_clients.add(client_attr)
 
             goal_future = client.send_goal_async(goal)
             handle = self._spin_until_complete(
@@ -537,6 +569,8 @@ class RobotIOClient(Node):
             client.destroy()
             setattr(self, client_attr,
                     ActionClient(self, FollowJointTrajectory, action_name))
+            # Fresh client: it has to re-match, so re-arm the one-off settle.
+            self._warmed_clients.discard(client_attr)
 
         self.get_logger().error(
             f"{label} goal: NOT ACCEPTED after {attempts} attempts -- goal "
@@ -545,7 +579,8 @@ class RobotIOClient(Node):
         return None
 
     def _send_goal_and_wait(self, client_attr, action_name, goal, label,
-                            settle_tolerance=0.05, timeout_sec=60.0):
+                            settle_tolerance=0.05, timeout_sec=60.0,
+                            log_failure=True):
         """settle_tolerance default 0.02 -> 0.05 rad (2026-07-26): confirmed
         on real hardware that the arm consistently settles ~0.014-0.031 rad
         away from the commanded target even when the controller reports
@@ -662,6 +697,13 @@ class RobotIOClient(Node):
         # enough to tell "never moved" apart from "moved but stopped short",
         # which is the difference between a dead write path
         # (mycobot_bridge.py never called send_angles) and a slow/blocked arm.
+        # log_failure=False: the caller expects non-convergence and handles it
+        # (the gripper closing loop, where a jaw held by a block CANNOT reach
+        # its commanded value). Logging an ERROR per increment there buried the
+        # real output under ~20 alarming-but-meaningless messages per grasp.
+        if not log_failure:
+            return False
+
         errors = {n: round(self._joint_positions.get(n, float("nan")) - p, 4)
                   for n, p in target.items()}
         if max_excursion < 0.01:
@@ -717,7 +759,8 @@ class RobotIOClient(Node):
         ok = self._send_goal_and_wait("_gripper_client",
                                       self._gripper_action_name,
                                       goal, "gripper", settle_tolerance=0.05,
-                                      timeout_sec=timeout_sec)
+                                      timeout_sec=timeout_sec,
+                                      log_failure=require_convergence)
         return True if not require_convergence else ok
 
     # ---- Cartesian path ----
@@ -1282,7 +1325,7 @@ def gripper_close_until_contact(io_client, start=GRIPPER_OPEN, closed=GRIPPER_CL
     last_position = io_client.joint_position("gripper_controller")
 
     while target > closed:
-        in_fine_zone = target <= fine_zone
+        in_fine_zone = GRIPPER_FINE_ENABLED and target <= fine_zone
         this_step = fine_step if in_fine_zone else step
         this_duration = fine_step_duration if in_fine_zone else step_duration
 
@@ -1331,6 +1374,16 @@ def gripper_close_until_contact(io_client, start=GRIPPER_OPEN, closed=GRIPPER_CL
               f"lag={lag:+.4f}  stalled={stalled_steps}/{GRIPPER_STALL_STEPS}  "
               f"effort={effort_text}")
 
+        # Primary signal: the jaw is trailing its command by more than it ever
+        # does while moving freely, so something is stopping it.
+        if lag >= GRIPPER_CONTACT_LAG:
+            print(f"[gripper] CONTACT: jaw trailing its command by {lag:.4f} rad "
+                  f"(>= {GRIPPER_CONTACT_LAG}), holding at {position:.4f} while "
+                  f"commanded {target:.3f}. Stopping close.")
+            return True
+
+        # Backup signal, for a jaw that creeps one readback quantum at a time
+        # rather than stopping cleanly enough to build up lag.
         if stalled_steps >= GRIPPER_STALL_STEPS:
             print(f"[gripper] CONTACT: jaw stopped advancing for "
                   f"{GRIPPER_STALL_STEPS} consecutive steps while still being "
@@ -1429,21 +1482,18 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
             z_tolerance=0.15)
     )
 
-    # DIAGNOSTIC: try with AND without orientation constraint to isolate
-    # whether the constraint or the pose itself is causing the failure
+    # The constrained and unconstrained solves were computed side by side here
+    # as a diagnostic while chasing planning failures. Removed 2026-07-26:
+    # every Cartesian move in the first full real-hardware pick and place
+    # returned fraction=1.00 both with and without the orientation constraint,
+    # so the unconstrained solve proved nothing and cost an extra
+    # /compute_cartesian_path round trip on all four Cartesian moves.
     solution_msg, fraction = io_client.compute_cartesian_path(
-        waypoints=[target],
-        avoid_collisions=True,
-        path_constraints=None,  # TEMP: no orientation constraint
-    )
-    print(f"[diag] Cartesian fraction WITHOUT orientation constraint: {fraction:.2f}")
-    solution_msg2, fraction2 = io_client.compute_cartesian_path(
         waypoints=[target],
         avoid_collisions=True,
         path_constraints=path_constraints,
     )
-    print(f"[diag] Cartesian fraction WITH orientation constraint: {fraction2:.2f}")
-    solution_msg, fraction = solution_msg2, fraction2
+    print(f"[cartesian] planned fraction: {fraction:.2f}")
 
     if solution_msg is None or fraction < min_fraction:
         print(f"Cartesian planning FAILED for ({x}, {y}, {z}) (fraction={fraction:.2f})")

@@ -980,3 +980,69 @@ Confirmed working end to end on real hardware: goal delivery (any size),
 multi-waypoint joint-space execution, Cartesian execution, IK branch
 selection, grasp. Not yet exercised: retreat, pre-place, place descent,
 release, and the final return -- the run has never gotten past the grasp.
+
+---
+
+## Session 3e (2026-07-26): FULL PICK AND PLACE COMPLETED, then speed work
+
+The complete sequence ran end to end on real hardware for the first time:
+home -> pre-grasp -> Cartesian descend -> grasp -> Cartesian retreat ->
+pre-place -> Cartesian descend -> release -> Cartesian retreat -> home.
+Stall-based contact detection fired correctly and the block was picked and
+placed.
+
+Elapsed: **over 3 minutes**, against ~15-20s for the same sequence in
+simulation. Most of it was the grasp.
+
+### Where the time actually went
+
+- **`_DDS_MATCH_SETTLE_SEC` on every goal.** Introduced in Session 3b on the
+  (wrong) theory that a DDS matching race was dropping goals; the real cause
+  turned out to be the MTU. At 1.5s x ~30 goals per run that was ~45s of pure
+  sleeping, most of it inside the gripper loop. Now paid **once per action
+  client** instead of once per goal, re-armed if a retry recreates the client.
+  `_deliver_goal`'s retry covers the residual race.
+- **Over-squeezing.** Contact was declared only after
+  `GRIPPER_STALL_STEPS=3` consecutive stalled increments, so the jaw was
+  commanded 0.09 rad further closed after it had already stopped. The **lag**
+  column added last session turned out to be a much sharper signal:
+
+  ```
+  free:    +0.0075 +0.030 +0.030 +0.030 +0.0375 ... +0.045 +0.045
+  blocked: +0.0675 +0.0975 +0.1275 +0.1575   <- stall count only fired here
+  ```
+
+  Free-running lag never exceeded +0.045; the first blocked reading was
+  +0.0675. `GRIPPER_CONTACT_LAG = 0.06` sits cleanly between them. Replaying
+  the recorded 18-step trace, lag fires at step 15 instead of 18: three fewer
+  increments and 0.09 rad less squeeze.
+- **Fine stepping.** `GRIPPER_FINE_ENABLED = False`. It was tuned in
+  simulation for landing precisely on a 1 inch cube, but a 0.005 rad fine step
+  is *smaller than the 0.0075 rad readback quantum*, so it cannot even be
+  measured on this hardware -- it only added ~20 increments (~50s) per grasp.
+- **Duplicate Cartesian solve.** `cartesian_move_to` computed the path twice
+  (with and without the orientation constraint) as a leftover diagnostic. Every
+  Cartesian move in the successful run returned fraction=1.00 both ways, so the
+  extra solve proved nothing. Removed.
+- **Log noise.** Each stalled gripper increment logged
+  `[ERROR] the arm NEVER MOVED AT ALL`, which is expected and correct
+  behaviour while closing on a block. `_send_goal_and_wait(log_failure=False)`
+  now suppresses it when the caller expects non-convergence.
+
+Estimated saving: **~115s per run.**
+
+### Still open on speed (not done)
+
+- `_FALLBACK_MAX_JOINT_SPEED = 0.5 rad/s` while `joint_limits.yaml` allows
+  1.0. Every arm move is paced by this. Raising it is the largest remaining
+  win but it directly changes real arm speed, so it wants a careful hardware
+  test rather than a blind bump.
+- The proper fix is still the OMPL response-adapter gap (Session 3): with
+  `AddTimeOptimalParameterization` actually running, trajectories would get
+  real accel/decel profiles instead of `_ensure_monotonic_timing`'s uniform
+  constant-velocity pacing, and would both move faster and stop more cleanly.
+- The bridge's serial loop drops from ~85Hz to 1-3Hz *while the arm moves*
+  (`get_angles()` taking 500-1500ms mid-motion), so only ~10-20 setpoints land
+  per trajectory. Coarse but functional; revisit if motion looks steppy.
+- Nothing tells MoveIt the block is in the gripper, so collision checking for
+  the place moves does not account for it.
