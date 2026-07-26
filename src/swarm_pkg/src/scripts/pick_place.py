@@ -1136,7 +1136,25 @@ def parse_args():
 def main():
     args = parse_args()
 
-    rclpy.init(args=["--ros-args", "-p", "use_sim_time:=true"])
+    # use_sim_time:=true REMOVED (2026-07-26): this script targets real
+    # hardware (split-compute, mars<->robot), never Gazebo -- there is no
+    # /clock publisher anywhere in that setup, so use_sim_time here only
+    # ever caused problems and never provided the sim-time-matching benefit
+    # it exists for. Already confirmed to make self.get_clock().now() never
+    # advance (a silent-infinite-loop bug, fixed by switching timeout math
+    # to time.monotonic() in RobotIOClient). Suspected of causing a second,
+    # not-yet-fully-understood failure mode too: after a handful of action
+    # goals, this process alone (never joint_trajectory_test.py, which
+    # calls plain rclpy.init() with no use_sim_time -- the only real
+    # difference between the two scripts) stops receiving any further
+    # goal completion via /joint_states, every single run tonight,
+    # regardless of DDS-level tuning (QoS, watermarks, fragment size) that
+    # had no effect. If real motion still fails after this change, the
+    # theory is wrong and should be revisited; if it's fixed, use_sim_time
+    # was likely corrupting this node's rclpy clock/QoS machinery in some
+    # way not limited to the two explicit self.get_clock() call sites
+    # already patched.
+    rclpy.init()
 
     io_client = RobotIOClient()
 
