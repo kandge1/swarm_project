@@ -418,38 +418,115 @@ class RobotIOClient(Node):
         pattern already used for the gripper below) skips that check
         entirely.
         """
-        # Fresh ActionClient every call (2026-07-26): confirmed on real
-        # hardware, repeatedly, that THIS process's arm/gripper ActionClient
-        # objects stop being able to reach the robot at all after ~3
-        # successful goals (robot-side log shows zero "Received new action
-        # goal" for anything after that point, permanently, for the rest of
-        # the process's life) -- while a completely fresh process (e.g.
-        # joint_trajectory_test.py, same RobotIOClient class) sends a goal
-        # successfully every single time, even moments after the "poisoned"
-        # process's failure, against the same robot in the same DDS domain.
-        # That rules out the robot/DDS link itself as permanently broken and
-        # points at something in THIS node's long-lived ActionClient/writer
-        # state degrading. destroy()-ing and recreating the ActionClient
-        # before every goal approximates what a fresh process gets for
-        # free, without needing to understand the exact underlying Cyclone
-        # DDS mechanism.
-        self._arm_client.destroy()
-        self._arm_client = ActionClient(self, FollowJointTrajectory, self._arm_action_name)
-
-        # 20s, not 5s: cross-machine action-server discovery over the
-        # split-compute Cyclone DDS unicast link has repeatedly needed more
-        # than 5s in practice (confirmed: the action was genuinely reachable
-        # via `ros2 action list` moments after a 5s wait_for_server() timed
-        # out) -- not a real unavailability, just slow first-discovery.
-        if not self._arm_client.wait_for_server(timeout_sec=20.0):
-            self.get_logger().error("arm_group_controller action server not available")
-            return False
-
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = joint_trajectory
-        return self._send_goal_and_wait(self._arm_client, goal, "arm")
+        return self._send_goal_and_wait("_arm_client", self._arm_action_name,
+                                        goal, "arm")
 
-    def _send_goal_and_wait(self, client, goal, label,
+    # How long to keep spinning after wait_for_server() reports the action
+    # server present, before writing the first request to it.
+    #
+    # wait_for_server() only consults the local ROS GRAPH CACHE. It returns
+    # true as soon as discovery has told this node that a server exists --
+    # which on this link happens within milliseconds of process start, long
+    # before the underlying DDS request writer here has finished MATCHING the
+    # robot's request reader across the unicast WAN link. ROS2 action/service
+    # requests use RELIABLE + VOLATILE QoS, and a volatile writer silently
+    # DISCARDS any sample written while no reader is matched. There is no
+    # error, no retry, and no log line anywhere -- the request simply
+    # evaporates.
+    #
+    # That is exactly the 2026-07-26 failure: pick_place.py planned,
+    # discovered the server, and fired its goal ~250ms after process start
+    # (1785077664.658 -> ~.9), the robot logged no "Received new action goal"
+    # at all, and the acceptance future timed out 10s later.
+    # joint_trajectory_test.py survives on luck -- it has no
+    # /plan_kinematic_path round trip reshaping when its send lands relative
+    # to discovery.
+    _DDS_MATCH_SETTLE_SEC = 1.5
+
+    def _deliver_goal(self, client_attr, action_name, goal, label, attempts=3):
+        """Get a FollowJointTrajectory goal ACCEPTED by the controller,
+        retrying across the known-lossy cross-machine DDS link.
+
+        Returns the accepted ClientGoalHandle, or None if every attempt
+        failed. Retrying (rather than one-shot) is the whole point: the
+        dominant failure mode here is a request silently dropped by an
+        unmatched volatile writer, and by the time a second request goes out
+        the matching has completed, so attempt 2 succeeds where attempt 1
+        vanished.
+
+        Session 2 deleted the previous retry logic on the reasoning that
+        "goal delivery itself has never been the problem, only completion
+        detection". That conclusion came from misattributed log timestamps
+        (see the session log): the goals believed to prove delivery worked
+        were actually a LATER, trivial go_home goal. Goal delivery is the
+        problem."""
+        for attempt in range(attempts):
+            client = getattr(self, client_attr)
+
+            # 20s, not 5s: cross-machine action-server discovery over the
+            # split-compute Cyclone DDS unicast link has repeatedly needed
+            # more than 5s in practice (confirmed: the action was genuinely
+            # reachable via `ros2 action list` moments after a 5s
+            # wait_for_server() timed out) -- not a real unavailability, just
+            # slow first-discovery.
+            if not client.wait_for_server(timeout_sec=20.0):
+                self.get_logger().error(
+                    f"{label} action server {action_name} not available")
+                return None
+
+            # Let DDS matching actually complete -- see _DDS_MATCH_SETTLE_SEC.
+            settle_until = time.monotonic() + self._DDS_MATCH_SETTLE_SEC
+            while time.monotonic() < settle_until:
+                rclpy.spin_once(self, timeout_sec=0.05)
+
+            goal_future = client.send_goal_async(goal)
+            handle = self._spin_until_complete(
+                goal_future, timeout_sec=10.0,
+                what=f"{label} goal acceptance (attempt {attempt + 1}/{attempts})")
+
+            if handle is not None and handle.accepted:
+                print(f"[{label}] goal ACCEPTED by the controller "
+                      f"(attempt {attempt + 1}) -- delivery confirmed, now "
+                      f"watching /joint_states for real motion")
+                return handle
+
+            if handle is not None and not handle.accepted:
+                # A real rejection is a decision, not a dropped packet --
+                # resending an identical goal will just be rejected again.
+                self.get_logger().error(
+                    f"{label} goal: controller REJECTED the goal (it arrived "
+                    f"fine; the controller refused it -- check joint names, "
+                    f"waypoint timing, and the robot-side log)")
+                return None
+
+            self.get_logger().warn(
+                f"{label} goal: no acceptance response on attempt "
+                f"{attempt + 1}/{attempts} -- the request was almost certainly "
+                f"dropped before reaching the robot (no 'Received new action "
+                f"goal' will appear in its log). Recreating the ActionClient "
+                f"and retrying.")
+
+            # Recreate the client as the recovery step ONLY, not before every
+            # goal. Recreating tears down and rediscovers 5 DDS entities,
+            # which on this link is precisely the expensive, race-prone
+            # operation -- doing it unconditionally per goal (the 2026-07-26
+            # "Fix C") is what pushed the failure all the way forward onto
+            # goal #1. Keeping the client long-lived and only recreating
+            # after a failure keeps the escape hatch for the "3-goal wall"
+            # without paying rediscovery on every single send.
+            client.destroy()
+            setattr(self, client_attr,
+                    ActionClient(self, FollowJointTrajectory, action_name))
+
+        self.get_logger().error(
+            f"{label} goal: NOT ACCEPTED after {attempts} attempts -- goal "
+            f"delivery to the robot is failing, NOT the hardware failing to "
+            f"move. Check the robot's log for 'Received new action goal'.")
+        return None
+
+    def _send_goal_and_wait(self, client_attr, action_name, goal, label,
                             settle_tolerance=0.05, timeout_sec=60.0):
         """settle_tolerance default 0.02 -> 0.05 rad (2026-07-26): confirmed
         on real hardware that the arm consistently settles ~0.014-0.031 rad
@@ -506,14 +583,16 @@ class RobotIOClient(Node):
         _describe_trajectory(label, goal.trajectory)
 
         # ------------------------------------------------------------------
-        # Await the goal-acceptance handle instead of firing send_goal_async()
-        # and discarding its future (2026-07-26).
+        # Confirm the goal was actually ACCEPTED before waiting on motion,
+        # instead of firing send_goal_async() and discarding its future
+        # (2026-07-26).
         #
-        # WHY THIS MATTERS MORE THAN IT LOOKS: without this, a failure here is
-        # completely undiagnosable, because /joint_states-convergence polling
-        # alone cannot distinguish three totally different faults, all of
-        # which present as the identical "never converged within 60s" error:
-        #   1. the goal never reached the robot at all (the "3-goal wall"),
+        # WHY THIS MATTERS MORE THAN IT LOOKS: without it, a failure here is
+        # undiagnosable, because /joint_states-convergence polling alone
+        # cannot distinguish three totally different faults, all of which
+        # present as the identical "never converged within 60s" error:
+        #   1. the goal never reached the robot at all (a dropped request --
+        #      see _deliver_goal),
         #   2. the goal was received and accepted but the hardware never
         #      actually moved (the Galactic controller_manager reports
         #      "Goal reached, success!" from elapsed trajectory time alone --
@@ -521,28 +600,9 @@ class RobotIOClient(Node):
         #      arm_group_controller has NO goal tolerance to check and
         #      literally cannot report failure), or
         #   3. the arm moved but stopped short of settle_tolerance.
-        # Two full debugging sessions were spent guessing between these. The
-        # goal-acceptance path is independently known-reliable on this DDS
-        # link (see _spin_until_complete's docstring: acceptance arrives fine,
-        # it's the RESULT message that gets lost), so this costs nothing and
-        # removes the ambiguity permanently.
-        goal_future = client.send_goal_async(goal)
-        handle = self._spin_until_complete(
-            goal_future, timeout_sec=10.0, what=f"{label} goal acceptance")
-        if handle is None:
-            self.get_logger().error(
-                f"{label} goal: NO ACCEPTANCE RESPONSE within 10s -- the goal "
-                f"never reached the controller (this is goal delivery failing, "
-                f"NOT the hardware failing to move)")
+        # Two full debugging sessions were spent guessing between these.
+        if self._deliver_goal(client_attr, action_name, goal, label) is None:
             return False
-        if not handle.accepted:
-            self.get_logger().error(
-                f"{label} goal: controller REJECTED the goal (it arrived fine; "
-                f"the controller refused it -- check joint names, waypoint "
-                f"timing, and the robot-side log for the rejection reason)")
-            return False
-        print(f"[{label}] goal ACCEPTED by the controller -- delivery confirmed, "
-              f"now watching /joint_states for real motion")
 
         # Snapshot the starting position so a timeout can report whether the
         # arm moved at all vs. moved but fell short -- see the error below.
@@ -596,15 +656,6 @@ class RobotIOClient(Node):
 
     # ---- Gripper ----
     def gripper_move_to(self, position, duration_sec=1.0):
-        # See arm_execute()'s comment on the fresh-ActionClient-per-goal fix.
-        self._gripper_client.destroy()
-        self._gripper_client = ActionClient(self, FollowJointTrajectory, self._gripper_action_name)
-
-        # See arm_execute()'s comment on why this is 20s, not 5s.
-        if not self._gripper_client.wait_for_server(timeout_sec=20.0):
-            self.get_logger().error("gripper_group_controller action server not available")
-            return False
-
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = ["gripper_controller"]
         point = JointTrajectoryPoint()
@@ -616,8 +667,9 @@ class RobotIOClient(Node):
         # Gripper has a wider tolerance than the arm (0.05 vs 0.02 rad) --
         # pymycobot's gripper position readback is coarser (0-100 scale
         # mapped to radians) than the arm's joint encoders.
-        return self._send_goal_and_wait(self._gripper_client, goal, "gripper",
-                                        settle_tolerance=0.05)
+        return self._send_goal_and_wait("_gripper_client",
+                                        self._gripper_action_name,
+                                        goal, "gripper", settle_tolerance=0.05)
 
     # ---- Cartesian path ----
     def compute_cartesian_path(self, waypoints, avoid_collisions=True, path_constraints=None):
