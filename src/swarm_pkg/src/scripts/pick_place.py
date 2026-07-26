@@ -233,7 +233,7 @@ HOME_DEGREES = {
     "joint4_to_joint3": 0,
     "joint5_to_joint4": 0,
     "joint6_to_joint5": 0,
-    "joint6output_to_joint6": 0,
+    "joint6output_to_joint6": 45,
 }
 HOME_RADIANS = {name: math.radians(deg) for name, deg in HOME_DEGREES.items()}
 

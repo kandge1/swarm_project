@@ -125,11 +125,44 @@ MIN_SPEED = 25
 # These re-send the held command at FULL speed while the arm is measurably
 # short of it, which is the only closed-loop position correction anywhere in
 # this pipeline.
-SETTLE_TOLERANCE_RAD = 0.02      # tighter than pick_place.py's 0.05 check, so
-                                 # settling actually clears that threshold
+# Raised 0.02 -> 0.03 on 2026-07-26. At 0.02 a real run ended 0.0270 rad
+# (1.5 deg) short and burned all 20 re-sends with the reported error not
+# changing by a single digit across any of them -- twenty full-speed
+# send_angles() to the same target moved the arm zero. That is servo deadband,
+# not a command that failed to arrive, so 0.02 was simply below what this
+# hardware can resolve and the whole budget was spent achieving nothing (10s
+# of wall clock plus a burst of serial traffic at the end of EVERY move).
+# Still comfortably inside pick_place.py's 0.05 convergence check.
+SETTLE_TOLERANCE_RAD = 0.03
 SETTLE_RESEND_INTERVAL_SEC = 0.5  # rate limit; a settle move needs time to run
 SETTLE_MAX_RESENDS = 20          # ~10s, then give up rather than drive a
                                  # physically blocked joint indefinitely
+
+# How long the commanded position must have been UNCHANGED before settling is
+# allowed to fire at all.
+#
+# Added 2026-07-26 after the first version of the settle logic was caught
+# fighting the trajectory it was supposed to be helping. Its only gate was
+# "command is not dirty", which is also true in the 500-580ms dead time
+# between two setpoints mid-trajectory -- so it fired while the arm was
+# legitimately in transit, reported nonsense like "still 0.5129 rad short"
+# (of course it is, it is halfway there), and re-commanded at FULL speed while
+# the trajectory was deliberately pacing at speed 25. Roughly 7 such spurious
+# full-speed darts were injected into a single 2.6s homing move, close to
+# doubling the number of conflicting commands and making the jerk worse.
+#
+# The real signal for "the trajectory is over" is that the commanded position
+# has stopped CHANGING: joint_trajectory_controller streams a fresh setpoint
+# every control cycle while a trajectory runs, then holds one constant target
+# forever once it elapses. Anything above the observed inter-setpoint gap
+# (~0.6s worst case) works; 1.0s leaves margin without adding meaningful
+# latency, since settling only ever matters after the motion has stopped.
+SETTLE_QUIET_PERIOD_SEC = 1.0
+
+# Give up early when settling is not achieving anything: if the position error
+# improves by less than this between consecutive re-sends, count it as a stall.
+SETTLE_MIN_PROGRESS_RAD = 0.002
+SETTLE_MAX_STALLED = 3
 
 # Position command must change by at least this much (radians) before the
 # background loop bothers re-sending it to the arm -- avoids spamming
@@ -177,6 +210,14 @@ class SharedState:
         # Closed-loop settle bookkeeping -- see _serial_settle_if_needed().
         self.last_settle_monotonic = 0.0
         self.settle_resends = 0
+        # When the commanded position last actually CHANGED (as opposed to
+        # being re-received unchanged every control cycle). This is what tells
+        # settling that the trajectory is over rather than merely between
+        # setpoints -- see SETTLE_QUIET_PERIOD_SEC.
+        self.command_changed_monotonic = 0.0
+        # Error at the previous settle attempt, for stall detection.
+        self.settle_last_error = None
+        self.settle_stalled = 0
 
 
 class Bridge:
@@ -377,6 +418,14 @@ class Bridge:
         pick_place.py's 0.05 rad convergence check, with no further command
         ever issued to close the gap. Re-sending at full speed corrects it.
 
+        ONLY ONCE THE TRAJECTORY IS OVER. "Not dirty" is NOT sufficient to
+        establish that -- it is equally true during the 500-580ms gap between
+        two mid-trajectory setpoints, and the first version of this function
+        fired there, correcting an arm that was simply still in transit and
+        doing it at full speed against a trajectory pacing at speed 25. The
+        actual end-of-trajectory signal is the commanded position having
+        stopped changing for SETTLE_QUIET_PERIOD_SEC.
+
         ARM JOINTS ONLY (positions[:6]). The gripper is deliberately excluded:
         when it is holding a block it CANNOT reach its commanded value, and
         that is the success condition, not an error -- settling it would just
@@ -385,17 +434,30 @@ class Bridge:
         with self.state.lock:
             if self.state.command is None or self.state.command_dirty:
                 return
+            # The trajectory is still running if the setpoint moved recently.
+            if now - self.state.command_changed_monotonic < SETTLE_QUIET_PERIOD_SEC:
+                return
             if now - self.state.last_settle_monotonic < SETTLE_RESEND_INTERVAL_SEC:
                 return
             if self.state.settle_resends >= SETTLE_MAX_RESENDS:
                 return
+            if self.state.settle_stalled >= SETTLE_MAX_STALLED:
+                return
             command = list(self.state.command)
             measured = list(self.state.positions)
             attempt = self.state.settle_resends + 1
+            previous_error = self.state.settle_last_error
 
         error = max(abs(c - p) for c, p in zip(command[:6], measured[:6]))
         if error <= SETTLE_TOLERANCE_RAD:
             return
+
+        # Re-sending the same target to an arm that is not responding to it
+        # just burns the budget and floods the serial link. Observed for real:
+        # 20 consecutive re-sends against a 0.0270 rad error that did not move
+        # by a single digit. Stop after a few no-progress attempts instead.
+        stalled = (previous_error is not None
+                   and previous_error - error < SETTLE_MIN_PROGRESS_RAD)
 
         arm_degrees = [math.degrees(p) for p in command[:6]]
         try:
@@ -407,11 +469,20 @@ class Bridge:
         with self.state.lock:
             self.state.last_settle_monotonic = now
             self.state.settle_resends = attempt
+            self.state.settle_last_error = error
+            self.state.settle_stalled = (
+                self.state.settle_stalled + 1 if stalled else 0)
+            gave_up = self.state.settle_stalled >= SETTLE_MAX_STALLED
 
         if self.log_timing:
             print(f"[mycobot_bridge] TIMING settle re-send {attempt}/"
                   f"{SETTLE_MAX_RESENDS}: still {error:.4f} rad short "
                   f"(> {SETTLE_TOLERANCE_RAD}), re-commanding at speed {self.speed}")
+            if gave_up:
+                print(f"[mycobot_bridge] TIMING settle giving up: {error:.4f} rad "
+                      f"error stopped improving over {SETTLE_MAX_STALLED} attempts "
+                      f"-- most likely servo deadband or a physically blocked joint, "
+                      f"not a lost command")
 
     def _match_speed(self, positions, last_sent, last_sent_at):
         """Pick the pymycobot speed that makes the arm arrive at `positions`
@@ -503,6 +574,15 @@ class Bridge:
             self.state.command = list(positions)
             if changed:
                 self.state.command_dirty = True
+                # Stamped here, on the CHANGE, not on every write: JTC calls
+                # write() every control cycle whether or not the setpoint
+                # moved, so "time since last write" says nothing, while "time
+                # since the setpoint last moved" is exactly the
+                # end-of-trajectory signal settling needs.
+                self.state.command_changed_monotonic = time.monotonic()
+                # A new target invalidates the previous settle attempt's error.
+                self.state.settle_last_error = None
+                self.state.settle_stalled = 0
 
     def handle_client(self, conn):
         buf = b""
