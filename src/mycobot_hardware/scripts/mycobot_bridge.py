@@ -164,6 +164,57 @@ SETTLE_QUIET_PERIOD_SEC = 1.0
 SETTLE_MIN_PROGRESS_RAD = 0.002
 SETTLE_MAX_STALLED = 3
 
+# ASYNC WRITES -- the fix for the 1.8Hz command rate (2026-07-26).
+#
+# pymycobot's send_angles() defaults to has_reply=True, i.e. it BLOCKS until
+# the arm's firmware acknowledges. Reading pymycobot 4.0.6's source on the
+# robot showed exactly what that costs:
+#
+#   common.py read():   wait_time = 0.15 on Windows, else 0.5   <-- Linux
+#                       while True and time.time() - t < wait_time: ...
+#   mycobot280.py _res(): retries the whole thing up to 3 times
+#
+# So a call whose reply never arrives burns 0.5s, and one that fails outright
+# burns 3 x 0.5s and returns -1. Every number in the 2026-07-26 robot log is a
+# direct prediction of that code: writes were bimodal at ~2-5ms (firmware
+# replied) or ~510-590ms (one timeout, then a retry that worked); one read
+# took 1506ms (all three attempts timed out); and get_angles() returned -1 in
+# the same window (the `else: return -1` after three failures). Nothing about
+# it was flaky hardware.
+#
+# Consequence: the serial loop ran at 0.9-1.9Hz WHILE THE ARM WAS MOVING (and
+# 82-89Hz idle), so a 2.6s trajectory reached the arm as ~11 point-to-point
+# commands, one of which asked the base joint to jump 31 degrees. That is the
+# jerky motion, and it is self-inflicted -- the blocking only happens because
+# the arm is busy executing the move we just sent it.
+#
+# _mesg()'s _async branch is a pure self._write() with no read, no timeout and
+# no retry: ~0.2ms for a 16-byte frame at 1Mbaud. It returns None instead of a
+# status, which costs nothing here since the return value was never used. The
+# firmware's deferred replies do still land in the input buffer, but _res()
+# calls reset_input_buffer() before every read, so the next get_angles()
+# flushes them automatically.
+#
+# Kept switchable (--sync-writes) because this is a behavioural change against
+# real hardware and being able to A/B it in one run is worth the flag.
+DEFAULT_ASYNC_WRITES = True
+
+# Ceiling on how often a position command is handed to the arm.
+#
+# With async writes the serial loop is no longer throttled by the write at all
+# -- it runs at whatever get_angles() allows (~85Hz), and every iteration would
+# otherwise fire a fresh send_angles(). Each one still ABORTS AND RESTARTS the
+# move in progress, and re-commanding a servo ~85 times a second is a good way
+# to get buzzing instead of motion. 30Hz is ~16x the old effective rate, which
+# turns those 31-degree jumps into sub-degree steps (i.e. into something that
+# approximates the servo interface joint_trajectory_controller thinks it is
+# talking to), while still leaving each command real time to take effect.
+#
+# UNVERIFIED as an optimum -- it is a starting point, not a measured value.
+# Sweep it with --max-command-rate and watch for the arm lagging the
+# trajectory (too low) or vibrating/buzzing (too high).
+DEFAULT_MAX_COMMAND_RATE_HZ = 30.0
+
 # Position command must change by at least this much (radians) before the
 # background loop bothers re-sending it to the arm -- avoids spamming
 # send_angles()/set_gripper_value() with the same target every loop
@@ -221,11 +272,15 @@ class SharedState:
 
 
 class Bridge:
-    def __init__(self, serial_port, baud_rate, speed, log_timing=True):
+    def __init__(self, serial_port, baud_rate, speed, log_timing=True,
+                 async_writes=True, max_command_rate_hz=DEFAULT_MAX_COMMAND_RATE_HZ):
         from pymycobot import MyCobot280  # imported here so --help works without hardware attached
 
         self.speed = speed
         self.log_timing = log_timing
+        self.async_writes = async_writes
+        self.min_command_period = (1.0 / max_command_rate_hz
+                                   if max_command_rate_hz > 0 else 0.0)
         print(f"[mycobot_bridge] connecting to {serial_port} @ {baud_rate}...")
         self.arm = MyCobot280(serial_port, baud_rate)
         print("[mycobot_bridge] connected.")
@@ -332,9 +387,26 @@ class Bridge:
                 self.state.positions[6] = gripper_value_to_rad(gripper_value)
             self.state.last_read_monotonic = time.monotonic()
 
+    def _send_angles(self, arm_degrees, speed):
+        """send_angles(), async by default -- see DEFAULT_ASYNC_WRITES for why
+        the synchronous form costs 0.5-1.5s per call on Linux."""
+        if self.async_writes:
+            self.arm.send_angles(arm_degrees, speed, _async=True)
+        else:
+            self.arm.send_angles(arm_degrees, speed)
+
     def _serial_write_once_if_dirty(self):
         with self.state.lock:
             if not self.state.command_dirty or self.state.command is None:
+                return
+            # Rate limit. Returning WITHOUT clearing command_dirty is what
+            # makes the next loop iteration pick this up again -- and since
+            # `command` is re-read then, a newer setpoint supersedes this one
+            # rather than queueing behind it, which is the correct behaviour
+            # for a servo stream.
+            if (self.min_command_period > 0.0
+                    and time.monotonic() - self.state.last_sent_monotonic
+                    < self.min_command_period):
                 return
             positions = list(self.state.command)
             last_sent = self.state.last_sent
@@ -357,7 +429,7 @@ class Bridge:
 
         t0 = time.monotonic()
         try:
-            self.arm.send_angles(arm_degrees, speed)
+            self._send_angles(arm_degrees, speed)
             t_arm = time.monotonic()
             if gripper_changed:
                 self.arm.set_gripper_value(gripper_value, self.speed)
@@ -461,7 +533,7 @@ class Bridge:
 
         arm_degrees = [math.degrees(p) for p in command[:6]]
         try:
-            self.arm.send_angles(arm_degrees, self.speed)
+            self._send_angles(arm_degrees, self.speed)
         except Exception as exc:
             print(f"[mycobot_bridge] ERROR during settle re-send: {exc!r}")
             return
@@ -631,6 +703,21 @@ def main():
     parser.add_argument("--baud-rate", type=int, default=DEFAULT_BAUD_RATE)
     parser.add_argument("--speed", type=int, default=DEFAULT_SPEED,
                         help="pymycobot move speed, 0-100 (default %(default)s)")
+    parser.add_argument("--sync-writes", dest="async_writes", action="store_false",
+                        help="send position commands with pymycobot's default "
+                             "blocking send_angles() instead of the _async=True "
+                             "form. Restores the pre-2026-07-26 behaviour, where "
+                             "every write could cost 0.5s (one read timeout) or "
+                             "1.5s (three) and the serial loop ran at 1-2Hz while "
+                             "the arm moved. Here to A/B the change against real "
+                             "hardware, not because it is a good idea.")
+    parser.add_argument("--max-command-rate", type=float,
+                        default=DEFAULT_MAX_COMMAND_RATE_HZ,
+                        help="ceiling on position commands/sec handed to the arm "
+                             "(default %(default)s, 0 disables). Each command "
+                             "aborts and restarts the move in progress, so this "
+                             "trades tracking accuracy against re-commanding the "
+                             "servos so often they buzz instead of moving.")
     parser.add_argument("--no-log-timing", dest="log_timing", action="store_false",
                         help="suppress the per-second serial loop_rate line and the "
                              "per-write send_angles timing/target lines. On by "
@@ -642,7 +729,11 @@ def main():
     args = parser.parse_args()
 
     bridge = Bridge(args.serial_port, args.baud_rate, args.speed,
-                    log_timing=args.log_timing)
+                    log_timing=args.log_timing,
+                    async_writes=args.async_writes,
+                    max_command_rate_hz=args.max_command_rate)
+    print(f"[mycobot_bridge] writes={'async' if args.async_writes else 'sync (blocking)'}, "
+          f"max command rate={args.max_command_rate}Hz")
 
     # Seed shared state with a real initial read before accepting any
     # connections, so the first read() a client makes doesn't race the
