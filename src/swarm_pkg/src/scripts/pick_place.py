@@ -339,11 +339,13 @@ class RobotIOClient(Node):
 
     def __init__(self):
         super().__init__("robot_io_client")
+        self._gripper_action_name = "/gripper_group_controller/follow_joint_trajectory"
+        self._arm_action_name = "/arm_group_controller/follow_joint_trajectory"
         self._gripper_client = ActionClient(
-            self, FollowJointTrajectory, "/gripper_group_controller/follow_joint_trajectory"
+            self, FollowJointTrajectory, self._gripper_action_name
         )
         self._arm_client = ActionClient(
-            self, FollowJointTrajectory, "/arm_group_controller/follow_joint_trajectory"
+            self, FollowJointTrajectory, self._arm_action_name
         )
         self._cartesian_client = self.create_client(GetCartesianPath, "/compute_cartesian_path")
         self._ik_client = self.create_client(GetPositionIK, "/compute_ik")
@@ -416,6 +418,24 @@ class RobotIOClient(Node):
         pattern already used for the gripper below) skips that check
         entirely.
         """
+        # Fresh ActionClient every call (2026-07-26): confirmed on real
+        # hardware, repeatedly, that THIS process's arm/gripper ActionClient
+        # objects stop being able to reach the robot at all after ~3
+        # successful goals (robot-side log shows zero "Received new action
+        # goal" for anything after that point, permanently, for the rest of
+        # the process's life) -- while a completely fresh process (e.g.
+        # joint_trajectory_test.py, same RobotIOClient class) sends a goal
+        # successfully every single time, even moments after the "poisoned"
+        # process's failure, against the same robot in the same DDS domain.
+        # That rules out the robot/DDS link itself as permanently broken and
+        # points at something in THIS node's long-lived ActionClient/writer
+        # state degrading. destroy()-ing and recreating the ActionClient
+        # before every goal approximates what a fresh process gets for
+        # free, without needing to understand the exact underlying Cyclone
+        # DDS mechanism.
+        self._arm_client.destroy()
+        self._arm_client = ActionClient(self, FollowJointTrajectory, self._arm_action_name)
+
         # 20s, not 5s: cross-machine action-server discovery over the
         # split-compute Cyclone DDS unicast link has repeatedly needed more
         # than 5s in practice (confirmed: the action was genuinely reachable
@@ -509,6 +529,10 @@ class RobotIOClient(Node):
 
     # ---- Gripper ----
     def gripper_move_to(self, position, duration_sec=1.0):
+        # See arm_execute()'s comment on the fresh-ActionClient-per-goal fix.
+        self._gripper_client.destroy()
+        self._gripper_client = ActionClient(self, FollowJointTrajectory, self._gripper_action_name)
+
         # See arm_execute()'s comment on why this is 20s, not 5s.
         if not self._gripper_client.wait_for_server(timeout_sec=20.0):
             self.get_logger().error("gripper_group_controller action server not available")
