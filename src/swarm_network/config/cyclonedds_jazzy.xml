@@ -18,6 +18,22 @@
            Confirmed working on mars: ros2 node list immediately showed
            move_group/rviz after this change. -->
       <AllowMulticast>false</AllowMulticast>
+
+      <!-- KEEP EVERY UDP DATAGRAM UNDER THE ETHERNET MTU (2026-07-26).
+           Must be kept numerically in step with cyclonedds_galactic.xml,
+           since these govern the wire format and both ends of the link
+           have to agree. See that file for the measured evidence. In
+           short: on this link, any RTPS message needing IP level
+           fragmentation is never delivered, and capping datagrams under
+           the MTU is what fixes it. Do not raise these values.
+
+           NOTE the location differs by distro, which is why it is fine
+           for these two files to disagree structurally: on Jazzy's newer
+           Cyclone these live under General, and putting them under
+           Internal logs "setting moved to //CycloneDDS/Domain/General/...".
+           On the robot's Cyclone 0.22.6 they are still under Internal. -->
+      <MaxMessageSize>1400B</MaxMessageSize>
+      <FragmentSize>1300B</FragmentSize>
     </General>
     <Discovery>
       <Peers>
@@ -26,16 +42,5 @@
         <Peer address="172.27.89.157"/>
       </Peers>
     </Discovery>
-    <Internal>
-      <!-- Must match cyclonedds_galactic.xml's Internal block -- see that
-           file's comment for the count-triggered (not size/time-triggered)
-           failure this is attempting to address: every test run breaks
-           after ~3 successful goals with permanent serdata.cpp:354 errors
-           on the robot side, regardless of trajectory size or elapsed
-           time. UNVERIFIED as of writing. -->
-      <Watermarks>
-        <WhcHigh>500kB</WhcHigh>
-      </Watermarks>
-    </Internal>
   </Domain>
 </CycloneDDS>

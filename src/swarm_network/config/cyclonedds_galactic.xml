@@ -31,32 +31,52 @@
       </Peers>
     </Discovery>
     <Internal>
-      <!-- Confirmed on real hardware (2026-07-26, late-night session):
-           EVERY test run tonight -- across several different scripts,
-           trajectory sizes, and completion-detection mechanisms -- breaks
-           in the exact same way after almost exactly 3 successful action
-           goals (regardless of how much wall-clock time those 3 goals
-           spanned, from ~4s to several minutes across different runs):
-           robot_state_publisher AND ros2_control_node both start emitting
-           repeated serdata.cpp:354 deserialization errors simultaneously,
-           and no further goal is ever received again for the rest of that
-           process's lifetime -- this is a hard, count-triggered failure,
-           not a probabilistic network drop (ruled out fragmentation/size
-           as the cause: single ~500-byte goals hit this exactly as often
-           as 30-waypoint ~9KB ones). This is consistent with a small,
-           default Cyclone DDS writer/reader history or resource-limit
-           high-water-mark being reached after a handful of samples with
-           no support for recovering once hit, rather than a lossy-link
-           packet-drop issue. Raising the watermark gives the writer more
-           room before whatever backpressure/limit mechanism kicks in.
-           UNVERIFIED as of writing -- this is a targeted guess based on
-           the count-not-time pattern, not a confirmed root cause; if this
-           doesn't resolve it, the next step is asking upstream
-           (cyclonedds/rmw_cyclonedds issue trackers) about this exact
-           "N goals then permanent serdata.cpp:354" signature on 0.22.6. -->
-      <Watermarks>
-        <WhcHigh>500kB</WhcHigh>
-      </Watermarks>
+      <!-- KEEP EVERY UDP DATAGRAM UNDER THE ETHERNET MTU (2026-07-26).
+           Must match cyclonedds_jazzy.xml, since these settings govern the
+           wire format and both ends of the link have to agree.
+
+           Measured, not inferred. In a single pick_place.py run, with the
+           robot side log confirming what did and did not arrive:
+
+             gripper close/open   1 waypoint    158 B   DELIVERED
+             go_home              2 waypoints   358 B   DELIVERED
+             pre-grasp           21 waypoints  1802 B   NEVER ARRIVED (3 of
+                                                        3 attempts, fresh
+                                                        ActionClient each)
+             go_home (final)      2 waypoints   358 B   DELIVERED
+
+           The final 358 B goal was delivered seconds AFTER the three 1802 B
+           failures, so the link was healthy throughout and nothing was
+           unmatched or degraded. The only variable that predicts delivery
+           is whether the serialized message fits in one datagram: 1802 B
+           exceeds the 1500 B Ethernet MTU (1472 B of UDP payload) and so
+           requires IP level fragmentation, which this campus Wi-Fi link
+           silently drops, for the same reason it blocks multicast.
+
+           This also explains, with no extra hypotheses:
+             1. the "3-goal wall". Goals 1 to 3 were always go_home plus two
+                gripper moves (all small) and goal 4 was always the first
+                LARGE one. It was never a count. The WhcHigh=500kB watermark
+                previously set here was aimed at that phantom, so it is gone.
+             2. `ros2 control list_controllers` timing out cross-machine
+                while working locally (Session 1, Problem 6). Its response
+                carries every controller's name, type and interface list,
+                comfortably over the MTU.
+             3. why /joint_states streams flawlessly at ~100 Hz: tiny.
+
+           Cyclone already fragments at FragmentSize (default 1344 B), but
+           MaxMessageSize (default 14720 B) then lets it pack several
+           fragments back into ONE oversized datagram, which is what
+           reintroduces IP fragmentation. Capping MaxMessageSize below the
+           MTU forces one sub-MTU datagram per RTPS message.
+
+           NOTE FOR ANYONE REVISITING: commit 204f828 tried FragmentSize and
+           MaxMessageSize at 65500B and was reverted (798955c). That was the
+           right parameter in the WRONG DIRECTION, because raising
+           MaxMessageSize makes Cyclone build BIGGER datagrams and fragment
+           harder at the IP layer. Do not raise these. -->
+      <MaxMessageSize>1400B</MaxMessageSize>
+      <FragmentSize>1300B</FragmentSize>
     </Internal>
   </Domain>
 </CycloneDDS>
