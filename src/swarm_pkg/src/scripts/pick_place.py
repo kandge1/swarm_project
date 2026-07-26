@@ -32,13 +32,10 @@ Pick-and-place demo: known start/end block poses, no camera.
 import argparse
 import math
 import time
-import uuid
 
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy
-from action_msgs.msg import GoalStatusArray, GoalStatus
 from geometry_msgs.msg import Pose
 from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint, JointConstraint
 from moveit_msgs.srv import GetCartesianPath, GetPositionIK, GetMotionPlan, GetStateValidity
@@ -46,7 +43,6 @@ from sensor_msgs.msg import JointState
 from shape_msgs.msg import SolidPrimitive
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
-from unique_identifier_msgs.msg import UUID
 
 
 # ---- Tunable poses (defaults; adjust to real measurements later) ----
@@ -359,46 +355,6 @@ class RobotIOClient(Node):
             JointState, "/joint_states", self._on_joint_state, 10
         )
 
-        # goal_id (16-byte uuid, as bytes) -> latest action_msgs/GoalStatus.status
-        # int seen for it. Populated by _on_goal_status from the action
-        # servers' own /_action/status topics -- see _send_goal_with_retry's
-        # docstring for why goal completion is tracked this way instead of
-        # via send_goal_async()/get_result_async()'s own futures.
-        #
-        # QoS must be explicit here, not a bare depth int: passing a plain
-        # int to create_subscription() defaults every other QoS setting to
-        # its default, which is VOLATILE durability -- but action servers
-        # publish .../_action/status with TRANSIENT_LOCAL durability (the
-        # standard ROS2 action convention, confirmed against this exact
-        # topic with `ros2 topic info --verbose`). A VOLATILE subscriber
-        # against a TRANSIENT_LOCAL publisher is a QoS INCOMPATIBILITY, not
-        # a soft mismatch -- DDS is allowed to simply never deliver
-        # anything to it, silently, no error. Confirmed on real hardware:
-        # this made every goal after the very first (which likely slipped
-        # through during an early, differently-raced discovery window)
-        # appear to vanish completely, with pick_place.py's own retry loop
-        # reporting "no status seen at all" even though the robot's
-        # controller genuinely received/accepted/executed every goal.
-        goal_status_qos = QoSProfile(
-            reliability=QoSReliabilityPolicy.RELIABLE,
-            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=10,
-        )
-        self._goal_statuses = {}
-        self._arm_status_sub = self.create_subscription(
-            GoalStatusArray, "/arm_group_controller/follow_joint_trajectory/_action/status",
-            self._on_goal_status, goal_status_qos
-        )
-        self._gripper_status_sub = self.create_subscription(
-            GoalStatusArray, "/gripper_group_controller/follow_joint_trajectory/_action/status",
-            self._on_goal_status, goal_status_qos
-        )
-
-    def _on_goal_status(self, msg):
-        for status in msg.status_list:
-            self._goal_statuses[bytes(status.goal_info.goal_id.uuid)] = status.status
-
     def _on_joint_state(self, msg):
         for name, effort in zip(msg.name, msg.effort):
             self._joint_efforts[name] = effort
@@ -421,7 +377,7 @@ class RobotIOClient(Node):
         # /clock publisher in the real-hardware split-compute setup,
         # self.get_clock().now() never advances at all, which silently
         # turns this into an infinite loop instead of a 5s wait. See
-        # _send_goal_with_retry's comment for the same bug found there.
+        # _send_goal_and_wait's comment for the same bug found there.
         end_time = time.monotonic() + timeout_sec
         while not self._joint_positions and time.monotonic() < end_time:
             rclpy.spin_once(self, timeout_sec=0.1)
@@ -471,107 +427,67 @@ class RobotIOClient(Node):
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = joint_trajectory
-        # Diagnostic: correlate trajectory size with goals that never reach
-        # the robot at all (see _send_goal_with_retry's "no status seen"
-        # case) -- checking whether this is a DDS message-size/fragmentation
-        # issue rather than the earlier-confirmed lost-reply issue.
-        n_points = len(joint_trajectory.points)
-        n_joints = len(joint_trajectory.joint_names)
-        serialized_len = len(str(joint_trajectory))
-        print(f"[arm_execute] trajectory: {n_points} points x {n_joints} joints, "
-              f"~{serialized_len} chars serialized (str() estimate)")
-        return self._send_goal_with_retry(self._arm_client, goal, "arm")
+        return self._send_goal_and_wait(self._arm_client, goal, "arm")
 
-    def _send_goal_with_retry(self, client, goal, label, attempts=8,
-                              accept_timeout=20.0, result_timeout=60.0):
-        """attempts/accept_timeout bumped from 4/15s -> 8/20s (2026-07-26,
-        late-night session): after fixing the QoS durability bug above (the
-        subscription itself now provably receives every live status update,
-        confirmed with a standalone probe), goals still intermittently never
-        land on the robot at all, especially larger ones (e.g. the 30-point
-        pre-grasp trajectory). This looks like genuine, plain packet loss on
-        the campus Wi-Fi unicast link, not a code/QoS bug -- more attempts
-        over a longer window is a blunt mitigation for that, not a fix; if
-        it's still not reliable enough, the next place to look is the
-        cyclonedds XML configs themselves (retransmit/heartbeat tuning).
+    def _send_goal_and_wait(self, client, goal, label,
+                            settle_tolerance=0.02, timeout_sec=60.0):
+        """Send a FollowJointTrajectory goal, then detect completion by
+        polling /joint_states for convergence to the goal's final target --
+        NOT via the action's /follow_joint_trajectory/_action/status topic
+        or send_goal_async()/get_result_async() futures.
 
-        Send a FollowJointTrajectory goal and track it to completion via
-        the controller's own /follow_joint_trajectory/_action/status topic,
-        NOT via send_goal_async()'s/get_result_async()'s futures.
+        Confirmed on real split-compute hardware (2026-07-26), with a
+        controlled back-to-back test (10 identical small goals in a row):
+        goals consistently reach the robot, get accepted, and execute
+        successfully WITHIN SECONDS every single time (robot-side log
+        always shows Received -> Accepted -> "Goal reached, success!"
+        promptly) -- the goal delivery itself is not the flaky part. What's
+        unreliable is specifically the /action/status update finding its
+        way back to mars afterward: it would arrive anywhere from instantly
+        to 20-40+ seconds late, correlated with bursts of serdata.cpp:354
+        deserialization errors on the robot's OTHER processes
+        (robot_state_publisher) at the same moments -- something about this
+        DDS link's handling of that one topic/direction degrades
+        periodically, independent of message size (even single-point,
+        ~500-byte gripper/arm goals hit it).
 
-        Confirmed on real split-compute hardware (2026-07-26): those futures
-        can simply never resolve client-side over the cross-machine Cyclone
-        DDS unicast link -- but the SAME goal genuinely reaches the robot,
-        gets accepted, executes, and reaches STATUS_SUCCEEDED, and that
-        status *is* reliably visible on mars via a plain topic subscription
-        (confirmed with `ros2 topic echo .../_action/status` alongside a
-        "timed out" pick_place.py run: the exact goal it reported as timed
-        out showed status 4/SUCCEEDED on the topic). This matches the same
-        category of cross-machine unreliability already seen in this project
-        for other request/reply service calls (e.g. `ros2 control
-        list_controllers`) -- the underlying goal-acceptance/result exchange
-        is itself implemented as service calls in rclpy's ActionClient, which
-        is the flaky part; the plain pub/sub status topic is not.
+        /joint_states, by contrast, has streamed reliably all night at a
+        steady ~100Hz cross-machine (confirmed repeatedly with `ros2 topic
+        hz`), so using it to detect "did the arm actually get where it was
+        told to go" sidesteps whatever is specifically wrong with the
+        status/action machinery entirely, using a channel already proven
+        solid instead of trying to fix the flaky one further.
 
-        We generate the goal's UUID ourselves so we know what to look for in
-        _goal_statuses (populated by _on_goal_status), then poll that dict
-        instead of waiting on any future. If nothing shows up in
-        accept_timeout at all (not even STATUS_ACCEPTED), we resend on the
-        assumption the goal message itself, not just its acknowledgement,
-        may have been dropped -- once ANY status is observed for a goal we
-        stop resending it (the goal is confirmed live) and just keep
-        polling the same UUID for it to reach a terminal status."""
-        terminal = {
-            GoalStatus.STATUS_SUCCEEDED, GoalStatus.STATUS_CANCELED, GoalStatus.STATUS_ABORTED,
-        }
+        Does not resend the goal -- since goal delivery itself has never
+        been the problem, only completion detection, resending here would
+        just risk commanding a second, overlapping trajectory."""
+        target = {name: pos for name, pos in
+                  zip(goal.trajectory.joint_names, goal.trajectory.points[-1].positions)}
+        # Full time_from_start of the last point, in seconds -- the earliest
+        # the trajectory could possibly finish. Guards against declaring
+        # success instantly just because the arm happened to already be
+        # near the target before this goal was even sent (e.g. re-sending
+        # the same pose, or a short final approach segment).
+        last_point_sec = (goal.trajectory.points[-1].time_from_start.sec +
+                          goal.trajectory.points[-1].time_from_start.nanosec / 1e9)
+        earliest_done = time.monotonic() + last_point_sec
 
-        for attempt in range(1, attempts + 1):
-            goal_uuid = UUID(uuid=list(uuid.uuid4().bytes))
-            client.send_goal_async(goal, goal_uuid=goal_uuid)
-            key = bytes(goal_uuid.uuid)
+        client.send_goal_async(goal)
 
-            # time.monotonic(), not self.get_clock() -- this node runs with
-            # use_sim_time:=true (needed elsewhere for Gazebo), and with no
-            # /clock publisher in the real-hardware split-compute setup,
-            # self.get_clock().now() never advances at all. That turned this
-            # deadline check into an unconditional True forever, silently
-            # hanging the whole script for 20+ minutes with zero output
-            # instead of ever timing out -- confirmed on real hardware.
-            deadline = time.monotonic() + accept_timeout
-            seen_any_status = False
-            while time.monotonic() < deadline:
-                rclpy.spin_once(self, timeout_sec=0.1)
-                if key in self._goal_statuses:
-                    seen_any_status = True
-                    break
-
-            if not seen_any_status:
-                self.get_logger().warn(
-                    f"{label} goal: no status seen at all within {accept_timeout}s "
-                    f"(attempt {attempt}/{attempts}), " +
-                    ("resending..." if attempt < attempts else "giving up"))
-                continue
-
-            # A status has been seen for this goal -- it is confirmed live on
-            # the robot, so from here on we only wait, never resend (a resend
-            # now could command a second, overlapping trajectory).
-            deadline = time.monotonic() + result_timeout
-            while time.monotonic() < deadline:
-                status = self._goal_statuses.get(key)
-                if status in terminal:
-                    if status == GoalStatus.STATUS_SUCCEEDED:
-                        return True
-                    self.get_logger().error(f"{label} goal ended with status {status}")
-                    return False
-                rclpy.spin_once(self, timeout_sec=0.1)
-
-            self.get_logger().error(
-                f"{label} goal accepted but did not reach a terminal status within "
-                f"{result_timeout}s")
-            return False
+        deadline = time.monotonic() + max(timeout_sec, last_point_sec + 5.0)
+        while time.monotonic() < deadline:
+            rclpy.spin_once(self, timeout_sec=0.1)
+            reached = all(
+                name in self._joint_positions and
+                abs(self._joint_positions[name] - pos) <= settle_tolerance
+                for name, pos in target.items()
+            )
+            if reached and time.monotonic() >= earliest_done:
+                return True
 
         self.get_logger().error(
-            f"{label} goal: no status ever observed after {attempts} attempts -- giving up")
+            f"{label} goal: /joint_states never converged to target within "
+            f"{timeout_sec}s (tolerance {settle_tolerance} rad)")
         return False
 
     # ---- Gripper ----
@@ -589,7 +505,11 @@ class RobotIOClient(Node):
         point.time_from_start.nanosec = int((duration_sec % 1) * 1e9)
         goal.trajectory.points = [point]
 
-        return self._send_goal_with_retry(self._gripper_client, goal, "gripper")
+        # Gripper has a wider tolerance than the arm (0.05 vs 0.02 rad) --
+        # pymycobot's gripper position readback is coarser (0-100 scale
+        # mapped to radians) than the arm's joint encoders.
+        return self._send_goal_and_wait(self._gripper_client, goal, "gripper",
+                                        settle_tolerance=0.05)
 
     # ---- Cartesian path ----
     def compute_cartesian_path(self, waypoints, avoid_collisions=True, path_constraints=None):
