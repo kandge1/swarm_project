@@ -70,6 +70,7 @@ import json
 import math
 import os
 import socket
+import sys
 import threading
 import time
 
@@ -697,6 +698,20 @@ class Bridge:
 
 
 def main():
+    # Line-buffer stdout. Python block-buffers (~4-8kB) whenever stdout is not
+    # a TTY, which is exactly the case under `ros2 launch` -- so every print
+    # here, including the startup banner and all the TIMING lines, arrives in
+    # delayed bursts instead of in order. That is not merely cosmetic: it makes
+    # bridge output impossible to correlate with ros2_control_node's timestamps,
+    # and on 2026-07-27 it hid the startup banner entirely for the whole of a
+    # launch, so there was no way to confirm which write mode was actually
+    # active. Done here rather than via PYTHONUNBUFFERED in the launch file so
+    # it holds however this process gets started.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass  # Python < 3.7; the robot is on 3.8, so this is belt and braces
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--socket-path", default=DEFAULT_SOCKET_PATH)
     parser.add_argument("--serial-port", default=DEFAULT_SERIAL_PORT)
