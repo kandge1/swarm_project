@@ -463,6 +463,8 @@ class RobotIOClient(Node):
         just risk commanding a second, overlapping trajectory."""
         target = {name: pos for name, pos in
                   zip(goal.trajectory.joint_names, goal.trajectory.points[-1].positions)}
+        print(f"[{label}] target joint positions: "
+              f"{ {n: round(p, 4) for n, p in target.items()} }")
         # Full time_from_start of the last point, in seconds -- the earliest
         # the trajectory could possibly finish. Guards against declaring
         # success instantly just because the arm happened to already be
@@ -475,6 +477,7 @@ class RobotIOClient(Node):
         client.send_goal_async(goal)
 
         deadline = time.monotonic() + max(timeout_sec, last_point_sec + 5.0)
+        last_print = 0.0
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
             reached = all(
@@ -482,6 +485,11 @@ class RobotIOClient(Node):
                 abs(self._joint_positions[name] - pos) <= settle_tolerance
                 for name, pos in target.items()
             )
+            if time.monotonic() - last_print > 5.0:
+                last_print = time.monotonic()
+                current = {n: round(self._joint_positions.get(n, float("nan")), 4)
+                          for n in target}
+                print(f"[{label}] waiting... current joint positions: {current}")
             if reached and time.monotonic() >= earliest_done:
                 return True
 
