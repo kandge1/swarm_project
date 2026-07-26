@@ -767,3 +767,80 @@ The arm is currently parked at the pre-grasp pose (~104°, -42°, -48°, -3°,
 0°, 104°) from the decisive test, not at home. `move_group`/`rviz` from the
 10:03 launch and the robot-side launch were both still running at the end of
 this session.
+
+---
+
+## Session 3b (2026-07-26 midday): the goal never left mars
+
+Ran `pick_place.py` after the Session 3 fixes. New failure signature, caught
+by the new instrumentation:
+
+```
+[arm] trajectory: 21 waypoints, 3.631s total, ~0.500 rad/s peak joint speed, velocities=NO
+[ERROR] Timed out after 10.0s waiting for arm goal acceptance
+[ERROR] arm goal: NO ACCEPTANCE RESPONSE within 10s -- the goal never reached the controller
+```
+
+Robot side logged **no `Received new action goal` at all**.
+
+### Two Session 2/3 conclusions now positively disproven
+
+**1. `serdata.cpp:354` is benign.** In a successful `--to zero` run the bursts
+fire *before* the goal, the goal is then `Received -> Accepted -> Goal
+reached, success!` normally, and they fire again *after* completion. They
+bracket ROS process start/exit — cross-distro discovery metadata parsing,
+exactly as Session 1 classified them. Session 2's "simultaneous with the
+3-goal wall" was coincidence. **Stop treating these as a signal.**
+
+**2. The bridge is not the bottleneck, and the loop is ~89Hz, not ~1Hz.**
+Session 3 assumed 500-1500ms serial round trips throughout. Measured reality:
+**89Hz idle** (10-22ms reads), collapsing to **1.7-3.4Hz only while the arm is
+physically moving** (`last read 569ms` — the firmware starves the UART during
+motion). The speed-matching fix works and tracked a full move correctly:
+
+```
+send_angles speed=10 target_deg=[103.88, ...]   <- start
+send_angles speed=16 target_deg=[93.41, ...]
+send_angles speed=37 target_deg=[69.31, ...]
+send_angles speed=42 target_deg=[15.09, ...]
+send_angles speed=10 target_deg=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]   <- landed exactly
+```
+
+Only ~11 setpoints got through in 3s — coarse, but sufficient.
+
+### Root cause of the delivery failure
+
+`wait_for_server()` consults only the **local ROS graph cache**. In the failed
+run it returned true ~250ms after process start (`1785077664.658` -> `~.9`),
+long before the DDS request writer had **matched** the robot's request reader
+across the unicast WAN link. ROS2 action/service requests are **RELIABLE +
+VOLATILE**, and a volatile writer **silently discards** samples written while
+no reader is matched — no error, no retry, no log line anywhere.
+
+`joint_trajectory_test.py` survives on luck: it has no `/plan_kinematic_path`
+round trip reshaping when its send lands relative to discovery.
+
+**"Fix C" made this worse.** Destroying and recreating the ActionClient before
+every goal forces teardown + rediscovery of 5 DDS entities per send, on the
+link where discovery is the known weak point. Before Fix C, goals 1-3 always
+worked; after it, goal **#1** fails. And Session 2 *deleted* the retry logic on
+the reasoning that "goal delivery itself has never been the problem" — which
+came from the same misattributed timestamps that made Fix C look confirmed.
+
+### Fixes (commit `3b4320a`, mars-side only — no robot rebuild needed)
+
+- Spin for `_DDS_MATCH_SETTLE_SEC` (1.5s) after `wait_for_server()` before
+  writing the first request, so DDS matching can complete.
+- `_deliver_goal()`: retry delivery up to 3 times. A genuine controller
+  *rejection* is not retried, only a missing response.
+- ActionClient is long-lived again; recreate only as the **recovery step**
+  after a failed attempt — keeps the "3-goal wall" escape hatch without paying
+  rediscovery on every send.
+
+### Answering the question this kept raising
+
+`pick_place.py` and `joint_trajectory_test.py` send the **same message type on
+the same action** (`FollowJointTrajectory` -> `arm_group_controller`). The IK
+was never the problem — the pre-grasp pose was already proven reachable in
+Session 3. The difference is only trajectory *shape* (21 waypoints vs 1) and,
+critically, **when the send lands relative to DDS discovery**.
