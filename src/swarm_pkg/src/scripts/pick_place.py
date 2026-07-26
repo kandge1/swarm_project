@@ -1019,6 +1019,21 @@ def make_joint_goal_constraints(joint_dict, tolerance=0.001):
 _FALLBACK_MAX_JOINT_SPEED = 0.5  # rad/s
 _FALLBACK_MIN_SEGMENT_SEC = 0.1  # floor per waypoint, avoids zero-length segments
 
+# Acceleration limit for the ramps, rad/s^2. UNVERIFIED against this arm --
+# joint_limits.yaml declares no acceleration limits, so this is chosen rather
+# than derived. At 1.0 the arm reaches _FALLBACK_MAX_JOINT_SPEED in 0.5s over
+# 0.125 rad, which is short relative to a typical 2-6s plan, so the ramps cost
+# little time. Lower it if starts and stops still look abrupt.
+_MAX_JOINT_ACCEL = 1.0
+
+# Floor on how much a sharp corner is allowed to slow the arm, as a fraction of
+# _FALLBACK_MAX_JOINT_SPEED. Without a floor a 90-degree turn in joint space
+# would demand a full stop at that waypoint, which is smooth but slow; without
+# any corner slowdown at all the velocity changes discontinuously there, which
+# is the jerk this is here to remove. 0.1 keeps the arm moving through even a
+# reversal while still taking most of the speed out of it.
+_MIN_CORNER_SPEED_SCALE = 0.1
+
 
 def _duration_to_sec(duration):
     return duration.sec + duration.nanosec * 1e-9
@@ -1090,10 +1105,26 @@ def _ensure_monotonic_timing(joint_trajectory):
     cubic rather than linear interpolation. Until that exists, everything
     below is what actually paces the arm.
 
-    The timing assigned here gives each waypoint a delta from the previous
-    one based on the largest single-joint angular step at a constant speed
-    -- deliberately simple, but note it produces a uniform-velocity profile
-    with no accel/decel ramps and no velocities field at all."""
+    WHAT IT ASSIGNS (rewritten 2026-07-27): a trapezoidal profile that ramps
+    up from rest, slows through corners in the path, and ramps back down to
+    rest, plus a velocities field.
+
+    It used to assign a single constant speed from start to finish. That is
+    what produced the "mostly smooth with 4 or 5 jerks per move" behaviour
+    observed on real hardware: an OMPL path is piecewise linear through its
+    waypoints, so holding speed constant across a corner means the joint
+    velocity changes DISCONTINUOUSLY there, and a simplified RRTConnect path
+    has a handful of genuinely sharp corners. The jerks were the corners. The
+    same run showed the Cartesian moves (which DO come back time
+    parameterized, from /compute_cartesian_path) looking smooth over the same
+    hardware, which is what isolated this to the timing rather than to the
+    command pipeline.
+
+    Populating velocities also matters on its own: joint_trajectory_controller
+    interpolates linearly between waypoints when they carry positions only,
+    and with a cubic spline when velocities are present. Centered differences
+    are used so the velocities stay consistent with the positions and times
+    and the spline does not overshoot."""
     points = joint_trajectory.points
     if len(points) < 2:
         return
@@ -1105,18 +1136,127 @@ def _ensure_monotonic_timing(joint_trajectory):
     if already_monotonic:
         return
 
-    t = 0.0
-    _sec_to_duration(t, points[0].time_from_start)
-    prev_positions = list(points[0].positions)
-    for point in points[1:]:
-        max_delta = max(
-            (abs(a - b) for a, b in zip(point.positions, prev_positions)),
-            default=0.0,
+    _apply_trapezoidal_timing(points)
+
+
+def _corner_speed_scale(prev_delta, next_delta):
+    """How much of the maximum speed the arm may carry through a waypoint,
+    from the angle between the incoming and outgoing path segments.
+
+    1.0 where the path runs straight through, falling to
+    _MIN_CORNER_SPEED_SCALE at a right angle or a reversal. The sqrt makes
+    the reduction gentle for slight bends and aggressive only for real
+    corners, which is where the velocity discontinuity actually hurts."""
+    norm_prev = math.sqrt(sum(x * x for x in prev_delta))
+    norm_next = math.sqrt(sum(x * x for x in next_delta))
+    if norm_prev < 1e-9 or norm_next < 1e-9:
+        return 1.0
+    cosine = sum(a * b for a, b in zip(prev_delta, next_delta)) / (norm_prev * norm_next)
+    cosine = max(-1.0, min(1.0, cosine))
+    # cos(theta/2) via the half-angle identity: 1.0 straight through, 0.71 at a
+    # right angle, 0 at a reversal. Deliberately gentler than penalising by
+    # cos(theta) directly, which sends a right-angle corner to a dead stop and
+    # made a wiggly path take four times as long in testing.
+    return max(_MIN_CORNER_SPEED_SCALE, math.sqrt(0.5 * (1.0 + cosine)))
+
+
+def _segment_duration(distance, speed_start, speed_end):
+    """Exact time to cover `distance` going from speed_start to speed_end
+    under _MAX_JOINT_ACCEL, without ever exceeding _FALLBACK_MAX_JOINT_SPEED.
+
+    The obvious shortcut -- distance divided by the average of the two end
+    speeds -- is only valid while the speed changes monotonically across the
+    segment, and it fails exactly where it is most dangerous. On a
+    two-waypoint plan BOTH ends are at rest, so the average is zero, the
+    minimum-segment floor takes over, and the result commanded 3.0 rad/s for
+    a 0.3 rad move: six times the speed limit, on a real arm. The
+    'Final return to home pose' step plans exactly two waypoints, so that was
+    not a hypothetical.
+
+    Solving for the peak the segment can actually reach handles that case and
+    every other one the same way: accelerate to the peak, optionally cruise,
+    decelerate to the exit speed."""
+    if distance <= 1e-9:
+        return _FALLBACK_MIN_SEGMENT_SEC
+
+    # Highest speed reachable within this segment while still braking to
+    # speed_end by its far end, capped by the global limit.
+    peak = min(
+        _FALLBACK_MAX_JOINT_SPEED,
+        math.sqrt(max(0.0, (2.0 * _MAX_JOINT_ACCEL * distance
+                            + speed_start ** 2 + speed_end ** 2) / 2.0)),
+    )
+    if peak <= 1e-9:
+        return _FALLBACK_MIN_SEGMENT_SEC
+
+    accel_distance = max(0.0, (peak ** 2 - speed_start ** 2) / (2.0 * _MAX_JOINT_ACCEL))
+    decel_distance = max(0.0, (peak ** 2 - speed_end ** 2) / (2.0 * _MAX_JOINT_ACCEL))
+    cruise_distance = max(0.0, distance - accel_distance - decel_distance)
+
+    duration = ((peak - speed_start) / _MAX_JOINT_ACCEL
+                + (peak - speed_end) / _MAX_JOINT_ACCEL
+                + cruise_distance / peak)
+    return max(_FALLBACK_MIN_SEGMENT_SEC, duration)
+
+
+def _apply_trapezoidal_timing(points):
+    """Assign time_from_start and velocities for a trapezoidal, corner-aware
+    velocity profile along an already-fixed geometric path."""
+    n = len(points)
+
+    # Segment "length" is the largest single-joint step, so that
+    # _FALLBACK_MAX_JOINT_SPEED keeps its meaning as a PER-JOINT limit rather
+    # than silently becoming a limit on the norm across all six.
+    deltas = []
+    dists = []
+    for i in range(n - 1):
+        delta = [b - a for a, b in zip(points[i].positions, points[i + 1].positions)]
+        deltas.append(delta)
+        dists.append(max((abs(x) for x in delta), default=0.0))
+
+    # Speed ceiling at each waypoint: at rest at both ends, limited by the
+    # corner angle in between.
+    speeds = [_FALLBACK_MAX_JOINT_SPEED] * n
+    speeds[0] = 0.0
+    speeds[n - 1] = 0.0
+    for i in range(1, n - 1):
+        speeds[i] = min(
+            speeds[i],
+            _FALLBACK_MAX_JOINT_SPEED * _corner_speed_scale(deltas[i - 1], deltas[i]),
         )
-        dt = max(_FALLBACK_MIN_SEGMENT_SEC, max_delta / _FALLBACK_MAX_JOINT_SPEED)
-        t += dt
-        _sec_to_duration(t, point.time_from_start)
-        prev_positions = list(point.positions)
+
+    # Forward then backward pass so the profile is reachable under
+    # _MAX_JOINT_ACCEL from both directions -- the standard way to turn a set
+    # of per-waypoint speed caps into a profile that can actually be flown.
+    for i in range(1, n):
+        speeds[i] = min(
+            speeds[i],
+            math.sqrt(speeds[i - 1] ** 2 + 2.0 * _MAX_JOINT_ACCEL * dists[i - 1]),
+        )
+    for i in range(n - 2, -1, -1):
+        speeds[i] = min(
+            speeds[i],
+            math.sqrt(speeds[i + 1] ** 2 + 2.0 * _MAX_JOINT_ACCEL * dists[i]),
+        )
+
+    times = [0.0]
+    for i in range(n - 1):
+        times.append(times[-1] + _segment_duration(dists[i], speeds[i], speeds[i + 1]))
+
+    n_joints = len(points[0].positions)
+    for i, point in enumerate(points):
+        _sec_to_duration(times[i], point.time_from_start)
+        if i == 0 or i == n - 1:
+            point.velocities = [0.0] * n_joints
+            continue
+        span = times[i + 1] - times[i - 1]
+        if span <= 1e-9:
+            point.velocities = [0.0] * n_joints
+            continue
+        point.velocities = [
+            (points[i + 1].positions[j] - points[i - 1].positions[j]) / span
+            for j in range(n_joints)
+        ]
 
 
 def make_position_constraint(link_name, frame_id, x, y, z, tolerance=0.04):
