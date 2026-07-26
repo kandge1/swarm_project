@@ -844,3 +844,81 @@ the same action** (`FollowJointTrajectory` -> `arm_group_controller`). The IK
 was never the problem — the pre-grasp pose was already proven reachable in
 Session 3. The difference is only trajectory *shape* (21 waypoints vs 1) and,
 critically, **when the send lands relative to DDS discovery**.
+
+---
+
+## Session 3c (2026-07-26): ROOT CAUSE — fragmented UDP never crosses this link
+
+The instrumentation finally produced an unambiguous discriminator. One
+`pick_place.py` run, cross-referenced against the robot-side log:
+
+| goal | waypoints | serialized | robot logged `Received`? |
+|---|---|---|---|
+| `go_home` | 2 | 358 B | **yes** |
+| gripper close | 1 | 158 B | **yes** |
+| gripper open | 1 | 158 B | **yes** |
+| **pre-grasp** | **21** | **1802 B** | **NO — 3/3 attempts** |
+| `go_home` (final) | 2 | 358 B | **yes** |
+
+The final 358 B goal was delivered **seconds after** the three 1802 B
+failures, from the same process, so the link was healthy the whole time and
+nothing was unmatched, poisoned or degraded.
+
+**The only variable that predicts delivery is whether the serialized message
+fits in a single UDP datagram.** 1802 B exceeds the 1500 B Ethernet MTU
+(1472 B of UDP payload), so it requires IP-level fragmentation — which this
+campus Wi-Fi silently drops, for the same reason it blocks multicast. The
+cutoff is 16 waypoints for a 6-joint arm goal.
+
+### Fix (commit `a1e888a`)
+
+```xml
+<MaxMessageSize>1400B</MaxMessageSize>
+<FragmentSize>1300B</FragmentSize>
+```
+Under `<General>` on Jazzy, `<Internal>` on Galactic 0.22.6 (verified by
+loading each; Jazzy logs "setting moved to //CycloneDDS/Domain/General/..."
+if they are left under Internal).
+
+Cyclone already fragments at `FragmentSize` (default 1344 B), but
+`MaxMessageSize` (default 14720 B) then lets it pack several fragments back
+into ONE oversized datagram — which is what reintroduces IP fragmentation.
+Capping `MaxMessageSize` below the MTU forces one sub-MTU datagram per RTPS
+message.
+
+### Everything this subsumes
+
+- **The "3-goal wall" was never a count.** Goals 1-3 were always `go_home` +
+  two gripper moves (all small); goal #4 was always the first *large* one.
+  Every "after ~3 goals" observation across Sessions 2 and 3 is this.
+  The `WhcHigh=500kB` watermark aimed at that phantom is removed.
+- **`ros2 control list_controllers` timing out cross-machine** while working
+  locally (Session 1, Problem 6) — its response carries every controller's
+  name, type and interface list, comfortably over the MTU. Same bug.
+- **Session 3b's "DDS matching race"** was wrong. Retrying with fresh
+  ActionClients failed 3/3 because size, not timing, was the variable. The
+  settle + retry logic is harmless and worth keeping as robustness, but it
+  was not the fix.
+- **`serdata.cpp:354`** remains benign background noise (Session 3b).
+
+### The near miss
+
+Commit `204f828` ("Raise Cyclone DDS FragmentSize/MaxMessageSize to avoid
+fragmentation") identified the correct parameter on 2026-07-25 and was
+reverted in `798955c`. It set both to **65500B** — the right knob turned the
+**wrong way**: raising `MaxMessageSize` makes Cyclone build *bigger*
+datagrams and fragment *harder* at the IP layer. It was then reverted partly
+because of a misdiagnosed side effect (`/plan_kinematic_path service not
+available`, which was just move_group not running in that terminal). A note
+in `cyclonedds_galactic.xml` records this so the direction is not retried.
+
+### Still open after this
+
+- `_ensure_monotonic_timing` is still the only time parameterization (see
+  Session 3) — the OMPL response-adapter gap is unfixed.
+- `SPEED_100_RAD_PER_SEC = 2.0` in `mycobot_bridge.py` is still an unverified
+  calibration.
+- The bridge's serial loop runs ~85 Hz idle but collapses to 1-3 Hz *while
+  the arm moves* (`get_angles()` taking 500-1500 ms mid-motion), so only
+  ~10-20 setpoints land per trajectory. It tracked a move correctly at that
+  rate, but it is coarse and worth revisiting if motion looks steppy.
