@@ -30,5 +30,33 @@
         <Peer address="172.27.89.157"/>
       </Peers>
     </Discovery>
+    <Internal>
+      <!-- Confirmed on real hardware (2026-07-26, late-night session):
+           EVERY test run tonight -- across several different scripts,
+           trajectory sizes, and completion-detection mechanisms -- breaks
+           in the exact same way after almost exactly 3 successful action
+           goals (regardless of how much wall-clock time those 3 goals
+           spanned, from ~4s to several minutes across different runs):
+           robot_state_publisher AND ros2_control_node both start emitting
+           repeated serdata.cpp:354 deserialization errors simultaneously,
+           and no further goal is ever received again for the rest of that
+           process's lifetime -- this is a hard, count-triggered failure,
+           not a probabilistic network drop (ruled out fragmentation/size
+           as the cause: single ~500-byte goals hit this exactly as often
+           as 30-waypoint ~9KB ones). This is consistent with a small,
+           default Cyclone DDS writer/reader history or resource-limit
+           high-water-mark being reached after a handful of samples with
+           no support for recovering once hit, rather than a lossy-link
+           packet-drop issue. Raising the watermark gives the writer more
+           room before whatever backpressure/limit mechanism kicks in.
+           UNVERIFIED as of writing -- this is a targeted guess based on
+           the count-not-time pattern, not a confirmed root cause; if this
+           doesn't resolve it, the next step is asking upstream
+           (cyclonedds/rmw_cyclonedds issue trackers) about this exact
+           "N goals then permanent serdata.cpp:354" signature on 0.22.6. -->
+      <Watermarks>
+        <WhcHigh>500kB</WhcHigh>
+      </Watermarks>
+    </Internal>
   </Domain>
 </CycloneDDS>

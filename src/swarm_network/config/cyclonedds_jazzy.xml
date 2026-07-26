@@ -26,5 +26,16 @@
         <Peer address="172.27.89.157"/>
       </Peers>
     </Discovery>
+    <Internal>
+      <!-- Must match cyclonedds_galactic.xml's Internal block -- see that
+           file's comment for the count-triggered (not size/time-triggered)
+           failure this is attempting to address: every test run breaks
+           after ~3 successful goals with permanent serdata.cpp:354 errors
+           on the robot side, regardless of trajectory size or elapsed
+           time. UNVERIFIED as of writing. -->
+      <Watermarks>
+        <WhcHigh>500kB</WhcHigh>
+      </Watermarks>
+    </Internal>
   </Domain>
 </CycloneDDS>
