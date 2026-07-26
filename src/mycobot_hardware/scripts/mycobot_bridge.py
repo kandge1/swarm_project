@@ -284,7 +284,8 @@ class SharedState:
 class Bridge:
     def __init__(self, serial_port, baud_rate, speed, log_timing=True,
                  async_writes=True, max_command_rate_hz=DEFAULT_MAX_COMMAND_RATE_HZ,
-                 motion_read_interval=DEFAULT_MOTION_READ_INTERVAL_SEC):
+                 motion_read_interval=DEFAULT_MOTION_READ_INTERVAL_SEC,
+                 min_speed=MIN_SPEED):
         from pymycobot import MyCobot280  # imported here so --help works without hardware attached
 
         self.speed = speed
@@ -293,6 +294,7 @@ class Bridge:
         self.min_command_period = (1.0 / max_command_rate_hz
                                    if max_command_rate_hz > 0 else 0.0)
         self.motion_read_interval = motion_read_interval
+        self.min_speed = min_speed
         print(f"[mycobot_bridge] connecting to {serial_port} @ {baud_rate}...")
         self.arm = MyCobot280(serial_port, baud_rate)
         print("[mycobot_bridge] connected.")
@@ -530,7 +532,17 @@ class Bridge:
 
         if self.log_timing:
             gripper_note = "(sent)" if gripper_changed else "(skipped)"
-            print(f"[mycobot_bridge] TIMING send_angles={1000 * (t_arm - t0):.0f}ms "
+            # dt is the gap since the PREVIOUS command reached the arm, and is
+            # the single most useful number here for diagnosing visible skips:
+            # a stutter in an otherwise smooth motion is a command blackout, and
+            # a blackout shows up as one dt of hundreds/thousands of ms in a
+            # stream of ~33ms ones. The likeliest cause is a get_angles() that
+            # hit all three of pymycobot's 0.5s retries (2021ms observed), since
+            # nothing can be written while the serial link is blocked on it.
+            dt_note = ("dt=first" if last_sent_at <= 0.0
+                       else f"dt={1000 * (t0 - last_sent_at):.0f}ms")
+            print(f"[mycobot_bridge] TIMING {dt_note} "
+                  f"send_angles={1000 * (t_arm - t0):.0f}ms "
                   f"gripper={1000 * (t_grip - t_arm):.0f}ms {gripper_note} "
                   f"speed={speed}  "
                   f"target_deg={[round(d, 2) for d in arm_degrees]}")
@@ -678,8 +690,8 @@ class Bridge:
 
         required_rad_s = max_delta / dt
         speed = int(round(100.0 * required_rad_s / SPEED_100_RAD_PER_SEC))
-        # Never exceed the configured ceiling and never stall below MIN_SPEED.
-        return max(MIN_SPEED, min(self.speed, speed))
+        # Never exceed the configured ceiling and never stall below min_speed.
+        return max(self.min_speed, min(self.speed, speed))
 
     # ---- socket handler thread(s): never touch the arm directly ----
 
@@ -794,6 +806,17 @@ def main():
                              "aborts and restarts the move in progress, so this "
                              "trades tracking accuracy against re-commanding the "
                              "servos so often they buzz instead of moving.")
+    parser.add_argument("--min-speed", type=int, default=MIN_SPEED,
+                        help="floor for the speed matching (default %(default)s). "
+                             "25 was chosen on 2026-07-26 for the OLD regime, "
+                             "where commands reached the arm at ~2Hz and the "
+                             "final one had to break static friction on its own. "
+                             "Neither still holds: settling now re-sends at full "
+                             "speed once motion stops, and at 30Hz each command "
+                             "covers well under a degree, for which 25 is roughly "
+                             "twice as fast as needed -- so the arm darts and "
+                             "waits 30 times a second instead of moving "
+                             "continuously. Try 10-15 if the motion looks buzzy.")
     parser.add_argument("--motion-read-interval", type=float,
                         default=DEFAULT_MOTION_READ_INTERVAL_SEC,
                         help="minimum seconds between arm state reads while the "
@@ -816,10 +839,12 @@ def main():
                     log_timing=args.log_timing,
                     async_writes=args.async_writes,
                     max_command_rate_hz=args.max_command_rate,
-                    motion_read_interval=args.motion_read_interval)
+                    motion_read_interval=args.motion_read_interval,
+                    min_speed=args.min_speed)
     print(f"[mycobot_bridge] writes={'async' if args.async_writes else 'sync (blocking)'}, "
           f"max command rate={args.max_command_rate}Hz, "
-          f"motion read interval={args.motion_read_interval}s")
+          f"motion read interval={args.motion_read_interval}s, "
+          f"speed={args.min_speed}..{args.speed}")
 
     # Seed shared state with a real initial read before accepting any
     # connections, so the first read() a client makes doesn't race the
