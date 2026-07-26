@@ -216,6 +216,15 @@ DEFAULT_ASYNC_WRITES = True
 # trajectory (too low) or vibrating/buzzing (too high).
 DEFAULT_MAX_COMMAND_RATE_HZ = 30.0
 
+# Minimum spacing between arm state reads WHILE THE SETPOINT IS MOVING. Reads
+# run at full rate (every loop iteration) whenever it is not. See
+# _serial_read_once_if_due() for the measurements behind this.
+#
+# UNVERIFIED as an optimum. Raising it buys command rate at the cost of a
+# staler /joint_states during motion; lowering it does the reverse. Sweep with
+# --motion-read-interval, and set it to 0 to restore reading every iteration.
+DEFAULT_MOTION_READ_INTERVAL_SEC = 0.5
+
 # Position command must change by at least this much (radians) before the
 # background loop bothers re-sending it to the arm -- avoids spamming
 # send_angles()/set_gripper_value() with the same target every loop
@@ -274,7 +283,8 @@ class SharedState:
 
 class Bridge:
     def __init__(self, serial_port, baud_rate, speed, log_timing=True,
-                 async_writes=True, max_command_rate_hz=DEFAULT_MAX_COMMAND_RATE_HZ):
+                 async_writes=True, max_command_rate_hz=DEFAULT_MAX_COMMAND_RATE_HZ,
+                 motion_read_interval=DEFAULT_MOTION_READ_INTERVAL_SEC):
         from pymycobot import MyCobot280  # imported here so --help works without hardware attached
 
         self.speed = speed
@@ -282,6 +292,7 @@ class Bridge:
         self.async_writes = async_writes
         self.min_command_period = (1.0 / max_command_rate_hz
                                    if max_command_rate_hz > 0 else 0.0)
+        self.motion_read_interval = motion_read_interval
         print(f"[mycobot_bridge] connecting to {serial_port} @ {baud_rate}...")
         self.arm = MyCobot280(serial_port, baud_rate)
         print("[mycobot_bridge] connected.")
@@ -314,23 +325,73 @@ class Bridge:
         DDS."""
         print("[mycobot_bridge] serial loop starting")
         iterations = 0
+        last_read_ms = 0.0
         window_start = time.monotonic()
         while not self._stop.is_set():
             t0 = time.monotonic()
-            self._serial_read_once()
-            t_read = time.monotonic()
+            did_read = self._serial_read_once_if_due()
+            if did_read:
+                last_read_ms = 1000 * (time.monotonic() - t0)
             self._serial_write_once_if_dirty()
             self._serial_settle_if_needed()
             iterations += 1
+
+            if not did_read:
+                # Nothing here blocks when the read is skipped and the write is
+                # rate limited, so without this the loop spins on the CPU for
+                # no benefit. 2ms is far finer than the write cap's period.
+                time.sleep(0.002)
 
             if self.log_timing:
                 elapsed = time.monotonic() - window_start
                 if elapsed >= 1.0:
                     print(f"[mycobot_bridge] TIMING loop_rate={iterations / elapsed:.1f}Hz "
-                          f"(last read {1000 * (t_read - t0):.0f}ms) -- this is the "
+                          f"(last read {last_read_ms:.0f}ms) -- this is the "
                           f"real ceiling on commands/sec reaching the arm")
                     iterations = 0
                     window_start = time.monotonic()
+
+    def _serial_read_once_if_due(self):
+        """Read arm state, but not on every iteration while the arm is moving.
+
+        WHY (measured 2026-07-27, after async writes fixed the write side):
+        get_angles() costs 10-25ms while the arm is parked and 500-2000ms while
+        it is moving -- the firmware does not answer promptly when it is busy
+        executing a move. That is the same 0.5s timeout plus 3x retry in
+        pymycobot's read()/_res() that made writes slow, and a 2021ms read in
+        that run was immediately preceded by `get_angles() returned -1`, i.e.
+        all three attempts timing out. It is NOT caused by async writes leaving
+        unacknowledged replies in the buffer: reads were already 535-1506ms
+        during motion in the pre-async logs.
+
+        Since the write now costs ~0ms, the read is the entire loop period, so
+        a 4.4s trajectory still reached the arm as only 11 commands -- one of
+        which asked a joint to move 58 degrees in a single point-to-point move.
+
+        Nothing closes a feedback loop on the measured position DURING a
+        trajectory (joint_trajectory_controller is time-based here, and the
+        settle logic deliberately waits for motion to stop), so a stale reading
+        mid-move costs little, whereas a stale COMMAND costs tracking accuracy
+        directly. Reads therefore fall back to a slow poll while the setpoint
+        is moving and return to full rate the moment it stops -- which is
+        before the next goal starts, so a new trajectory still begins from
+        fresh state.
+
+        Returns True if a read was actually performed."""
+        now = time.monotonic()
+        with self.state.lock:
+            moving = (
+                self.state.command_changed_monotonic > 0.0
+                and now - self.state.command_changed_monotonic < SETTLE_QUIET_PERIOD_SEC
+            )
+            since_read = now - self.state.last_read_monotonic
+
+        if (moving and self.motion_read_interval > 0.0
+                and since_read < self.motion_read_interval):
+            return False
+
+        self._serial_read_once()
+        return True
 
     # The gripper position is read once every this many loop iterations
     # instead of every one. get_angles() and get_gripper_value() are two
@@ -733,6 +794,14 @@ def main():
                              "aborts and restarts the move in progress, so this "
                              "trades tracking accuracy against re-commanding the "
                              "servos so often they buzz instead of moving.")
+    parser.add_argument("--motion-read-interval", type=float,
+                        default=DEFAULT_MOTION_READ_INTERVAL_SEC,
+                        help="minimum seconds between arm state reads while the "
+                             "setpoint is moving (default %(default)s, 0 reads "
+                             "every iteration). get_angles() costs 10-25ms parked "
+                             "but 500-2000ms mid-move, so reading every iteration "
+                             "spends the entire loop period on state nothing acts "
+                             "on until the motion stops.")
     parser.add_argument("--no-log-timing", dest="log_timing", action="store_false",
                         help="suppress the per-second serial loop_rate line and the "
                              "per-write send_angles timing/target lines. On by "
@@ -746,9 +815,11 @@ def main():
     bridge = Bridge(args.serial_port, args.baud_rate, args.speed,
                     log_timing=args.log_timing,
                     async_writes=args.async_writes,
-                    max_command_rate_hz=args.max_command_rate)
+                    max_command_rate_hz=args.max_command_rate,
+                    motion_read_interval=args.motion_read_interval)
     print(f"[mycobot_bridge] writes={'async' if args.async_writes else 'sync (blocking)'}, "
-          f"max command rate={args.max_command_rate}Hz")
+          f"max command rate={args.max_command_rate}Hz, "
+          f"motion read interval={args.motion_read_interval}s")
 
     # Seed shared state with a real initial read before accepting any
     # connections, so the first read() a client makes doesn't race the
