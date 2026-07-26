@@ -1126,6 +1126,40 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
 
     current_state = io_client.current_joint_positions(joint_names)
     seeds = [("current-state", current_state)] + IK_SEEDS
+
+    # Evaluate EVERY seed and keep the solution closest to where the arm is
+    # standing, rather than returning the first one that converges
+    # (2026-07-26).
+    #
+    # WHY: on this 6-DOF arm most reachable targets have several valid IK
+    # branches (elbow up/down, wrist flipped), and KDL returns whichever one
+    # is nearest its seed. Taking the first convergence made the branch a
+    # function of seed ORDER, and since 'current-state' is tried first, the
+    # answer silently changed depending on where the arm happened to be
+    # sitting when the script ran. Two runs against the identical target
+    # (0.000, 0.250, 0.180):
+    #
+    #   current-state converged -> [1.828, -0.718, -0.811, -0.041, 0, 1.828]
+    #       the arm reached this pose and settled within 0.025 rad.
+    #   current-state failed, fell through to 'downward-confirmed'
+    #                       -> [1.828, -1.470, +0.811, -0.912, 0, 1.828]
+    #       elbow flipped, far more extended: the arm tracked ~1.98 rad of it
+    #       and then stopped dead ~0.29 rad (16 deg) short on four joints,
+    #       with /joint_states byte-identical for 50+ seconds afterwards.
+    #
+    # Both are legitimate IK solutions for the same flange pose; only one is
+    # something this arm can actually hold. Minimising joint-space travel
+    # from the current state is the standard tie-break and it prefers the
+    # branch that worked here: the failing solution sits 3.9 rad from home
+    # versus 2.9 rad for the working one. It also means less time spent
+    # sweeping through awkward intermediate configurations, and it makes the
+    # choice deterministic run to run instead of depending on start pose.
+    #
+    # NOTE this picks the least-travel solution, not necessarily one the arm
+    # can physically hold -- there is no torque/gravity model anywhere in
+    # this project. If a chosen pose still stalls, that is a payload/reach
+    # limit to be measured, not an IK bug.
+    best = None
     for label, seed in seeds:
         solution = io_client.compute_ik(
             x, y, z, qx, qy, qz, qw,
@@ -1151,11 +1185,20 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
                   f"near limit [{llo:.3f},{lhi:.3f}], skipping")
             continue
 
-        print(f"[ik] '{label}' seed: OK -> {joints}")
-        return joint_values
+        travel = math.sqrt(sum((joint_values[n] - current_state[n]) ** 2
+                               for n in joint_names))
+        print(f"[ik] '{label}' seed: OK -> {joints}  (travel {travel:.3f} rad)")
+        if best is None or travel < best[0]:
+            best = (travel, label, joint_values)
 
-    print(f"[ik] All seeds exhausted for ({x:.3f},{y:.3f},{z:.3f}) -- falling back to constraint sampling")
-    return None
+    if best is None:
+        print(f"[ik] All seeds exhausted for ({x:.3f},{y:.3f},{z:.3f}) -- falling back to constraint sampling")
+        return None
+
+    travel, label, joint_values = best
+    print(f"[ik] chose '{label}' ({travel:.3f} rad of joint travel): "
+          f"{[round(v, 3) for v in joint_values.values()]}")
+    return joint_values
 
 
 def toggle_gripper(io_client):
