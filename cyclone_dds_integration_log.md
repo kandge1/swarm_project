@@ -1046,3 +1046,69 @@ Estimated saving: **~115s per run.**
   per trajectory. Coarse but functional; revisit if motion looks steppy.
 - Nothing tells MoveIt the block is in the gripper, so collision checking for
   the place moves does not account for it.
+
+---
+
+## Session 3f (2026-07-26): intermittent "stops 5 degrees short" -- a regression I introduced
+
+Repeat runs of the now-working pick and place failed intermittently, always
+the same way: the arm travels almost the whole distance and settles a few
+degrees short of target, failing pick_place.py's 0.05 rad convergence check.
+
+```
+target: {1.8278, -0.7181, -0.8115, -0.0404, 0.0010, 1.8280}
+final:  {1.7380, -0.6718, -0.8697, -0.0244, -0.0045, 1.7380}
+error:  {-0.0898, +0.0463, -0.0582, +0.0160, -0.0101, -0.0900}
+max movement during the wait: 1.7228 rad
+```
+
+1.72 rad travelled, 0.09 rad (5.2 deg) short. Not a stall. One run in three
+completed the full sequence, so it is marginal rather than deterministic.
+
+### Cause: `_match_speed` bottoms out exactly when it matters
+
+`_match_speed` (Session 3, added to stop the dart-and-stall stutter) scales
+the pymycobot speed to the observed setpoint rate. At the END of a trajectory
+the setpoints barely move, so it computes near zero and clamps to `MIN_SPEED`.
+Visible directly in a logged send_angles trace:
+
+```
+speed=10 -> 16 -> 37 -> 43 -> 42 -> 32 -> 21 -> 44 -> 17 -> speed=10  <- final
+```
+
+The final command -- the one that has to actually seat the arm on target --
+went out at the floor value, which is below what this arm needs to break
+static friction.
+
+### Compounding cause: nothing ever re-commands
+
+`joint_trajectory_controller` holds its final target forever once a trajectory
+elapses. A held target never changes, so `write_command()` stops marking it
+dirty and **the bridge falls silent**. Whatever that last low-speed nudge
+achieved is where the arm stays. There is no closed-loop correction anywhere
+in the pipeline -- JTC streams open loop, the bridge forwards open loop, and
+the only feedback is pick_place.py noticing the failure 60s later.
+
+### Fix
+
+- `MIN_SPEED` 10 -> 25.
+- **`_serial_settle_if_needed()`**: while the held command is un-dirty and the
+  measured arm position is more than `SETTLE_TOLERANCE_RAD` (0.02) away,
+  re-send it at FULL speed, rate limited to every 0.5s, capped at 20 attempts
+  (~10s) so a physically blocked joint is not driven indefinitely. 0.02 is
+  deliberately tighter than pick_place.py's 0.05 check so settling actually
+  clears that threshold.
+- **Arm joints only.** The gripper is excluded on purpose: when holding a
+  block it cannot reach its commanded value, and that is the success
+  condition -- settling it would drive the jaw harder into the object forever.
+
+This is the first closed-loop position correction in the pipeline.
+
+### Note for future debugging
+
+Both `_match_speed` and this settle are compensating for the same underlying
+mismatch: a servo-style controller driving a point-to-point vendor API (see
+Session 3). The principled fix remains real time parameterization
+(the OMPL response-adapter gap) plus a `constraints:` block in
+ros2_controllers.yaml so the controller can report tracking failure itself
+instead of pick_place.py inferring it from /joint_states 60s later.

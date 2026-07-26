@@ -105,8 +105,31 @@ DEFAULT_SPEED = 50  # 0-100, pymycobot's joint/gripper move speed -- see
 SPEED_100_RAD_PER_SEC = 2.0
 
 # Never command below this: pymycobot speeds in the low single digits stall
-# against static friction on this arm instead of moving slowly.
-MIN_SPEED = 10
+# against static friction on this arm instead of moving slowly. Raised 10 -> 25
+# on 2026-07-26 after runs stopped ~0.09 rad short of target: _match_speed
+# scales speed to the setpoint rate, and at the END of a trajectory the
+# setpoints barely move, so the last command -- the one that actually has to
+# seat the arm on its target -- was going out at the floor value. Observed
+# directly in a send_angles trace ending
+# "...speed=21 speed=44 speed=17 speed=10", with the arm then sitting 5 degrees
+# short. 10 is below what this arm needs to break static friction.
+MIN_SPEED = 25
+
+# Closed-loop settle. joint_trajectory_controller holds its final target
+# forever once a trajectory elapses, so the command stops changing and
+# write_command() stops marking it dirty -- meaning the bridge never sends
+# anything again and the arm simply stays wherever its last open-loop
+# send_angles() left it. If that was short of target (see MIN_SPEED above),
+# nothing corrects it and the goal fails on the /joint_states tolerance check.
+#
+# These re-send the held command at FULL speed while the arm is measurably
+# short of it, which is the only closed-loop position correction anywhere in
+# this pipeline.
+SETTLE_TOLERANCE_RAD = 0.02      # tighter than pick_place.py's 0.05 check, so
+                                 # settling actually clears that threshold
+SETTLE_RESEND_INTERVAL_SEC = 0.5  # rate limit; a settle move needs time to run
+SETTLE_MAX_RESENDS = 20          # ~10s, then give up rather than drive a
+                                 # physically blocked joint indefinitely
 
 # Position command must change by at least this much (radians) before the
 # background loop bothers re-sending it to the arm -- avoids spamming
@@ -151,6 +174,9 @@ class SharedState:
         # _serial_write_once_if_dirty()'s comment on the lost-command latch.
         self.last_sent = None
         self.last_sent_monotonic = 0.0
+        # Closed-loop settle bookkeeping -- see _serial_settle_if_needed().
+        self.last_settle_monotonic = 0.0
+        self.settle_resends = 0
 
 
 class Bridge:
@@ -197,6 +223,7 @@ class Bridge:
             self._serial_read_once()
             t_read = time.monotonic()
             self._serial_write_once_if_dirty()
+            self._serial_settle_if_needed()
             iterations += 1
 
             if self.log_timing:
@@ -304,6 +331,8 @@ class Bridge:
         with self.state.lock:
             self.state.last_sent = positions
             self.state.last_sent_monotonic = t0
+            # A new commanded position restarts the settle budget.
+            self.state.settle_resends = 0
             # Clear the dirty flag only if no NEWER command arrived while we
             # were busy on the serial link (which takes 500-1500ms here, i.e.
             # 50-150 control cycles).
@@ -330,6 +359,59 @@ class Bridge:
                   f"gripper={1000 * (t_grip - t_arm):.0f}ms {gripper_note} "
                   f"speed={speed}  "
                   f"target_deg={[round(d, 2) for d in arm_degrees]}")
+
+    def _serial_settle_if_needed(self):
+        """Re-send the currently-held command at full speed while the arm is
+        measurably short of it.
+
+        This is the only closed-loop position correction in the pipeline.
+        Everything else here is open loop: joint_trajectory_controller streams
+        setpoints, the bridge forwards the newest one as a point-to-point
+        send_angles(), and once the trajectory elapses JTC holds its final
+        target forever. A held target never changes, so write_command() stops
+        marking it dirty and the bridge falls silent -- leaving the arm
+        wherever its last send_angles() happened to stop.
+
+        That is exactly the 2026-07-26 intermittent failure: runs travelled
+        ~1.72 rad and settled 0.09 rad (5 deg) short of target, failing
+        pick_place.py's 0.05 rad convergence check, with no further command
+        ever issued to close the gap. Re-sending at full speed corrects it.
+
+        ARM JOINTS ONLY (positions[:6]). The gripper is deliberately excluded:
+        when it is holding a block it CANNOT reach its commanded value, and
+        that is the success condition, not an error -- settling it would just
+        drive the jaw harder into the object forever."""
+        now = time.monotonic()
+        with self.state.lock:
+            if self.state.command is None or self.state.command_dirty:
+                return
+            if now - self.state.last_settle_monotonic < SETTLE_RESEND_INTERVAL_SEC:
+                return
+            if self.state.settle_resends >= SETTLE_MAX_RESENDS:
+                return
+            command = list(self.state.command)
+            measured = list(self.state.positions)
+            attempt = self.state.settle_resends + 1
+
+        error = max(abs(c - p) for c, p in zip(command[:6], measured[:6]))
+        if error <= SETTLE_TOLERANCE_RAD:
+            return
+
+        arm_degrees = [math.degrees(p) for p in command[:6]]
+        try:
+            self.arm.send_angles(arm_degrees, self.speed)
+        except Exception as exc:
+            print(f"[mycobot_bridge] ERROR during settle re-send: {exc!r}")
+            return
+
+        with self.state.lock:
+            self.state.last_settle_monotonic = now
+            self.state.settle_resends = attempt
+
+        if self.log_timing:
+            print(f"[mycobot_bridge] TIMING settle re-send {attempt}/"
+                  f"{SETTLE_MAX_RESENDS}: still {error:.4f} rad short "
+                  f"(> {SETTLE_TOLERANCE_RAD}), re-commanding at speed {self.speed}")
 
     def _match_speed(self, positions, last_sent, last_sent_at):
         """Pick the pymycobot speed that makes the arm arrive at `positions`
