@@ -19,12 +19,31 @@ Two named poses, all six arm joints (gripper untouched):
   squat -- the project's designated home/rest pose (matches reset_arm.py /
            pick_place.py's HOME_RADIANS / config/initial_positions.yaml).
 
+--joints/--degrees additionally allow an ARBITRARY target, which is what
+isolates the currently-unsolved failure (2026-07-26): pick_place.py's
+pre-grasp step gets its goal accepted by arm_group_controller and then the
+arm doesn't move. That goal is a 21-waypoint, 9.14s, 0.2 rad/s trajectory
+from MoveIt; every trajectory confirmed to move this arm has been a
+1-waypoint hand-built one. Sending the SAME final pose as a 1-waypoint goal
+separates the pose from the trajectory shape:
+
+  python3 joint_trajectory_test.py --degrees 104.74 -41.17 -46.49 -2.35 0 104.74
+
+  arm MOVES     -> the pose is reachable and the write path is fine; the
+                   failure is in executing multi-waypoint streamed
+                   trajectories through mycobot_bridge.py's point-to-point
+                   send_angles() API.
+  arm DOESN'T   -> the pose itself is the problem (pymycobot silently
+                   refusing an out-of-range angle, or a physical/servo
+                   limit); nothing to do with MoveIt, DDS or goal count.
+
 Usage:
   python3 joint_trajectory_test.py                  # squat -> zero -> squat, once
   python3 joint_trajectory_test.py --cycles 5        # repeat 5 times
   python3 joint_trajectory_test.py --duration 4.0    # slower, 4s per move
   python3 joint_trajectory_test.py --to zero         # single move, squat's
                                                       # current position -> zero
+  python3 joint_trajectory_test.py --degrees 104.74 -41.17 -46.49 -2.35 0 104.74
 """
 
 import argparse
@@ -59,9 +78,11 @@ def make_trajectory(target_radians, duration_sec):
     return traj
 
 
-def move_to(io_client, pose_name, duration_sec):
+def move_to(io_client, pose_name, duration_sec, target_radians=None):
     print(f"[joint_trajectory_test] moving to {pose_name!r} pose over {duration_sec}s...")
-    trajectory = make_trajectory(POSES_RADIANS[pose_name], duration_sec)
+    if target_radians is None:
+        target_radians = POSES_RADIANS[pose_name]
+    trajectory = make_trajectory(target_radians, duration_sec)
     ok = io_client.arm_execute(trajectory)
     if ok:
         print(f"[joint_trajectory_test] reached {pose_name!r} (controller reported success -- "
@@ -82,13 +103,37 @@ def main():
                         help="seconds to pause at each pose before the next move (default 1.0)")
     parser.add_argument("--to", choices=["zero", "squat"], default=None,
                         help="single move to this pose instead of a squat<->zero cycle")
+    parser.add_argument("--joints", type=float, nargs=6, default=None,
+                        metavar=("J1", "J2", "J3", "J4", "J5", "J6"),
+                        help="single move to an arbitrary target, 6 values in "
+                             "RADIANS, in arm_group_controller joint order "
+                             f"({', '.join(ARM_JOINT_NAMES)})")
+    parser.add_argument("--degrees", type=float, nargs=6, default=None,
+                        metavar=("J1", "J2", "J3", "J4", "J5", "J6"),
+                        help="same as --joints but in DEGREES")
     args = parser.parse_args()
+
+    if args.joints is not None and args.degrees is not None:
+        parser.error("pass --joints or --degrees, not both")
+
+    explicit = None
+    if args.degrees is not None:
+        explicit = [math.radians(d) for d in args.degrees]
+    elif args.joints is not None:
+        explicit = list(args.joints)
 
     rclpy.init()
     io_client = RobotIOClient()
 
     try:
-        if args.to is not None:
+        if explicit is not None:
+            target = dict(zip(ARM_JOINT_NAMES, explicit))
+            print(f"[joint_trajectory_test] explicit target (rad): "
+                  f"{[round(v, 4) for v in explicit]}")
+            print(f"[joint_trajectory_test] explicit target (deg): "
+                  f"{[round(math.degrees(v), 2) for v in explicit]}")
+            move_to(io_client, "explicit", args.duration, target_radians=target)
+        elif args.to is not None:
             move_to(io_client, args.to, args.duration)
         else:
             for i in range(args.cycles):

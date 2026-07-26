@@ -503,7 +503,51 @@ class RobotIOClient(Node):
                           goal.trajectory.points[-1].time_from_start.nanosec / 1e9)
         earliest_done = time.monotonic() + last_point_sec
 
-        client.send_goal_async(goal)
+        _describe_trajectory(label, goal.trajectory)
+
+        # ------------------------------------------------------------------
+        # Await the goal-acceptance handle instead of firing send_goal_async()
+        # and discarding its future (2026-07-26).
+        #
+        # WHY THIS MATTERS MORE THAN IT LOOKS: without this, a failure here is
+        # completely undiagnosable, because /joint_states-convergence polling
+        # alone cannot distinguish three totally different faults, all of
+        # which present as the identical "never converged within 60s" error:
+        #   1. the goal never reached the robot at all (the "3-goal wall"),
+        #   2. the goal was received and accepted but the hardware never
+        #      actually moved (the Galactic controller_manager reports
+        #      "Goal reached, success!" from elapsed trajectory time alone --
+        #      there is no `constraints:` block in ros2_controllers.yaml, so
+        #      arm_group_controller has NO goal tolerance to check and
+        #      literally cannot report failure), or
+        #   3. the arm moved but stopped short of settle_tolerance.
+        # Two full debugging sessions were spent guessing between these. The
+        # goal-acceptance path is independently known-reliable on this DDS
+        # link (see _spin_until_complete's docstring: acceptance arrives fine,
+        # it's the RESULT message that gets lost), so this costs nothing and
+        # removes the ambiguity permanently.
+        goal_future = client.send_goal_async(goal)
+        handle = self._spin_until_complete(
+            goal_future, timeout_sec=10.0, what=f"{label} goal acceptance")
+        if handle is None:
+            self.get_logger().error(
+                f"{label} goal: NO ACCEPTANCE RESPONSE within 10s -- the goal "
+                f"never reached the controller (this is goal delivery failing, "
+                f"NOT the hardware failing to move)")
+            return False
+        if not handle.accepted:
+            self.get_logger().error(
+                f"{label} goal: controller REJECTED the goal (it arrived fine; "
+                f"the controller refused it -- check joint names, waypoint "
+                f"timing, and the robot-side log for the rejection reason)")
+            return False
+        print(f"[{label}] goal ACCEPTED by the controller -- delivery confirmed, "
+              f"now watching /joint_states for real motion")
+
+        # Snapshot the starting position so a timeout can report whether the
+        # arm moved at all vs. moved but fell short -- see the error below.
+        start_positions = {n: self._joint_positions.get(n) for n in target}
+        max_excursion = 0.0
 
         deadline = time.monotonic() + max(timeout_sec, last_point_sec + 5.0)
         last_print = 0.0
@@ -514,17 +558,40 @@ class RobotIOClient(Node):
                 abs(self._joint_positions[name] - pos) <= settle_tolerance
                 for name, pos in target.items()
             )
+            for n, p0 in start_positions.items():
+                p = self._joint_positions.get(n)
+                if p0 is not None and p is not None:
+                    max_excursion = max(max_excursion, abs(p - p0))
             if time.monotonic() - last_print > 5.0:
                 last_print = time.monotonic()
                 current = {n: round(self._joint_positions.get(n, float("nan")), 4)
                           for n in target}
-                print(f"[{label}] waiting... current joint positions: {current}")
+                print(f"[{label}] waiting... current joint positions: {current}  "
+                      f"(max movement so far {max_excursion:.4f} rad)")
             if reached and time.monotonic() >= earliest_done:
                 return True
 
+        # Timed out. The goal WAS accepted (checked above), so this is a
+        # hardware-side tracking failure, not a delivery failure -- report
+        # enough to tell "never moved" apart from "moved but stopped short",
+        # which is the difference between a dead write path
+        # (mycobot_bridge.py never called send_angles) and a slow/blocked arm.
+        errors = {n: round(self._joint_positions.get(n, float("nan")) - p, 4)
+                  for n, p in target.items()}
+        if max_excursion < 0.01:
+            verdict = ("the arm NEVER MOVED AT ALL -- the command never reached "
+                       "the servos. Check mycobot_bridge.py's stdout for TIMING / "
+                       "send_angles lines and for 'ERROR during serial write'.")
+        else:
+            verdict = ("the arm DID move but stopped short -- a tracking or joint "
+                       "limit problem, not a dead write path.")
         self.get_logger().error(
-            f"{label} goal: /joint_states never converged to target within "
-            f"{timeout_sec}s (tolerance {settle_tolerance} rad)")
+            f"{label} goal: ACCEPTED by the controller but /joint_states never "
+            f"converged within {timeout_sec}s (tolerance {settle_tolerance} rad).\n"
+            f"  per-joint error (current - target): {errors}\n"
+            f"  max movement of ANY joint during the whole wait: "
+            f"{max_excursion:.4f} rad\n"
+            f"  -> {verdict}")
         return False
 
     # ---- Gripper ----
@@ -778,11 +845,34 @@ def make_joint_goal_constraints(joint_dict, tolerance=0.001):
     return constraints
 
 
-# Fallback time parameterization, in rad/s -- deliberately conservative,
-# well under joint_limits.yaml's 1.0 rad/s per-joint max (which itself
-# defaults to a further 0.1 scaling factor project-wide). Only ever used as
-# a safety net; see _ensure_monotonic_timing's docstring for when it kicks in.
-_FALLBACK_MAX_JOINT_SPEED = 0.2  # rad/s
+# Time parameterization speed, in rad/s, used by _ensure_monotonic_timing.
+#
+# NOT actually a "fallback" any more, despite the name and despite what
+# _ensure_monotonic_timing's docstring used to claim. Measured against the
+# live move_group on mars (Jazzy) on 2026-07-26: EVERY trajectory returned by
+# /plan_kinematic_path comes back with time_from_start=0 on every point and
+# empty velocities/accelerations arrays, so this function is the ONLY time
+# parameterization anywhere in the system, on both machines. See
+# _ensure_monotonic_timing's docstring for the root cause (ompl_planning.yaml
+# omits response_adapters, and on Jazzy that means the OMPL pipeline loads NO
+# response adapters at all -- move_group's own log says "No planning response
+# adapter names specified" for ompl, while the stomp/pilz/chomp pipelines each
+# log "Loaded adapter default_planning_response_adapters/
+# AddTimeOptimalParameterization"). The comment in ompl_planning.yaml claiming
+# "both distros fall back to their own built-in default adapter list" is
+# therefore wrong for the response side.
+#
+# Raised 0.2 -> 0.5 rad/s (2026-07-26). 0.2 was what this had been silently
+# running at: 5x slower than joint_limits.yaml's 1.0 rad/s per-joint max, and
+# 2.6x slower than the hand-built trajectories in joint_trajectory_test.py
+# (1.55 rad over 3.0s = 0.52 rad/s) which ARE confirmed to move the real arm.
+# 0.5 rad/s matches that confirmed-working rate, and shortens the pre-grasp
+# trajectory from 9.14s to ~3.7s -- fewer seconds during which
+# mycobot_bridge.py's ~1Hz serial loop has to keep up with a 100Hz setpoint
+# stream (see _match_speed in mycobot_bridge.py for why that mismatch is the
+# real failure mode). Anything changed here changes the real arm's speed
+# directly -- it is not a safety net.
+_FALLBACK_MAX_JOINT_SPEED = 0.5  # rad/s
 _FALLBACK_MIN_SEGMENT_SEC = 0.1  # floor per waypoint, avoids zero-length segments
 
 
@@ -795,26 +885,71 @@ def _sec_to_duration(seconds, duration):
     duration.nanosec = int((seconds % 1) * 1e9)
 
 
-def _ensure_monotonic_timing(joint_trajectory):
-    """Recompute strictly-increasing time_from_start for every waypoint if
-    the planner returned a raw geometric path with no time parameterization
-    applied at all (every point at time_from_start=0). Observed on ROS2
-    Galactic's /plan_kinematic_path: the response_adapters config key that
-    normally adds time parameterization (AddTimeOptimalParameterization) had
-    to be dropped from ompl_planning.yaml entirely, because Galactic and
-    Jazzy require opposite, mutually incompatible types for that parameter
-    (a plain string vs. a string array) -- see ompl_planning.yaml's comment.
-    Jazzy's own fallback still applies proper timing without it; Galactic's
-    doesn't, and joint_trajectory_controller then rejects the trajectory
-    outright ("Time between points 0 and 1 is not strictly increasing").
+def _describe_trajectory(label, joint_trajectory):
+    """Print the shape of a trajectory right before it's sent, so a failure
+    can be attributed to the trajectory rather than guessed at afterwards.
 
-    This is a pure safety net: if the trajectory already has strictly
-    increasing times (Jazzy, Gazebo, or once a real per-distro fix exists),
-    this is a no-op. When it does need to act, it assigns each waypoint a
-    time delta from the previous one based on the largest single-joint
-    angular step and a conservative constant speed -- not true time-optimal
-    parameterization, just enough to produce a valid, safely-paced
-    trajectory for the controller to execute."""
+    Added 2026-07-26 because two debugging sessions ran without ever seeing
+    these numbers, and they turn out to be the whole story: the trajectories
+    that move the real arm and the ones that don't differ in exactly these
+    fields (waypoint count, total duration, implied joint speed, and whether
+    velocities are present at all)."""
+    points = joint_trajectory.points
+    if not points:
+        print(f"[{label}] EMPTY TRAJECTORY -- nothing to execute")
+        return
+    total = _duration_to_sec(points[-1].time_from_start)
+    max_delta = 0.0
+    for i in range(len(points) - 1):
+        max_delta = max(max_delta, max(
+            (abs(a - b) for a, b in zip(points[i].positions, points[i + 1].positions)),
+            default=0.0))
+    speed = (max_delta / (total / max(1, len(points) - 1))) if total > 0 else float("inf")
+    stamp = joint_trajectory.header.stamp
+    print(f"[{label}] trajectory: {len(points)} waypoints, {total:.3f}s total, "
+          f"~{speed:.3f} rad/s peak joint speed, "
+          f"velocities={'yes' if points[0].velocities else 'NO'}, "
+          f"header.stamp={stamp.sec}.{stamp.nanosec:09d}")
+
+
+def _ensure_monotonic_timing(joint_trajectory):
+    """Assign strictly-increasing time_from_start to every waypoint when the
+    planner returned a raw geometric path with no time parameterization at
+    all (every point at time_from_start=0).
+
+    THIS IS NOT A SAFETY NET -- IT IS THE ONLY TIME PARAMETERIZATION IN THE
+    SYSTEM. Verified against the live move_group on mars (Jazzy) on
+    2026-07-26 by dumping real /plan_kinematic_path responses: every OMPL
+    plan comes back with all-zero time_from_start and empty velocities and
+    accelerations, so this function fires on 100% of real plans, on both
+    machines, and its _FALLBACK_MAX_JOINT_SPEED is the real arm's actual
+    commanded speed.
+
+    Root cause: ompl_planning.yaml deliberately omits `response_adapters`
+    because Galactic and Jazzy require mutually incompatible types for it (a
+    plain string vs. a string array) -- see that file's comment. Its claim
+    that "both distros fall back to their own built-in default adapter list"
+    holds for REQUEST adapters but NOT for response adapters on Jazzy:
+    move_group logs
+
+        [WARN] ...planning_pipeline]: No planning response adapter names specified.
+
+    for the ompl pipeline specifically, while the stomp / pilz / chomp
+    pipelines in the same log each go on to "Loaded adapter
+    'default_planning_response_adapters/AddTimeOptimalParameterization'".
+    OMPL alone ends up with zero response adapters, hence zero timing.
+
+    A real fix is a per-distro response_adapters config (the same split
+    already used for cyclonedds_galactic.xml / cyclonedds_jazzy.xml), which
+    would restore proper AddTimeOptimalParameterization output -- including
+    the velocities/accelerations that joint_trajectory_controller needs for
+    cubic rather than linear interpolation. Until that exists, everything
+    below is what actually paces the arm.
+
+    The timing assigned here gives each waypoint a delta from the previous
+    one based on the largest single-joint angular step at a constant speed
+    -- deliberately simple, but note it produces a uniform-velocity profile
+    with no accel/decel ramps and no velocities field at all."""
     points = joint_trajectory.points
     if len(points) < 2:
         return

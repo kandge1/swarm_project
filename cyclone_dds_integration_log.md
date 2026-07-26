@@ -289,7 +289,7 @@ this is the real, actionable next problem:
   some of this may already be partially flagged (e.g. Fix 7, Fix 8) as
   known-incomplete areas from before this session even started.
 
-## Current branch state
+## Current branch state (as of end of Problem-6 session)
 All work is committed and pushed to `feature/cyclone_dds_inegration` on
 both the mars-visible remote and pulled onto the robot. Commit history for
 this session (chronological):
@@ -308,4 +308,462 @@ this session (chronological):
 9. Split DDS config per-distro: Galactic's Cyclone DDS handles peers
    differently (`cyclonedds_galactic.xml` / `cyclonedds_jazzy.xml`)
 
-No uncommitted work outstanding as of end of session.
+No uncommitted work outstanding as of end of that session.
+
+---
+
+## Session 2 (2026-07-25 night -> 2026-07-26 morning): the "3-goal wall" and real motion debugging
+
+Picked up per "What to do next session" above: DDS transport was declared
+solid, focus moved to `mycobot_hardware` <-> `mycobot_bridge.py` <-> serial
+write path and real-motion reliability, using `pick_place.py` (MoveIt2
+IK/OMPL planning on mars, execution on the robot) as the end-to-end test.
+
+### Fix A: `mycobot_bridge.py` serial write blocking the control loop
+`ros2_control_node` runs its read/write loop at 100Hz. `mycobot_bridge.py`'s
+Unix-socket request handler was doing serial I/O to the arm **synchronously
+in the same thread** that services socket requests, so a slow serial
+write/read stalled the whole 100Hz loop behind it.
+
+**Fix:** decoupled the Unix socket handler from serial I/O using a
+background thread. This is what got the arm physically moving for
+simple/small trajectories at all (home position, gripper open/close) --
+before this fix, motion was essentially nonexistent or wildly laggy
+regardless of DDS.
+
+### Fix B: `mycobot_system.cpp` request/reply desync
+`mycobot_hardware/src/mycobot_system.cpp` (the C++ `ros2_control`
+`SystemInterface`) talks to `mycobot_bridge.py` over the same Unix socket.
+When a request timed out (`did not reply within 200 ms`, see Session 1
+Problem 5's cousin), the *late* reply for the timed-out request could still
+arrive and get read as the reply to a *subsequent* request, corrupting all
+future reads until the desync self-corrected or errored out.
+
+**Fix:** added request ID tagging so a stale/late reply for an
+already-abandoned request is detected and discarded instead of consumed by
+the next request.
+
+### The "3-goal wall" (the main mystery of the night)
+With Fixes A and B in place, a clear, extremely repeatable pattern emerged
+across **many** test runs, with different scripts, different trajectory
+sizes, `use_sim_time` on and off, and multiple DDS config variants:
+
+- The first ~3 action goals (typically: 1 arm move + 2 gripper moves, or
+  similar small mix) succeed completely normally -- goal received, accepted,
+  robot moves, "Goal reached, success!" logged, all within normal time.
+- Then, **simultaneously**, `robot_state_publisher` AND `ros2_control_node`
+  on the robot both start emitting repeated `serdata.cpp:354` "invalid data
+  size" / "string data is not null-terminated" deserialization errors.
+- From that point on, **no further "Received new action goal" ever appears
+  in the robot's log for the rest of that process's lifetime** -- the
+  process is not crashed, `/joint_states` may keep publishing, but action
+  goals sent from mars simply vanish before reaching `arm_group_controller`.
+
+**Ruled out, with evidence:**
+- **Not size-dependent.** Tiny (~500 byte) single-waypoint goals hit the
+  wall at the same count as large (~9KB) 30-waypoint trajectories.
+- **Not time-dependent.** The wall hit whether the 3 goals were sent
+  seconds apart or minutes apart.
+- **Not a permanent robot-wide/DDS-wide failure.** A *fresh* process (e.g.
+  `joint_trajectory_test.py`, run moments after an "old" process's goals
+  stopped being received) could immediately and successfully send a new
+  goal and get it accepted. This was the key clue: the failure is scoped to
+  something in the *old process's* state, not the robot or the DDS network
+  as a whole.
+- **`use_sim_time:=true` removed from `pick_place.py`'s `rclpy.init()`**
+  (it was set for historical/Gazebo-testing reasons but this script only
+  ever targets real hardware) -- theorized as a possible contributor since
+  `self.get_clock().now()` never advances without a `/clock` publisher
+  (causing a **separate, confirmed, silent-infinite-loop bug** in
+  `current_joint_positions()`'s timeout logic, fixed by switching to
+  `time.monotonic()`). Removing `use_sim_time` was correct to do regardless,
+  but **did not fix the 3-goal wall by itself** -- same failure persisted
+  after removing it.
+- **QoS durability mismatch on the old status-topic subscriptions** (see
+  "Fix D" below) was real but was a *symptom-detection* bug, not the cause
+  of goals failing to arrive.
+
+**Attempted DDS-config fix (inconclusive/likely not the real fix):** added
+`<Internal><Watermarks><WhcHigh>500kB</WhcHigh></Internal>` to both
+`cyclonedds_galactic.xml` and `cyclonedds_jazzy.xml` (commit `49ac33d`),
+theorizing a default writer/reader history high-water-mark being hit after
+a handful of samples. Explicitly committed as **UNVERIFIED**. Still in
+place as of this writing, but Fix C below (a pure Python-level fix) is what
+actually resolved the goal-delivery problem in confirmed testing, so this
+watermark change's effectiveness is unconfirmed and it may be inert. A
+separate attempt to raise `FragmentSize`/`MaxMessageSize` to 65500B was
+tried and **reverted** (`git revert`) after it caused an unrelated
+regression (`/plan_kinematic_path service not available` -- actually a red
+herring, `move_group`/rviz just weren't running in that terminal) without
+fixing the original wall.
+
+### Fix C (the confirmed fix): recreate `ActionClient` fresh before every goal send
+`RobotIOClient` in `pick_place.py` originally created its `ActionClient`
+instances (`self._arm_client`, `self._gripper_client`) **once**, in
+`__init__`, and reused them for every goal for the process's whole
+lifetime. This is the standard/recommended `rclpy` pattern -- but on this
+setup, the long-lived `ActionClient`'s internal DDS writer/reader state
+appears to degrade after ~3 goals in a way that matches the "3-goal wall"
+signature exactly.
+
+**Fix:** destroy and recreate the `ActionClient` immediately before every
+single goal send, for both arm and gripper:
+```python
+self._arm_client.destroy()
+self._arm_client = ActionClient(self, FollowJointTrajectory, self._arm_action_name)
+if not self._arm_client.wait_for_server(timeout_sec=20.0):
+    self.get_logger().error("arm_group_controller action server not available")
+    return False
+goal = FollowJointTrajectory.Goal()
+goal.trajectory = joint_trajectory
+return self._send_goal_and_wait(self._arm_client, goal, "arm")
+```
+(same pattern for `self._gripper_client` in `gripper_move_to`). Action
+topic names are stored as `self._arm_action_name` /
+`self._gripper_action_name` strings so they can be reused across
+recreations.
+
+**Confirmed working, twice, on real hardware:**
+- First confirmation (late night): goal #4 (which had failed in every prior
+  run at that exact position in the sequence) successfully reached
+  `arm_group_controller` -- robot log showed `Received new action goal` ->
+  `Accepted` -> `Goal reached, success!` in `1785030238.253` ->
+  `1785030238.378` (~125ms).
+- Second confirmation (next morning, fresh relaunch of both machines):
+  running `pick_place.py`'s pre-grasp step (goal #4 in that run: 2 home
+  goals + 2 gripper goals preceded it) reached `arm_group_controller`
+  successfully -- `Received new action goal` -> `Accepted` -> `Goal reached,
+  success!` from `1785074747.180` -> `1785074747.292` (~112ms). **No
+  recurrence of the 3-goal wall in either confirmation run, or in any
+  subsequent testing that night/morning.**
+
+This is the most significant confirmed fix of Session 2: **the DDS/
+ActionClient goal-delivery problem is resolved.**
+
+### Fix D: switched goal-completion detection from action status topic to `/joint_states` polling
+The old `_send_goal_with_retry` waited for completion by subscribing to the
+action's `GoalStatusArray` status topic. Two problems:
+1. **QoS mismatch:** the subscription used a bare integer (`10`) as its QoS
+   argument, which defaults to `VOLATILE` durability, while action servers
+   publish status with `TRANSIENT_LOCAL` -- a genuine incompatibility that
+   silently drops delivery. (Fixed at the time with an explicit
+   `QoSProfile`, but this whole subscription-based mechanism was later
+   deleted entirely, see below -- so this fix is now moot/dead code that no
+   longer exists.)
+2. Even with QoS fixed, status-topic delivery back to mars was empirically
+   correlated with the `serdata.cpp:354` error bursts and was unreliable,
+   even though the *goal* had actually been delivered and executed
+   correctly on the robot side (confirmed via robot-side logs showing
+   `Goal reached, success!` while mars's process was still waiting/timing
+   out on the status topic).
+
+**Fix:** replaced status-topic waiting entirely with polling
+`self._joint_positions` (populated by a `/joint_states` subscription via
+`_on_joint_state`, which was rock-solid at ~100Hz all night with zero
+delivery issues) for convergence to the goal's target joint positions
+within a tolerance. Implemented in `_send_goal_and_wait`:
+```python
+target = {name: pos for name, pos in
+          zip(goal.trajectory.joint_names, goal.trajectory.points[-1].positions)}
+last_point_sec = (goal.trajectory.points[-1].time_from_start.sec +
+                  goal.trajectory.points[-1].time_from_start.nanosec / 1e9)
+earliest_done = time.monotonic() + last_point_sec
+deadline = time.monotonic() + max(timeout_sec, last_point_sec + 5.0)
+while time.monotonic() < deadline:
+    rclpy.spin_once(self, timeout_sec=0.1)
+    reached = all(
+        name in self._joint_positions and
+        abs(self._joint_positions[name] - pos) <= settle_tolerance
+        for name, pos in target.items()
+    )
+    if reached and time.monotonic() >= earliest_done:
+        return True
+```
+Includes periodic diagnostic prints of target vs. current joint positions
+every 5s while waiting. `settle_tolerance` was loosened from `0.02` to
+`0.05` rad after diagnostics showed the arm consistently settles
+~0.014-0.031 rad away from its exact commanded target -- this is real
+hardware precision, not a bug, and 0.02 was spuriously failing correct
+completions. The old `GoalStatusArray`-based subscriptions/handlers/imports
+(`_arm_status_sub`, `_gripper_status_sub`, `_on_goal_status`,
+`_goal_statuses`, plus `action_msgs.msg.GoalStatus(Array)`,
+`unique_identifier_msgs.msg.UUID`, the `rclpy.qos` QoS imports, and `uuid`)
+were all deleted since this mechanism fully replaced them.
+
+### `joint_trajectory_test.py` as the control/reference script
+This script imports and reuses `RobotIOClient` from `pick_place.py` but
+calls plain `rclpy.init()` (no `use_sim_time`). It worked consistently all
+night (confirmed moving the arm to zero/squat) even during periods when
+`pick_place.py` was hitting the 3-goal wall. Comparing the two was the key
+clue that led to Fix C -- it showed what a working process looked like and
+narrowed the difference down to `pick_place.py`'s long-lived `ActionClient`
+reuse pattern.
+
+### Day-boundary false alarm
+A ~13 hour gap in robot log timestamps (`1785030238` -> `1785074159`) was
+briefly misdiagnosed as a new regression (total `/joint_states` silence,
+action server unreachable). User clarified it was simply that the earlier
+session was "last night" and testing resumed "the next day" -- terminals
+had been closed overnight, not a technical regression. Resolved by
+relaunching both machines fresh. Not a real bug; noted here only so it's
+not re-investigated as one.
+
+---
+
+## CURRENT UNRESOLVED PROBLEM (start here next session)
+
+With Fixes A-D all in place and reconfirmed this morning on a fresh
+relaunch of both machines:
+
+- `joint_trajectory_test.py --to zero` **works correctly** -- arm visibly
+  moves to all-zero, `/joint_states` streams real values throughout.
+- Running `pick_place.py` immediately after: **home succeeds, both gripper
+  goals succeed**, arm visibly moves for these. Then the **pre-grasp step**
+  (the first goal derived from real MoveIt2 IK -- a much larger joint-space
+  move, roughly `[1.83, -0.72, -0.81, -0.04, 0, 1.83]` rad, vs. the small
+  moves used by home/gripper) is sent:
+  - **The goal DOES successfully reach the robot** -- robot log confirms
+    `Received new action goal` -> `Accepted` -> `Goal reached, success!`,
+    this time in only ~112ms (`1785074747.180` -> `.292`).
+  - **But the arm does not physically move.** `pick_place.py`'s own
+    `/joint_states`-based completion polling (Fix D) presumably timed out
+    or matched a false target, and the user visually confirmed no motion
+    occurred for this step ("in the same terminal the arm goes from all 0
+    to squat, but never moves after that").
+
+**This is almost certainly NOT the same bug as the 3-goal wall.** Goal
+delivery is fast (~112ms) and clean -- this is a *different*, older,
+already-documented issue: the "Critical finding" from Session 1 (see
+above, and `WORKFLOW.md` Troubleshooting "Fix 7") that **Galactic's
+`controller_manager` can report "Goal reached, success!" purely from
+elapsed trajectory time, without the hardware component's writes actually
+having taken effect** -- i.e. it does not block/verify on real hardware
+tracking. A ~112ms round trip for what should be a multi-second, large
+joint-space trajectory is itself suspicious and consistent with this: the
+controller may be accepting and "completing" the goal almost instantly
+rather than actually executing it.
+
+**Suspected next debugging targets, in likely order of value:**
+1. Add explicit before/after logging in `mycobot_hardware/src/mycobot_system.cpp`'s
+   `write()` (the `ros2_control` hardware interface write, which forwards
+   commands to `mycobot_bridge.py`) specifically for the pre-grasp goal, to
+   see whether the large joint delta is actually being sent to the bridge
+   at all, or whether something about the trajectory (size, joint order,
+   velocity/acceleration limits, IK-derived precision) causes it to be
+   silently dropped/no-op'd differently than the small home/gripper moves
+   that do work.
+2. Compare the pre-grasp trajectory's actual `JointTrajectory` message
+   (waypoint count, joint order, velocities) against the known-working
+   home/gripper trajectories -- is it a single large jump vs. multiple
+   interpolated waypoints? `pymycobot`'s `send_angles()` may behave
+   differently (e.g. silently clamp, reject, or require different args)
+   for large joint-space moves than small ones.
+3. Re-check `mycobot_bridge.py`'s background write thread (Fix A) under
+   this specific large-trajectory case -- confirm the write actually gets
+   enqueued and dequeued, with timestamps, not just that the socket request
+   returns quickly (a quick return only proves the *request* was received,
+   not that the arm write succeeded).
+4. Consider whether `settle_tolerance=0.05` combined with the *actual*
+   (non-)motion means `_send_goal_and_wait` might be misreporting failure
+   even if the arm eventually crept partway there -- print the actual final
+   `/joint_states` values reached for this specific step to rule out "it
+   moved a little but not enough" vs. "it never moved at all."
+
+### Current exact code state (as of end of Session 2)
+- `pick_place.py`: Fix C (fresh `ActionClient` per goal) and Fix D
+  (`/joint_states`-polling completion detection, 0.05 rad tolerance) both
+  in place; `use_sim_time` removed from `rclpy.init()`; old status-topic
+  subscription code fully deleted.
+- `cyclonedds_galactic.xml` / `cyclonedds_jazzy.xml`: `FragmentSize`/
+  `MaxMessageSize` change reverted; `WhcHigh` 500kB watermark still present
+  but unverified and likely not the actual fix (Fix C is).
+- `mycobot_bridge.py`: background-thread socket/serial decoupling (Fix A)
+  in place.
+- `mycobot_system.cpp`: request ID tagging (Fix B) in place.
+
+No uncommitted work outstanding as of end of Session 2 except any
+diagnostic print statements added for the pre-grasp investigation -- check
+`git status` / `git diff` at the start of next session before assuming a
+clean tree.
+
+---
+
+## Session 3 (2026-07-26 morning): root cause found and measured
+
+Everything below was established by measurement, not inference. Two things
+turned out to be wrong in the Session 2 write-up above, and correcting them
+is what unblocked the diagnosis.
+
+### Correction 1: Fix C was never actually confirmed. Goal #4 has failed 3/3 runs.
+
+Both "confirmed working" observations in Session 2's Fix C were **misattributed
+timestamps**. From mars's own `~/.ros/log` files, all three runs are identical
+to the second:
+
+| | run A (`move_group_9319`) | run B (`move_group_15073`) | run C (`move_group_10379`) |
+|---|---|---|---|
+| plan #1 (`go_home`) | 1785030158.699 | 1785074665.937 | 1785074236.107 |
+| plan #2 (pre-grasp) | 1785030177.128 | 1785074686.076 | 1785074257.176 |
+| gap | 18.4s | 20.1s | 21.1s |
+| `never converged within 60.0s` | **1785030237.201** | **1785074746.151** | (killed) |
+| plan #3 (final `go_home`) | 1785030237.202 | 1785074746.151 | — |
+
+The `Received new action goal -> Goal reached, success!` bursts cited as proof
+that Fix C worked (`1785030238.253 -> .378`, and `1785074747.180 -> .292`)
+both land **1 second AFTER the pre-grasp goal had already timed out**, i.e.
+they belong to plan #3, the **final `go_home`** — which "succeeds" trivially
+and in ~112ms because the arm was already sitting at home and never left.
+
+So the `~112ms` figure was never anomalous, and there is **no evidence the
+pre-grasp goal was ever received at all**. Goal #4 has failed in every run.
+
+### Correction 2: `/plan_kinematic_path` returns NO time parameterization
+
+Dumped real responses from the live `move_group` on mars (robot not needed;
+faked `/joint_states` at home). Every OMPL plan comes back with
+`time_from_start = 0` on every point and **empty `velocities`/`accelerations`**.
+
+Root cause: `ompl_planning.yaml` omits `response_adapters` to dodge the
+Galactic/Jazzy type conflict, and its comment claims both distros then fall
+back to built-in defaults. That is true for *request* adapters but **false for
+response adapters on Jazzy**. move_group's own log says, for the ompl pipeline
+specifically:
+
+```
+[WARN] ...planning_pipeline]: No planning response adapter names specified.
+```
+
+while the stomp / pilz / chomp pipelines in the same log each go on to
+`Loaded adapter 'default_planning_response_adapters/AddTimeOptimalParameterization'`.
+**OMPL alone ends up with zero response adapters.**
+
+Consequence: `pick_place.py`'s `_ensure_monotonic_timing()` — documented as a
+"pure safety net" — is in fact the **only time parameterization in the entire
+system, on both machines, on 100% of real plans**, and its
+`_FALLBACK_MAX_JOINT_SPEED` is the real arm's actual commanded speed.
+
+### The measured difference between trajectories that move the arm and ones that don't
+
+| | pre-grasp (FAILS) | `joint_trajectory_test --to zero` (WORKS) |
+|---|---|---|
+| waypoints | **21** | **1** |
+| total duration | 9.14 s | 3.0 s |
+| commanded joint speed | 0.20 rad/s | 0.52 rad/s |
+| velocities present | no | no |
+| `header.stamp` | 0 (starts now — not a clock-skew bug) | 0 |
+
+### THE DECISIVE TEST — the pre-grasp pose is fine, and so is everything else
+
+Sent the exact failing IK solution as a **hand-built single-waypoint, 3 s**
+goal via the new `joint_trajectory_test.py --degrees`:
+
+```
+--degrees 104.74 -41.17 -46.49 -2.35 0 104.74
+```
+
+**The real arm swung 1.8146 rad (104°) from home to the pre-grasp pose and
+settled within 0.0246 rad** (`/joint_states`: `103.97 -42.09 -47.90 -3.42
+-0.35 103.97`). Goal accepted, delivery confirmed, motion confirmed.
+
+So the pose is reachable, `send_angles` accepts it, the bridge write path
+works, and the cross-machine DDS link delivers goal #N fine. **None of those
+are the problem.** What fails is specifically the *multi-waypoint, slow,
+streamed* trajectory.
+
+(Aside: the robot's nodes never appear in `ros2 node list` from mars even when
+it is fully up — that's the same cross-distro `USER_DATA` metadata gap already
+documented, and it is also why `ros2 action info` reports `Action servers: 0`
+for a server that is demonstrably working. Do not use either as an up/down
+check; use `ros2 topic echo --once /joint_states`.)
+
+### Root cause: a servo interface driving a point-to-point API
+
+`joint_trajectory_controller` is a **servo** interface — it interpolates the
+planned path into a fresh position setpoint every control cycle (100 Hz) and
+expects the hardware to track it. `pymycobot`'s `send_angles(angles, speed)`
+is the opposite: a **point-to-point move** the arm's firmware executes
+asynchronously over hundreds of ms, which **aborts and restarts** whatever
+move is already in progress.
+
+`mycobot_bridge.py`'s serial loop forwards only the newest setpoint once per
+iteration, and one iteration is a full serial round trip (500–1500 ms
+measured). So the 9.14 s / **920-setpoint** pre-grasp trajectory reaches the
+arm as roughly **5–20 `send_angles()` calls**. At a fixed `speed=50` (~1.0
+rad/s, 5× faster than the 0.2 rad/s the trajectory asks for) each call darts
+~0.1–0.2 rad ahead in ~0.1 s, then the arm sits still for ~0.9 s until the
+next one lands and aborts it. Net motion is a stutter covering a fraction of
+the distance — and since `ros2_controllers.yaml` declares **no `constraints:`
+block** for `arm_group_controller`, the controller has no goal tolerance to
+check and reports "Goal reached, success!" purely from elapsed time.
+
+**Single-waypoint trajectories escape this entirely**: once the duration
+elapses, JTC holds ONE constant target forever, so exactly one `send_angles()`
+runs to completion uninterrupted and the firmware drives the whole way there.
+**Every motion this project has ever confirmed on real hardware was that
+post-trajectory hold, not trajectory tracking.** That also explains Session
+1's "commands executed ~20 s late" symptom.
+
+### Fixes applied this session
+
+- `mycobot_bridge.py` `_match_speed()`: scale the pymycobot speed to the
+  *actual setpoint rate* instead of always using `--speed`. Turns the
+  dart-and-stall into continuous motion; the aborts stop mattering because
+  each replacement command starts near where the arm already is. `--speed` is
+  now an upper bound. **`SPEED_100_RAD_PER_SEC = 2.0` is an unverified
+  calibration — measure it and correct it.**
+- `mycobot_bridge.py` **lost-command latch fix**: `command_dirty` was cleared
+  *before* the serial write, so a failed or skipped write silently dropped
+  that command permanently — `write_command()` compares against
+  `state.command`, which had already been updated to that value, so no later
+  identical command could re-dirty it. Terminal at the end of a trajectory,
+  where JTC holds a byte-identical target forever. Now cleared only after a
+  successful write, and only if no newer command arrived meanwhile.
+- `mycobot_bridge.py`: `set_gripper_value()` no longer re-sent on every *arm*
+  command change (one wasted round trip per control cycle, competing with the
+  arm on the same UART); `get_gripper_value()` now read once per 10 iterations
+  instead of every one, roughly halving the loop period — the loop period is
+  the hard ceiling on commands/sec reaching the arm.
+- `mycobot_bridge.py`: `TIMING` logging — per-second `loop_rate` and per-write
+  `send_angles` duration / speed / target. **This is the number that has been
+  missing all along.** `--no-log-timing` to suppress.
+- `pick_place.py` `_send_goal_and_wait()`: now **awaits the goal-acceptance
+  handle** instead of firing `send_goal_async()` and discarding the future.
+  Without it, one error message covered three unrelated faults — goal never
+  arrived / arrived but hardware didn't move / moved but stopped short — which
+  is why two sessions were spent guessing. On timeout it now reports per-joint
+  error and the max movement of any joint during the wait, so "never moved"
+  and "moved but short" are distinguishable at a glance.
+- `pick_place.py` `_describe_trajectory()`: prints waypoints / duration /
+  implied speed / velocities / `header.stamp` before every send.
+- `pick_place.py`: `_FALLBACK_MAX_JOINT_SPEED` 0.2 -> 0.5 rad/s, matching the
+  confirmed-working hand-built rate; shortens pre-grasp from 9.14 s to ~3.7 s.
+- `joint_trajectory_test.py`: `--joints` / `--degrees` for an arbitrary
+  target, which is what made the decisive test possible.
+
+### What to do next
+
+1. Rebuild on the robot (`mycobot_hardware` only — `mycobot_bridge.py` is
+   installed from it) and rerun `pick_place.py`. Watch the bridge's
+   `TIMING loop_rate=` line: that number vs. the trajectory's duration and
+   waypoint count from `_describe_trajectory` tells you immediately whether
+   streaming is now viable.
+2. If the arm still stutters, the real fix is to stop streaming: add a
+   `constraints:` block to `ros2_controllers.yaml` so the controller can
+   actually fail, and/or have `plan_motion()` collapse the planned path to a
+   small number of waypoints so JTC's hold does the work. Do **not** go back
+   to DDS tuning — the transport has now been positively confirmed working
+   for a 104° goal end-to-end.
+3. Calibrate `SPEED_100_RAD_PER_SEC` (command a known delta at speed 100, time
+   it against `/joint_states`).
+4. Fix the OMPL response-adapter gap properly with a per-distro
+   `response_adapters` config — the same split already used for
+   `cyclonedds_galactic.xml` / `cyclonedds_jazzy.xml`. That restores real
+   `AddTimeOptimalParameterization` output including the velocities JTC needs
+   for cubic instead of linear interpolation.
+
+### Note on repo state
+
+The arm is currently parked at the pre-grasp pose (~104°, -42°, -48°, -3°,
+0°, 104°) from the decisive test, not at home. `move_group`/`rviz` from the
+10:03 launch and the robot-side launch were both still running at the end of
+this session.
