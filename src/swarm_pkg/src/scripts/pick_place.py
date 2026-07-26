@@ -102,7 +102,7 @@ APPROACH_HEIGHT = 0.04  # meters above the flange target; capped by reach (see a
 # (it's purely gripper/flange geometry) -- re-measure with
 # gripper_offset_probe.py and update this if the gripper or camera-flange
 # geometry changes, not if the block size changes.
-GRASP_OFFSET_Z = 0.075
+GRASP_OFFSET_Z = 0.09
 
 # Cube side length, meters -- matches CUBE_SIZE_1/CUBE_SIZE_2 in
 # spawn_world.py. Used to convert a place SURFACE height into the block-
@@ -228,11 +228,11 @@ IK_SERVICE_TIMEOUT = 0.3         # sec, per-seed /compute_ik solve budget
 # Designated home pose (matches reset_arm.py / config/initial_positions.yaml),
 # originally specified in degrees and converted to radians here.
 HOME_DEGREES = {
-    "joint2_to_joint1": 2,
-    "joint3_to_joint2": 41,
-    "joint4_to_joint3": -89,
-    "joint5_to_joint4": 48,
-    "joint6_to_joint5": -2,
+    "joint2_to_joint1": 0,
+    "joint3_to_joint2": 0,
+    "joint4_to_joint3": 0,
+    "joint5_to_joint4": 0,
+    "joint6_to_joint5": 0,
     "joint6output_to_joint6": 0,
 }
 HOME_RADIANS = {name: math.radians(deg) for name, deg in HOME_DEGREES.items()}

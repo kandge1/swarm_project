@@ -35,7 +35,10 @@ install(
   RUNTIME DESTINATION bin
 )
 install(
-  PROGRAMS scripts/mycobot_bridge.py
+  PROGRAMS
+    scripts/mycobot_bridge.py
+    # Diagnostic only, never launched -- run by hand with the bridge stopped.
+    scripts/serial_rate_probe.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
