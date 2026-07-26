@@ -117,6 +117,14 @@ SPEED_100_RAD_PER_SEC = 2.0
 # short. 10 is below what this arm needs to break static friction.
 MIN_SPEED = 25
 
+# The gripper equivalents of SPEED_100_RAD_PER_SEC / MIN_SPEED. BOTH
+# UNVERIFIED against this unit -- the jaw's travel is only 0.75 rad end to end
+# (GRIPPER_CLOSED_RAD..GRIPPER_OPEN_RAD), so an error here shows up as the jaw
+# lagging or overrunning its commanded rate, not as a hard failure. Measure by
+# commanding a full open-to-close at a known speed and timing /joint_states.
+GRIPPER_SPEED_100_RAD_PER_SEC = 1.0
+GRIPPER_MIN_SPEED = 20
+
 # Closed-loop settle. joint_trajectory_controller holds its final target
 # forever once a trajectory elapses, so the command stops changing and
 # write_command() stops marking it dirty -- meaning the bridge never sends
@@ -330,6 +338,14 @@ class Bridge:
         self.arm = MyCobot280(serial_port, baud_rate)
         print("[mycobot_bridge] connected.")
         self._install_read_timeout(read_timeout)
+        self._gripper_async = async_writes and self._probe_gripper_async()
+        if self._gripper_async:
+            print("[mycobot_bridge] gripper writes=async")
+        elif async_writes:
+            print("[mycobot_bridge] gripper writes=sync (blocking) -- this "
+                  "pymycobot's set_gripper_value takes no _async argument")
+        else:
+            print("[mycobot_bridge] gripper writes=sync (blocking)")
         self.state = SharedState(len(JOINT_ORDER))
         self._stop = threading.Event()
         self._read_count = 0
@@ -487,6 +503,20 @@ class Bridge:
                       f"{angles_deg!r}, expected a 6-element list -- keeping "
                       f"last known positions for this read")
                 angles_deg = None
+            elif not all(isinstance(a, (int, float)) and math.isfinite(a)
+                         for a in angles_deg):
+                # NaN/inf must never reach /joint_states. Every comparison
+                # against NaN is False, so pick_place.py's convergence check
+                # can never succeed and the goal waits out its full timeout
+                # with "current joint positions: nan" and "max movement so far
+                # 0.0000 rad" -- observed for real on 2026-07-27, hanging a run
+                # until it was killed by hand. Keeping the last known good
+                # values degrades to staleness instead, which the rest of the
+                # pipeline already tolerates.
+                print(f"[mycobot_bridge] WARNING: get_angles() returned "
+                      f"non-finite values {angles_deg!r} -- keeping last known "
+                      f"positions for this read")
+                angles_deg = None
 
             self._read_count += 1
             # == 1, not == 0, so the very first read (the seeding read in
@@ -494,10 +524,11 @@ class Bridge:
             # rather than leaving it at its 0.0 placeholder for 10 iterations.
             if self._read_count % self.GRIPPER_READ_EVERY == 1:
                 gripper_value = self.arm.get_gripper_value()
-                if not isinstance(gripper_value, (int, float)):
+                if (not isinstance(gripper_value, (int, float))
+                        or not math.isfinite(gripper_value)):
                     print(f"[mycobot_bridge] WARNING: get_gripper_value() returned "
-                          f"{gripper_value!r}, expected a number -- keeping last "
-                          f"known gripper position for this read")
+                          f"{gripper_value!r}, expected a finite number -- keeping "
+                          f"last known gripper position for this read")
                     gripper_value = None
             else:
                 gripper_value = None  # keep the last known value, see GRIPPER_READ_EVERY
@@ -523,6 +554,28 @@ class Bridge:
             self.arm.send_angles(arm_degrees, speed, _async=True)
         else:
             self.arm.send_angles(arm_degrees, speed)
+
+    def _set_gripper_value(self, value, speed):
+        """set_gripper_value(), async when this pymycobot supports it.
+
+        Unlike send_angles, set_gripper_value is not documented to take
+        _async, and it is missing from it in some versions -- so whether the
+        argument exists is probed once at startup rather than assumed here.
+        The blocking form costs the same 0.5s read timeout as everything else:
+        `gripper=524ms` appears in the real logs, holding the serial link and
+        starving the arm's own command stream at the same time."""
+        if self._gripper_async:
+            self.arm.set_gripper_value(value, speed, _async=True)
+        else:
+            self.arm.set_gripper_value(value, speed)
+
+    def _probe_gripper_async(self):
+        """Whether this pymycobot's set_gripper_value accepts _async."""
+        try:
+            parameters = inspect.signature(self.arm.set_gripper_value).parameters
+        except (TypeError, ValueError, AttributeError):
+            return False
+        return "_async" in parameters
 
     def _serial_write_once_if_dirty(self):
         with self.state.lock:
@@ -561,7 +614,9 @@ class Bridge:
             self._send_angles(arm_degrees, speed)
             t_arm = time.monotonic()
             if gripper_changed:
-                self.arm.set_gripper_value(gripper_value, self.speed)
+                self._set_gripper_value(
+                    gripper_value,
+                    self._match_gripper_speed(positions, last_sent, last_sent_at))
             t_grip = time.monotonic()
         except Exception as exc:
             # Do NOT clear command_dirty here: leaving it set is what makes
@@ -637,10 +692,21 @@ class Bridge:
         actual end-of-trajectory signal is the commanded position having
         stopped changing for SETTLE_QUIET_PERIOD_SEC.
 
-        ARM JOINTS ONLY (positions[:6]). The gripper is deliberately excluded:
-        when it is holding a block it CANNOT reach its commanded value, and
-        that is the success condition, not an error -- settling it would just
-        drive the jaw harder into the object forever."""
+        THE GRIPPER IS INCLUDED (changed 2026-07-27). It was excluded on the
+        grounds that a jaw holding a block CANNOT reach its command, and that
+        this is the success condition rather than an error, so settling would
+        drive the jaw into the object forever. The "forever" no longer holds:
+        SETTLE_MAX_STALLED stops after three attempts that make no progress,
+        which is the correct response to holding a block and the fix for the
+        other case.
+
+        That other case was costing real runs. Once a gripper trajectory
+        elapses, joint_trajectory_controller holds its final target, the
+        command stops changing, and the bridge stops writing -- so if the last
+        aborted point-to-point move left the jaw short, nothing ever corrected
+        it. Observed on 2026-07-27: commanded 0.15, jaw stopped at -0.435 and
+        stayed there while pick_place.py logged the same position on every
+        poll until the run was killed by hand."""
         now = time.monotonic()
         with self.state.lock:
             if self.state.command is None or self.state.command_dirty:
@@ -659,7 +725,9 @@ class Bridge:
             attempt = self.state.settle_resends + 1
             previous_error = self.state.settle_last_error
 
-        error = max(abs(c - p) for c, p in zip(command[:6], measured[:6]))
+        arm_error = max(abs(c - p) for c, p in zip(command[:6], measured[:6]))
+        gripper_error = abs(command[6] - measured[6])
+        error = max(arm_error, gripper_error)
         if error <= SETTLE_TOLERANCE_RAD:
             return
 
@@ -672,7 +740,10 @@ class Bridge:
 
         arm_degrees = [math.degrees(p) for p in command[:6]]
         try:
-            self._send_angles(arm_degrees, self.speed)
+            if arm_error > SETTLE_TOLERANCE_RAD:
+                self._send_angles(arm_degrees, self.speed)
+            if gripper_error > SETTLE_TOLERANCE_RAD:
+                self._set_gripper_value(gripper_rad_to_value(command[6]), self.speed)
         except Exception as exc:
             print(f"[mycobot_bridge] ERROR during settle re-send: {exc!r}")
             return
@@ -686,14 +757,46 @@ class Bridge:
             gave_up = self.state.settle_stalled >= SETTLE_MAX_STALLED
 
         if self.log_timing:
+            which = []
+            if arm_error > SETTLE_TOLERANCE_RAD:
+                which.append(f"arm {arm_error:.4f}")
+            if gripper_error > SETTLE_TOLERANCE_RAD:
+                which.append(f"gripper {gripper_error:.4f}")
             print(f"[mycobot_bridge] TIMING settle re-send {attempt}/"
-                  f"{SETTLE_MAX_RESENDS}: still {error:.4f} rad short "
+                  f"{SETTLE_MAX_RESENDS}: still short by {', '.join(which)} rad "
                   f"(> {SETTLE_TOLERANCE_RAD}), re-commanding at speed {self.speed}")
             if gave_up:
                 print(f"[mycobot_bridge] TIMING settle giving up: {error:.4f} rad "
                       f"error stopped improving over {SETTLE_MAX_STALLED} attempts "
                       f"-- most likely servo deadband or a physically blocked joint, "
                       f"not a lost command")
+
+    def _match_gripper_speed(self, positions, last_sent, last_sent_at):
+        """_match_speed's logic applied to the gripper joint.
+
+        The gripper had neither of the fixes the arm got. During a gripper
+        goal joint_trajectory_controller interpolates its setpoint every
+        control cycle, so the command changes continuously and the bridge
+        fired set_gripper_value at the full 30Hz -- each one a point-to-point
+        move that ABORTS AND RESTARTS the previous, all at a fixed speed 50.
+        That is exactly the streamed-setpoints-into-a-point-to-point-API
+        mismatch that made the ARM jerky, and it is why the jaw opens and
+        closes in visible steps."""
+        if last_sent is None or last_sent_at <= 0.0:
+            return self.speed
+
+        dt = time.monotonic() - last_sent_at
+        if dt <= 0.0:
+            return self.speed
+
+        delta = abs(positions[6] - last_sent[6])
+        if delta <= COMMAND_CHANGE_EPSILON_RAD:
+            # Post-trajectory hold: close out the remaining distance promptly.
+            return self.speed
+
+        required_rad_s = delta / dt
+        speed = int(round(100.0 * required_rad_s / GRIPPER_SPEED_100_RAD_PER_SEC))
+        return max(GRIPPER_MIN_SPEED, min(self.speed, speed))
 
     def _match_speed(self, positions, last_sent, last_sent_at):
         """Pick the pymycobot speed that makes the arm arrive at `positions`
