@@ -430,8 +430,17 @@ class RobotIOClient(Node):
         return self._send_goal_and_wait(self._arm_client, goal, "arm")
 
     def _send_goal_and_wait(self, client, goal, label,
-                            settle_tolerance=0.02, timeout_sec=60.0):
-        """Send a FollowJointTrajectory goal, then detect completion by
+                            settle_tolerance=0.05, timeout_sec=60.0):
+        """settle_tolerance default 0.02 -> 0.05 rad (2026-07-26): confirmed
+        on real hardware that the arm consistently settles ~0.014-0.031 rad
+        away from the commanded target even when the controller reports
+        "Goal reached, success!" -- real mechanical precision on this arm
+        (backlash, calibration) rather than a detection bug (target values
+        and /joint_states updates both looked correct; the gap was simply
+        larger than 0.02 rad allowed for). 0.05 rad (~2.9 deg) comfortably
+        covers that gap while still catching a genuine non-move.
+
+        Send a FollowJointTrajectory goal, then detect completion by
         polling /joint_states for convergence to the goal's final target --
         NOT via the action's /follow_joint_trajectory/_action/status topic
         or send_goal_async()/get_result_async() futures.
