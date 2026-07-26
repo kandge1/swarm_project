@@ -369,6 +369,71 @@ def _mirror_seed(seed):
 IK_SEEDS = _build_ik_seeds()
 
 
+# How far the base must rotate PAST the straight-line bearing to the target,
+# in radians. The gripper's fingertips sit laterally offset from the flange
+# axis, so pointing the base exactly at the target puts the FLANGE on the
+# bearing and the jaw beside it; the base overshoots to compensate.
+#
+# Measured from real converged solutions on 2026-07-27: target (0, +0.25)
+# has bearing atan2(0.25, 0) = +1.5708 and solves at joint1 = +1.828, and
+# target (0, -0.25) has bearing -1.5708 and solves at joint1 = -1.31. Both
+# are 0.257 rad from their bearing, in the direction that increases |joint1|
+# for +y and decreases it for -y -- i.e. a consistent +0.257 offset.
+_IK_BEARING_OFFSET = 0.257
+
+
+def _bearing_seeds(x, y):
+    """Seeds whose base rotation actually points at the target.
+
+    THIS IS THE FIX for IK converging only about half the time (2026-07-27).
+    Every entry in IK_SEEDS puts joint2_to_joint1 within +/-0.33 rad of zero
+    -- 0.324, HOME's 0.035, 0.0, and the mirrored negatives -- while the real
+    solutions for the pick and place poses need +1.828 and -1.31. KDL is a
+    LOCAL solver: it converges to the basin nearest its seed, so from 1.5 rad
+    away it only landed when its internal random restarts happened to wander
+    across, which is exactly the coin-flip behaviour observed. The mirrored
+    seeds did not help, because -0.324 is no closer to -1.31 than +0.324 is.
+
+    The base angle is the one joint that needs no numeric solve at all: to
+    reach a point the base must turn to face it. Seeding it analytically puts
+    KDL 0.26 rad from the answer instead of 1.5.
+
+    joint6output_to_joint6 is set to match joint2_to_joint1 because that is
+    what every converged solution does here -- the wrist counter-rotates by
+    the base angle to hold the fixed grasp yaw, e.g. [1.828, ..., 1.828] and
+    [-1.31, ..., -1.31].
+
+    The bearing itself, plus the offset applied both ways, so a target whose
+    offset runs the other way (or a different gripper geometry later) is
+    still covered rather than depending on _IK_BEARING_OFFSET being exact.
+    """
+    bearing = math.atan2(y, x)
+    candidates = [
+        ("bearing+offset", bearing + math.copysign(_IK_BEARING_OFFSET, bearing)),
+        ("bearing", bearing),
+        ("bearing-offset", bearing - math.copysign(_IK_BEARING_OFFSET, bearing)),
+    ]
+
+    # Elbow/wrist shapes worth trying at each base angle. Reuses the two
+    # confirmed-good bends rather than inventing new ones -- only the base
+    # rotation was ever wrong.
+    shapes = [
+        ("elbow-down", {"joint3_to_joint2": -0.746, "joint4_to_joint3": -0.605,
+                        "joint5_to_joint4": -0.220, "joint6_to_joint5": 0.0}),
+        ("elbow-up", {"joint3_to_joint2": -1.307, "joint4_to_joint3": 0.605,
+                      "joint5_to_joint4": -0.869, "joint6_to_joint5": 0.0}),
+    ]
+
+    seeds = []
+    for base_label, base in candidates:
+        for shape_label, shape in shapes:
+            seed = dict(shape)
+            seed["joint2_to_joint1"] = base
+            seed["joint6output_to_joint6"] = base
+            seeds.append((f"{base_label}/{shape_label}", seed))
+    return seeds
+
+
 class RobotIOClient(Node):
     """Handles gripper open/close (action), arm trajectory execution (action),
     Cartesian path / IK / motion planning / state validity (services). Talks
@@ -1398,7 +1463,11 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
     joint_names = list(HOME_RADIANS.keys())
 
     current_state = io_client.current_joint_positions(joint_names)
-    seeds = [("current-state", current_state)] + IK_SEEDS
+    # Bearing seeds first: they are the only ones whose base rotation is
+    # anywhere near the answer. See _bearing_seeds for the measurements.
+    seeds = ([("current-state", current_state)]
+             + _bearing_seeds(x, y)
+             + IK_SEEDS)
 
     # Evaluate EVERY seed and keep the solution closest to where the arm is
     # standing, rather than returning the first one that converges
