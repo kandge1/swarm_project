@@ -144,7 +144,25 @@ GRIPPER_FINE_STEP_DURATION = 0.5  # sec, per fine increment -- slower, gives the
                                    # physics engine/effort reading more time to
                                    # settle between smaller nudges
 GRIPPER_SETTLE_SEC = 0.15        # sec to spin after each step before reading effort
-GRIPPER_EFFORT_THRESHOLD = 0.2   # N*m
+GRIPPER_EFFORT_THRESHOLD = 0.2   # N*m -- see below: never fires on real hardware
+
+# Stall-based contact detection (2026-07-26). GRIPPER_EFFORT_THRESHOLD above
+# cannot work against the real arm: pymycobot exposes no gripper force reading,
+# so /joint_states carries a constant 0.0 placeholder for gripper_controller's
+# effort and the threshold test never fires. Position readback does carry the
+# signal -- a free jaw tracks the commanded value down, a jaw against a block
+# stops advancing while the command keeps decreasing.
+#
+# GRIPPER_STALL_EPS must sit below one readback quantum (0.0075 rad = the
+# 0-100 pymycobot gripper scale over the 0.75 rad jaw span) so real motion
+# still registers, and GRIPPER_STALL_STEPS must be >1 so a single fine step
+# (0.005 rad, i.e. under one quantum) can't be mistaken for contact on its own.
+GRIPPER_STALL_EPS = 0.003        # rad of closing progress that counts as "moved"
+GRIPPER_STALL_STEPS = 3          # consecutive stalled steps before declaring contact
+# Per-increment timeout. The 60s default is right for an arm move but wrong
+# here: a stalled increment waits the whole budget, ~40 times over, which is
+# what made a single grasp hang for minutes before aborting.
+GRIPPER_STEP_TIMEOUT = 3.0       # sec
 
 POSE_LINK = "joint6_flange"
 PLANNING_FRAME = "world"
@@ -613,9 +631,17 @@ class RobotIOClient(Node):
         last_print = 0.0
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
+            # The 1e-9 slack is not cosmetic. The gripper's position readback
+            # is quantized to 0.0075 rad (pymycobot's 0-100 scale over the
+            # 0.75 rad jaw span), so a commanded target and a readback landing
+            # EXACTLY settle_tolerance apart is a routine outcome, not an edge
+            # case -- and in IEEE754 that comparison goes the wrong way:
+            # -0.48 - (-0.53) evaluates to 0.050000000000000044, which is not
+            # <= 0.05. Observed on real hardware 2026-07-26: a grasp reported
+            # "per-joint error 0.05, tolerance 0.05" and failed.
             reached = all(
                 name in self._joint_positions and
-                abs(self._joint_positions[name] - pos) <= settle_tolerance
+                abs(self._joint_positions[name] - pos) <= settle_tolerance + 1e-9
                 for name, pos in target.items()
             )
             for n, p0 in start_positions.items():
@@ -655,7 +681,28 @@ class RobotIOClient(Node):
         return False
 
     # ---- Gripper ----
-    def gripper_move_to(self, position, duration_sec=1.0):
+    def joint_position(self, joint_name):
+        """Latest /joint_states position for joint_name, or None if it hasn't
+        been received yet."""
+        return self._joint_positions.get(joint_name)
+
+    def gripper_move_to(self, position, duration_sec=1.0,
+                        timeout_sec=60.0, require_convergence=True):
+        """require_convergence=False: send the goal and wait, but treat a
+        failure to reach `position` as success rather than an error.
+
+        That is the correct behaviour while closing onto an object, where the
+        jaw physically CANNOT reach the commanded value -- see
+        gripper_close_until_contact(). Measured on real hardware 2026-07-26:
+        pymycobot's gripper readback trails the commanded value by roughly
+        0.05-0.0675 rad all the way through a close, so demanding convergence
+        on an incremental closing step fails semi-randomly depending on where
+        the 0.0075 rad quantization happens to land.
+
+        timeout_sec also matters here: the default 60s is right for a real
+        arm move, but gripper_close_until_contact() issues ~40 sub-second
+        increments, and at 60s per stalled increment a single grasp burned
+        many minutes before aborting."""
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = ["gripper_controller"]
         point = JointTrajectoryPoint()
@@ -667,9 +714,11 @@ class RobotIOClient(Node):
         # Gripper has a wider tolerance than the arm (0.05 vs 0.02 rad) --
         # pymycobot's gripper position readback is coarser (0-100 scale
         # mapped to radians) than the arm's joint encoders.
-        return self._send_goal_and_wait("_gripper_client",
-                                        self._gripper_action_name,
-                                        goal, "gripper", settle_tolerance=0.05)
+        ok = self._send_goal_and_wait("_gripper_client",
+                                      self._gripper_action_name,
+                                      goal, "gripper", settle_tolerance=0.05,
+                                      timeout_sec=timeout_sec)
+        return True if not require_convergence else ok
 
     # ---- Cartesian path ----
     def compute_cartesian_path(self, waypoints, avoid_collisions=True, path_constraints=None):
@@ -1228,7 +1277,9 @@ def gripper_close_until_contact(io_client, start=GRIPPER_OPEN, closed=GRIPPER_CL
     behavior, not a new failure mode. Returns True unless a gripper action
     call itself fails."""
     target = start
-    got_any_reading = False
+    got_any_effort = False
+    stalled_steps = 0
+    last_position = io_client.joint_position("gripper_controller")
 
     while target > closed:
         in_fine_zone = target <= fine_zone
@@ -1236,32 +1287,72 @@ def gripper_close_until_contact(io_client, start=GRIPPER_OPEN, closed=GRIPPER_CL
         this_duration = fine_step_duration if in_fine_zone else step_duration
 
         target = max(closed, target - this_step)
-        if not io_client.gripper_move_to(target, duration_sec=this_duration):
+        # require_convergence=False: once the jaw touches the block it cannot
+        # reach the commanded value, and that is the SUCCESS condition here,
+        # not a failure. Short timeout because a stalled increment would
+        # otherwise wait the full 60s, ~40 times over.
+        if not io_client.gripper_move_to(target, duration_sec=this_duration,
+                                         timeout_sec=GRIPPER_STEP_TIMEOUT,
+                                         require_convergence=False):
             return False
 
         rclpy.spin_once(io_client, timeout_sec=settle_sec)
+        position = io_client.joint_position("gripper_controller")
         effort = io_client.joint_effort("gripper_controller")
-
         zone = "fine" if in_fine_zone else "coarse"
-        if effort is None:
-            print(f"[gripper] target={target:.3f} ({zone})  effort=<no reading -- "
-                  f"is the effort state_interface configured?>")
+
+        # --- contact detection by STALL, not by effort ---
+        # pymycobot's gripper API exposes no force/effort reading at all, so
+        # joint_effort() here is a hardcoded 0.0 placeholder and the old
+        # effort_threshold test could never once fire on real hardware (it
+        # worked only in Gazebo). Confirmed on hardware 2026-07-26: a full
+        # close onto a block logged "effort=0.000" for all ~40 increments and
+        # ran to the hard stop.
+        #
+        # What DOES carry the signal is the position readback: while the jaw
+        # is free it tracks the commanded value down; once it meets the block
+        # it stops advancing while the command keeps decreasing. Requiring
+        # several consecutive stalled steps beats the 0.0075 rad readback
+        # quantization, which alone can make one fine step (0.005 rad) look
+        # like no motion.
+        if position is None:
+            print(f"[gripper] target={target:.3f} ({zone})  <no position reading yet>")
             continue
 
-        got_any_reading = True
-        print(f"[gripper] target={target:.3f} ({zone})  effort={effort:.3f}")
-        if abs(effort) >= effort_threshold:
-            print(f"[gripper] contact detected (|effort|={abs(effort):.3f} >= "
-                  f"{effort_threshold:.3f}) at position {target:.3f}, stopping close")
+        progressed = last_position is None or (last_position - position) > GRIPPER_STALL_EPS
+        stalled_steps = 0 if progressed else stalled_steps + 1
+        lag = position - target
+        last_position = position
+
+        if effort is not None:
+            got_any_effort = got_any_effort or abs(effort) > 0.0
+        effort_text = "n/a" if effort is None else f"{effort:.3f}"
+        print(f"[gripper] target={target:.3f} ({zone})  pos={position:.4f}  "
+              f"lag={lag:+.4f}  stalled={stalled_steps}/{GRIPPER_STALL_STEPS}  "
+              f"effort={effort_text}")
+
+        if stalled_steps >= GRIPPER_STALL_STEPS:
+            print(f"[gripper] CONTACT: jaw stopped advancing for "
+                  f"{GRIPPER_STALL_STEPS} consecutive steps while still being "
+                  f"commanded closed (holding at {position:.4f}, commanded "
+                  f"{target:.3f}). Stopping close.")
             return True
 
-    if not got_any_reading:
-        print("[gripper] no effort readings received at all -- closed fully to "
-              f"{closed:.3f} without contact detection (old fixed-close behavior)")
+        # Effort is still honoured if a future hardware/sim setup ever
+        # provides a real reading -- it is strictly a better signal than stall.
+        if effort is not None and abs(effort) >= effort_threshold:
+            print(f"[gripper] CONTACT: |effort|={abs(effort):.3f} >= "
+                  f"{effort_threshold:.3f} at position {target:.3f}. Stopping close.")
+            return True
+
+    if not got_any_effort:
+        print(f"[gripper] reached fully-closed position {closed:.3f} without "
+              "detecting contact -- nothing between the fingers. (Effort "
+              "readings were all 0.0, as expected on this hardware: contact "
+              "detection here is stall-based, see gripper_close_until_contact.)")
     else:
         print(f"[gripper] reached fully-closed position {closed:.3f} without "
-              "detecting contact (nothing between the fingers, or "
-              "GRIPPER_EFFORT_THRESHOLD is set too high)")
+              "detecting contact.")
     return True
 
 

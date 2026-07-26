@@ -922,3 +922,61 @@ in `cyclonedds_galactic.xml` records this so the direction is not retried.
   the arm moves* (`get_angles()` taking 500-1500 ms mid-motion), so only
   ~10-20 setpoints land per trajectory. It tracked a move correctly at that
   rate, but it is coarse and worth revisiting if motion looks steppy.
+
+---
+
+## Session 3d (2026-07-26): first successful grasp; gripper contact detection rewritten
+
+With the MTU fix (`a1e888a`) and least-travel IK (`e2e629e`) in place, the run
+reached **home -> pre-grasp -> Cartesian descent -> grasp**, physically picking
+up the block. The Cartesian descent (14 waypoints, velocities present, from
+`/compute_cartesian_path`) executed correctly -- first confirmed Cartesian
+motion on real hardware.
+
+It then aborted on "Close gripper (grasp, stop on contact)". Two bugs:
+
+### 1. Float boundary in the convergence check
+
+```
+per-joint error: {'gripper_controller': 0.05}   tolerance 0.05  -> FAILED
+```
+`-0.48 - (-0.53)` is `0.050000000000000044` in IEEE754, so `<= 0.05` is false
+by one ULP. Not an edge case here: the gripper readback is quantized to
+0.0075 rad (pymycobot's 0-100 scale over the 0.75 rad jaw span), so landing
+exactly on the tolerance is routine. Fixed with a 1e-9 slack.
+
+### 2. Contact detection could never fire, and cost 60s per step
+
+`GRIPPER_EFFORT_THRESHOLD` has never been able to work on real hardware --
+pymycobot exposes no gripper force reading, so `/joint_states` carries a
+constant `0.0` placeholder and the threshold test never fires. The whole close
+logged `effort=0.000` for all ~40 increments and ran to the hard stop. This was
+already flagged in WORKFLOW.md "Known gaps"; this session confirmed it live.
+
+Worse, each increment used the 60s default timeout, so once the jaw stalled
+every remaining step waited the full budget.
+
+**Fix -- stall-based contact detection.** A free jaw tracks the commanded value
+down; a jaw against a block stops advancing while the command keeps
+decreasing. `GRIPPER_STALL_STEPS=3` consecutive steps with less than
+`GRIPPER_STALL_EPS=0.003` rad of progress declares contact. Both constants are
+set against the 0.0075 rad readback quantum: EPS below one quantum so real
+motion registers, STEPS above one so a single 0.005 rad fine step cannot alone
+look like contact. `GRIPPER_STEP_TIMEOUT=3.0` replaces the 60s default per
+increment, and `gripper_move_to(require_convergence=False)` makes a jaw that
+cannot reach its commanded value a success rather than an abort -- which is
+the correct semantics when closing onto an object.
+
+Replaying this session's recorded 41-step trace through the new detector
+declares contact at step 26, jaw holding `-0.4200` while commanded `-0.455`
+-- the actual contact point.
+
+Effort is still honoured if a reading ever becomes available; it is strictly
+a better signal than stall.
+
+### Status
+
+Confirmed working end to end on real hardware: goal delivery (any size),
+multi-waypoint joint-space execution, Cartesian execution, IK branch
+selection, grasp. Not yet exercised: retreat, pre-place, place descent,
+release, and the final return -- the run has never gotten past the grasp.
