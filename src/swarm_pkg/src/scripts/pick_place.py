@@ -1273,11 +1273,13 @@ def make_joint_goal_constraints(joint_dict, tolerance=0.001):
 # with sub-degree steps -- so speed is once again limited by the hardware
 # rather than by the pipeline. joint_limits.yaml declares 1.0 rad/s.
 #
-# RAISED IN STEPS ON PURPOSE. This is the one constant here that directly sets
-# how fast the real arm moves, and faster motion loads the joints harder, which
-# makes gravity droop and the servo dead zone worse -- the very errors that
-# were failing goals at 0.05 rad. Test 0.8 before trying 1.0.
-_FALLBACK_MAX_JOINT_SPEED = 0.8  # rad/s
+# REVERTED 0.8 -> 0.5 on 2026-07-28 at the user's request: the motion at 0.5
+# was described as "genuinely very smooth", and speed was explicitly not worth
+# trading for it. 0.8 does not itself create command gaps, but it makes every
+# gap hurt 1.6x more -- a 180ms blackout advances the trajectory 8.2 degrees at
+# 0.8 rad/s against 5.2 at 0.5. Raise this again only after the gaps themselves
+# are gone, and re-raise _MAX_JOINT_ACCEL with it or it buys almost nothing.
+_FALLBACK_MAX_JOINT_SPEED = 0.5  # rad/s
 _FALLBACK_MIN_SEGMENT_SEC = 0.1  # floor per waypoint, avoids zero-length segments
 
 # Acceleration limit for the ramps, rad/s^2. UNVERIFIED against this arm --
@@ -1297,7 +1299,7 @@ _FALLBACK_MIN_SEGMENT_SEC = 0.1  # floor per waypoint, avoids zero-length segmen
 # move can still reach the cap even when no single segment could -- but with
 # a=1.0 the profile would spend nearly all of a typical move ramping, and the
 # nominal speed increase would show up as almost no real speedup.
-_MAX_JOINT_ACCEL = 2.0
+_MAX_JOINT_ACCEL = 1.0
 
 # Floor on how much a sharp corner is allowed to slow the arm, as a fraction of
 # _FALLBACK_MAX_JOINT_SPEED. Without a floor a 90-degree turn in joint space

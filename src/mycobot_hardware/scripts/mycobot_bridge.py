@@ -258,7 +258,7 @@ DEFAULT_MAX_COMMAND_RATE_HZ = 30.0
 # Raising the rate does not buy more information, it buys more blackouts. Any
 # control loop that needs fast feedback during motion has to get it from
 # somewhere other than this serial link.
-DEFAULT_MOTION_READ_INTERVAL_SEC = 0.5
+DEFAULT_MOTION_READ_INTERVAL_SEC = 1.5
 
 # Cap on how long a single pymycobot read may block, in seconds.
 #
@@ -366,6 +366,11 @@ class SharedState:
         # settling that the trajectory is over rather than merely between
         # setpoints -- see SETTLE_QUIET_PERIOD_SEC.
         self.command_changed_monotonic = 0.0
+        # When the GRIPPER command specifically last changed. Separate from
+        # command_changed_monotonic because the gripper reading is only worth
+        # its serial cost while the gripper is actually being commanded --
+        # see GRIPPER_READ_EVERY / GRIPPER_ACTIVE_WINDOW_SEC.
+        self.gripper_command_changed_monotonic = 0.0
         # Error at the previous settle attempt, for stall detection.
         self.settle_last_error = None
         self.settle_stalled = 0
@@ -551,24 +556,35 @@ class Bridge:
     # reported value (pymycobot exposes no gripper effort at all -- see the
     # module docstring), so a stale gripper reading costs nothing, whereas a
     # halved arm command rate costs real tracking accuracy.
-    # Lowered 10 -> 1 on 2026-07-28. The reasoning below was written when a
-    # serial read cost 500-1500ms, so sampling the gripper too doubled the loop
-    # period and halved the arm's command rate. DEFAULT_READ_TIMEOUT_SEC ended
-    # that: reads are now 10-25ms, so reading both costs ~20ms instead of ~2s.
+    # ADAPTIVE, because the gripper reading is only worth its serial cost while
+    # the gripper is actually being commanded.
     #
-    # The cost of a stale gripper reading was never "nothing", either. Contact
-    # detection in pick_place.py is built entirely on
-    # lag = commanded - measured, so a frozen `measured` makes lag grow purely
-    # because the target is moving away from it -- a FALSE contact at whatever
-    # position the reading happens to be stuck at. Observed 2026-07-28: contact
-    # declared at pos=0.0075 (about 80% OPEN, against -0.225 in runs that
-    # actually gripped), with the identical 0.0075 reported across four
-    # consecutive close steps.
+    # get_angles() and get_gripper_value() are two SEPARATE serial round trips.
+    # Sampling both on every read therefore doubles the duration of a read AND
+    # doubles its exposure to the 3 x timeout failure path -- and since a read
+    # holds the half-duplex link, that lands directly on the arm's command
+    # stream as a blackout. Measured 2026-07-28 with GRIPPER_READ_EVERY = 1:
+    # median read cost 22ms against ~11ms before, max 618ms, and 55 of 531
+    # commands (10%) arriving more than 100ms late. The arm was visibly jerky.
     #
-    # This halves the idle loop rate (~87Hz -> ~45Hz), which costs nothing:
-    # commands are capped at 30Hz and reads during motion are throttled
-    # separately.
-    GRIPPER_READ_EVERY = 1
+    # Nothing reads the gripper position during an arm move. Paying for it
+    # continuously to benefit the few seconds of a gripper goal is the wrong
+    # trade -- but a STALE gripper reading is what caused the false contact at
+    # pos=0.0075 (about 80% open), because pick_place.py's contact test is
+    # lag = commanded - measured and a frozen `measured` makes lag grow on its
+    # own as the target moves away.
+    #
+    # So: sample every iteration while the gripper command has moved recently,
+    # and back off to every 10th otherwise. Fresh where it matters, free where
+    # it does not.
+    GRIPPER_READ_EVERY_ACTIVE = 1
+    GRIPPER_READ_EVERY_IDLE = 10
+
+    # How long after the gripper command last changed to keep sampling it at
+    # the active rate. Must outlast a whole gripper goal (1.0s trajectory) plus
+    # the settle window, so the jaw is still being watched while it finishes
+    # moving and while contact is being judged.
+    GRIPPER_ACTIVE_WINDOW_SEC = 3.0
 
     def _serial_read_once(self):
         # pymycobot's get_* calls commonly return -1 (a truthy int, not
@@ -601,21 +617,29 @@ class Bridge:
                 angles_deg = None
 
             self._read_count += 1
+            with self.state.lock:
+                gripper_active = (
+                    time.monotonic() - self.state.gripper_command_changed_monotonic
+                    < self.GRIPPER_ACTIVE_WINDOW_SEC
+                )
+            every = (self.GRIPPER_READ_EVERY_ACTIVE if gripper_active
+                     else self.GRIPPER_READ_EVERY_IDLE)
+
             # (count - 1) % N == 0, so the very first read (the seeding read in
             # main(), before any client connects) always includes the gripper
             # rather than leaving it at its 0.0 placeholder.
             #
             # NOT `count % N == 1`, which was the previous form and is broken at
             # N == 1: x % 1 is always 0, so the condition never fires and the
-            # gripper is NEVER read. Setting GRIPPER_READ_EVERY = 1 -- meaning
-            # "read it every time" -- therefore did the exact opposite, leaving
-            # the gripper pinned at its 0.0 placeholder forever. Observed
+            # gripper is NEVER read. Setting the interval to 1 -- meaning "read
+            # it every time" -- therefore did the exact opposite, leaving the
+            # gripper pinned at its 0.0 placeholder forever. Observed
             # 2026-07-28: pos=0.0 on every poll, "max movement 0.0000 rad", and
             # a 60s timeout with error 0.6 on the very first gripper goal.
             #
             # This form is correct for every N >= 1: it fires on reads
             # 1, 1+N, 1+2N, ... and on every read when N == 1.
-            if (self._read_count - 1) % self.GRIPPER_READ_EVERY == 0:
+            if (self._read_count - 1) % every == 0:
                 gripper_value = self.arm.get_gripper_value()
                 if (not isinstance(gripper_value, (int, float))
                         or not math.isfinite(gripper_value)):
@@ -624,7 +648,7 @@ class Bridge:
                           f"last known gripper position for this read")
                     gripper_value = None
             else:
-                gripper_value = None  # keep the last known value, see GRIPPER_READ_EVERY
+                gripper_value = None  # keep the last known value, see GRIPPER_READ_EVERY_*
         except Exception as exc:
             # A transient serial exception must not kill the background
             # thread (and with it, forever, all future reads/writes) --
@@ -1015,7 +1039,14 @@ class Bridge:
                     for a, b in zip(positions, self.state.command)
                 )
             )
+            gripper_moved = (
+                self.state.command is None
+                or abs(positions[6] - self.state.command[6])
+                > COMMAND_CHANGE_EPSILON_RAD
+            )
             self.state.command = list(positions)
+            if gripper_moved:
+                self.state.gripper_command_changed_monotonic = time.monotonic()
             if changed:
                 self.state.command_dirty = True
                 # Stamped here, on the CHANGE, not on every write: JTC calls
