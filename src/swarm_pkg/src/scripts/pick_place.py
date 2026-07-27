@@ -94,6 +94,61 @@ PLACE_XYZ = (+0.000, -0.250, 0.040 + SPAWN_HEIGHT_CORRECTION)
 # targets, radius, or robot mount height change.
 APPROACH_HEIGHT = 0.04  # meters above the flange target; capped by reach (see above)
 
+# Hard ceiling on any hover height, enforced rather than assumed.
+#
+# The comment above works out APPROACH_HEIGHT from a place flange target of
+# 0.16. That assumption silently expired: the place target is now 0.175 (the
+# grasp/place z offsets were re-measured when the blocks moved off a box onto
+# a flat mat), which puts the place hover at 0.175 + 0.04 = 0.215 -- exactly
+# the value reach_probe.py measured as outside the workspace at ANY
+# orientation.
+#
+# The symptom was total and consistent: on 2026-07-27 every one of the 19 IK
+# seeds failed for (0, -0.25, 0.215) on every run, INCLUDING bearing seeds
+# sitting within 0.004 rad of the true base angle. A solver handed a seed on
+# top of the answer that still cannot converge is being asked for a solution
+# that does not exist. The OMPL fallback then satisfied its 4cm position
+# sphere by parking the flange lower and tilted, which is also where the
+# "gripper points a little to the side" and "never the same spot twice"
+# behaviour came from -- constraint sampling returns a different branch each
+# run.
+#
+# Clamping here rather than shrinking APPROACH_HEIGHT keeps the pick hover
+# (0.195) unchanged and only pulls in the one that was over the line.
+MAX_HOVER_Z = 0.205
+
+# Convergence tolerance for an arm goal, radians. Raised 0.05 -> 0.07 on
+# 2026-07-27 because 0.05 is tighter than this hardware's servo deadband.
+#
+# Evidence, from the bridge's own log during a failed "Retreat after release":
+# it re-sent the held command at FULL SPEED four times and the reported error
+# read 0.0504 rad on every single one, never changing by a digit, before the
+# stall detector gave up. The joint physically cannot close that gap -- and
+# the goal was then failed for missing 0.05 by 0.0004 rad, i.e. 0.02 degrees,
+# which aborted an otherwise complete pick and place after the block had
+# already been placed successfully.
+#
+# Deadband residuals seen across runs: 0.027, 0.0315, 0.0330, 0.0334, 0.0341,
+# 0.0504. 0.07 clears the worst with ~40% margin.
+#
+# The cost is real: 0.07 rad is ~4 degrees, which at this arm's link lengths
+# is up to ~1cm at the fingertips. That is absorbed by the gripper closing on
+# contact rather than to a fixed position, but it is the reason not to raise
+# this further -- a tolerance the arm cannot meet fails honest runs, and one
+# far past the deadband stops catching real tracking failures.
+ARM_SETTLE_TOLERANCE = 0.07
+
+
+def hover_z(target_z):
+    """Hover height above target_z, clamped to the reachable ceiling."""
+    requested = target_z + APPROACH_HEIGHT
+    if requested > MAX_HOVER_Z:
+        print(f"[pick_place] hover {requested:.3f} exceeds the reachable "
+              f"ceiling {MAX_HOVER_Z:.3f} -- clamping (descent shortens to "
+              f"{MAX_HOVER_Z - target_z:.3f}m)")
+        return MAX_HOVER_Z
+    return requested
+
 # Vertical distance from the commanded joint6_flange position down to where
 # the gripper actually grips a block, i.e. flange_target_z = block_center_z +
 # GRASP_OFFSET_Z when descending from directly above with the fixed downward
@@ -708,7 +763,7 @@ class RobotIOClient(Node):
         return None
 
     def _send_goal_and_wait(self, client_attr, action_name, goal, label,
-                            settle_tolerance=0.05, timeout_sec=60.0,
+                            settle_tolerance=ARM_SETTLE_TOLERANCE, timeout_sec=60.0,
                             log_failure=True):
         """settle_tolerance default 0.02 -> 0.05 rad (2026-07-26): confirmed
         on real hardware that the arm consistently settles ~0.014-0.031 rad
@@ -1895,19 +1950,19 @@ def main():
         ("Return to home pose", lambda: go_home(io_client)),
         ("Toggle gripper (pre-start)", lambda: toggle_gripper(io_client)),
         ("Move to pre-grasp (above pick)",
-         lambda: move_arm_to(io_client, px, py, pz + APPROACH_HEIGHT)),
+         lambda: move_arm_to(io_client, px, py, hover_z(pz))),
         ("Descend to grasp pose (Cartesian)",
          lambda: cartesian_move_to(io_client, px, py, pz)),
         ("Close gripper (grasp, stop on contact)", lambda: gripper_close_until_contact(io_client)),
         ("Retreat after grasp (Cartesian)",
-         lambda: cartesian_move_to(io_client, px, py, pz + APPROACH_HEIGHT, allow_fallback=True)),
+         lambda: cartesian_move_to(io_client, px, py, hover_z(pz), allow_fallback=True)),
         ("Move to pre-place (above place)",
-         lambda: move_arm_to(io_client, lx, ly, lz + APPROACH_HEIGHT)),
+         lambda: move_arm_to(io_client, lx, ly, hover_z(lz))),
         ("Descend to place pose (Cartesian)",
          lambda: cartesian_move_to(io_client, lx, ly, lz)),
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
         ("Retreat after release (Cartesian)",
-         lambda: cartesian_move_to(io_client, lx, ly, lz + APPROACH_HEIGHT, allow_fallback=True)),
+         lambda: cartesian_move_to(io_client, lx, ly, hover_z(lz), allow_fallback=True)),
         ("Return to home pose (final)", lambda: go_home(io_client)),
     ]
 
