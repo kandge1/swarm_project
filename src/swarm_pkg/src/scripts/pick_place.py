@@ -272,11 +272,23 @@ CARTESIAN_JUMP_THRESHOLD = 0.0   # 0 disables jump-threshold filtering
 # feeds only needs to be roughly downward; the straight-down orientation is
 # re-imposed exactly by the Cartesian descent that follows.
 IK_POS_TOLERANCE = 0.02          # m, radius of the goal position sphere
-# 0.10 rad (~5.7 deg): at the reachable hover heights straight-down solves to
-# within ~3 deg (measured, reach_probe.py), so this window is comfortably
-# satisfiable while still keeping the hover visibly straight rather than
-# tilted. Widen it only if a target near the reach edge stops converging.
-IK_ORI_XY_TOLERANCE = 0.10       # rad, tilt allowed off straight-down
+# Tightened 0.10 -> 0.04 rad (5.7 deg -> 2.3 deg) on 2026-07-28.
+#
+# This window is the ONLY thing deciding how straight down the hover points:
+# KDL is free to land anywhere inside it, and it does, which is the "gripper
+# points a little to the side" seen on hardware. 0.10 was chosen when IK
+# convergence was fragile and every bit of slack mattered.
+#
+# That constraint is gone. The bearing seeds (6d4c0b6) put KDL within 0.004 rad
+# of the true base angle instead of 1.5 rad away, and both pick and place now
+# converge on 12-18 of 19 seeds rather than 0-6. Spending the slack on accuracy
+# is the better trade now.
+#
+# reach_probe.py measured straight-down solving to within ~3 deg at these hover
+# heights, so 2.3 deg is close to that floor -- if IK failures come back this
+# is the first constant to relax, and 0.06 is the obvious next stop rather than
+# going straight back to 0.10.
+IK_ORI_XY_TOLERANCE = 0.04       # rad, tilt allowed off straight-down
 IK_ORI_Z_TOLERANCE = 0.15        # rad, yaw window about the approach axis
 IK_SERVICE_TIMEOUT = 0.3         # sec, per-seed /compute_ik solve budget
 
