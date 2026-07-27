@@ -601,10 +601,21 @@ class Bridge:
                 angles_deg = None
 
             self._read_count += 1
-            # == 1, not == 0, so the very first read (the seeding read in
+            # (count - 1) % N == 0, so the very first read (the seeding read in
             # main(), before any client connects) always includes the gripper
-            # rather than leaving it at its 0.0 placeholder for 10 iterations.
-            if self._read_count % self.GRIPPER_READ_EVERY == 1:
+            # rather than leaving it at its 0.0 placeholder.
+            #
+            # NOT `count % N == 1`, which was the previous form and is broken at
+            # N == 1: x % 1 is always 0, so the condition never fires and the
+            # gripper is NEVER read. Setting GRIPPER_READ_EVERY = 1 -- meaning
+            # "read it every time" -- therefore did the exact opposite, leaving
+            # the gripper pinned at its 0.0 placeholder forever. Observed
+            # 2026-07-28: pos=0.0 on every poll, "max movement 0.0000 rad", and
+            # a 60s timeout with error 0.6 on the very first gripper goal.
+            #
+            # This form is correct for every N >= 1: it fires on reads
+            # 1, 1+N, 1+2N, ... and on every read when N == 1.
+            if (self._read_count - 1) % self.GRIPPER_READ_EVERY == 0:
                 gripper_value = self.arm.get_gripper_value()
                 if (not isinstance(gripper_value, (int, float))
                         or not math.isfinite(gripper_value)):
