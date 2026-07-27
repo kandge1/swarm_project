@@ -218,13 +218,45 @@
       <geometry>
        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae"/>
       </geometry>
-    <origin xyz = "0.024 -0.008 0.0 " rpy = " 0 3.14159 0"/>
+    <!-- 2026-07-28: was xyz "0.024 -0.008 0.0" rpy "0 3.14159 0". That pitch
+         is a 180 deg rotation about the LENS AXIS: the lens direction
+         (optical +Z) expressed in camera_flange coordinates is exactly
+         (0, +1, 0), i.e. this link's own +Y. So the term drew the camera body
+         on the far side of the flange while leaving the lens pointing the
+         right way, which is why RViz showed the camera under the mount while
+         the real arm has it on top, with the lens correct in both.
+
+         Removing it, and mirroring the x offset with it, rotates the whole
+         visual 180 deg about the lens axis: the body moves to the correct
+         side and its orientation flips, while the lens direction is provably
+         untouched (the rotation fixes its own axis).
+
+         Kinematics were never involved. This is the visual and collision
+         geometry only; the link frame and every child frame were already
+         correct once the flange roll was fixed to yaw 2.3562. -->
+    <origin xyz = "-0.024 -0.008 0.0 " rpy = " 0 0 0"/>
     </visual>
     <collision>
       <geometry>
        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae"/>
       </geometry>
-    <origin xyz = "0.024 -0.008 0.0 " rpy = " 0 3.14159 0"/>
+    <!-- 2026-07-28: was xyz "0.024 -0.008 0.0" rpy "0 3.14159 0". That pitch
+         is a 180 deg rotation about the LENS AXIS: the lens direction
+         (optical +Z) expressed in camera_flange coordinates is exactly
+         (0, +1, 0), i.e. this link's own +Y. So the term drew the camera body
+         on the far side of the flange while leaving the lens pointing the
+         right way, which is why RViz showed the camera under the mount while
+         the real arm has it on top, with the lens correct in both.
+
+         Removing it, and mirroring the x offset with it, rotates the whole
+         visual 180 deg about the lens axis: the body moves to the correct
+         side and its orientation flips, while the lens direction is provably
+         untouched (the rotation fixes its own axis).
+
+         Kinematics were never involved. This is the visual and collision
+         geometry only; the link frame and every child frame were already
+         correct once the flange roll was fixed to yaw 2.3562. -->
+    <origin xyz = "-0.024 -0.008 0.0 " rpy = " 0 0 0"/>
     </collision>
   </link>
 
