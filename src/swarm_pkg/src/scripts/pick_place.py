@@ -321,9 +321,24 @@ HOME_RADIANS = {name: math.radians(deg) for name, deg in HOME_DEGREES.items()}
 #
 # GRIPPER_YAW_DEG is the fixed world yaw (about Z) applied on top of the
 # GRASP_Q* reference orientation above. 0.0 reproduces GRASP_Q* unchanged.
-# Not yet empirically confirmed to be parallel to world +X -- watch the
-# gripper in sim and adjust in +/-90deg steps until the jaws line up with X.
-GRIPPER_YAW_DEG = 0.0
+#
+# -45 deg, set 2026-07-28. This is now MEASURED, not guessed. Composing the
+# two fixed transforms below the flange (joint6output_to_camera_flange then
+# camera_flange_to_gripper_base) against GRASP_Q* puts gripper_base's X axis
+# -- the finger-opening axis -- at exactly +45.00 deg from world +X, dead
+# horizontal, with the approach axis at -1.000 z (straight down). That 45 deg
+# is why the target cube had to be sat on the floor rotated 45 deg to be
+# grasped square. -45 here brings the jaw axis to 0.00 deg from world +X and
+# leaves the straight-down component untouched.
+#
+# NOTE this is NOT the same 45 deg as HOME_DEGREES' joint6output = -45. That
+# one is the physical tool mount sitting askew at the servo's zero, and it
+# lives in joint space. This one is the fixed rotation baked into the mount's
+# geometry, and it lives in the world frame. They are numerically equal
+# because they are two views of the same piece of hardware, but changing one
+# does nothing to the other -- the grasp yaw is an absolute world quaternion
+# and never consults the home pose.
+GRIPPER_YAW_DEG = -45.0
 
 
 def quat_multiply(q1, q2):
@@ -449,6 +464,18 @@ IK_SEEDS = _build_ik_seeds()
 # for +y and decreases it for -y -- i.e. a consistent +0.257 offset.
 _IK_BEARING_OFFSET = 0.257
 
+# joint6output shift caused by GRIPPER_YAW_DEG, in radians. Under the
+# downward grasp the flange's own Z axis points at world -Z, so turning
+# joint6output by +d yaws the gripper by -d about world +Z: the joint offset
+# is the NEGATIVE of the world yaw. Verified against the real converged
+# solution [1.828, -0.746, -0.605, -0.22, -0.0, 1.828] logged on hardware
+# 2026-07-27 -- at j6out 1.828 the jaw sits at +45.00 deg from world +X, at
+# 1.828 + 0.7854 it sits at 0.00 deg, and at 1.828 - 0.7854 at +90.00 deg.
+# Derived from GRIPPER_YAW_DEG rather than written as a literal so that
+# changing the grasp yaw moves the seeds with it; seeding joint6output a full
+# 45 deg from the answer is precisely the local-solver miss described below.
+_GRASP_YAW_JOINT_OFFSET = -math.radians(GRIPPER_YAW_DEG)
+
 
 def _bearing_seeds(x, y):
     """Seeds whose base rotation actually points at the target.
@@ -469,7 +496,9 @@ def _bearing_seeds(x, y):
     joint6output_to_joint6 is set to match joint2_to_joint1 because that is
     what every converged solution does here -- the wrist counter-rotates by
     the base angle to hold the fixed grasp yaw, e.g. [1.828, ..., 1.828] and
-    [-1.31, ..., -1.31].
+    [-1.31, ..., -1.31] -- plus _GRASP_YAW_JOINT_OFFSET, the constant shift
+    that GRIPPER_YAW_DEG puts on every solution. Those logged pairs were
+    measured at GRIPPER_YAW_DEG = 0; the offset carries them forward.
 
     The bearing itself, plus the offset applied both ways, so a target whose
     offset runs the other way (or a different gripper geometry later) is
@@ -497,7 +526,7 @@ def _bearing_seeds(x, y):
         for shape_label, shape in shapes:
             seed = dict(shape)
             seed["joint2_to_joint1"] = base
-            seed["joint6output_to_joint6"] = base
+            seed["joint6output_to_joint6"] = base + _GRASP_YAW_JOINT_OFFSET
             seeds.append((f"{base_label}/{shape_label}", seed))
     return seeds
 
