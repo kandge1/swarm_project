@@ -1,12 +1,12 @@
-[INFO] [launch]: All log files can be found below /home/er/.ros/log/2026-07-27-14-42-20-444093-er-8646
+[INFO] [launch]: All log files can be found below /home/er/.ros/log/2026-07-27-14-53-52-563556-er-8953
 [INFO] [launch]: Default logging verbosity is set to INFO
-[INFO] [mycobot_bridge.py-1]: process started with pid [8657]
-[INFO] [robot_state_publisher-2]: process started with pid [8659]
-[INFO] [ros2_control_node-3]: process started with pid [8661]
-[ros2_control_node-3] 1785134542.024651 [42] ros2_contr: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
-[ros2_control_node-3] 1785134542.024810 [42] ros2_contr: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
-[robot_state_publisher-2] 1785134542.042576 [42] robot_stat: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
-[robot_state_publisher-2] 1785134542.042853 [42] robot_stat: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
+[INFO] [mycobot_bridge.py-1]: process started with pid [8982]
+[INFO] [robot_state_publisher-2]: process started with pid [8984]
+[INFO] [ros2_control_node-3]: process started with pid [8986]
+[robot_state_publisher-2] 1785135234.232152 [42] robot_stat: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
+[robot_state_publisher-2] 1785135234.232320 [42] robot_stat: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
+[ros2_control_node-3] 1785135234.235754 [42] ros2_contr: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
+[ros2_control_node-3] 1785135234.235968 [42] ros2_contr: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
 [robot_state_publisher-2] Link g_base had 1 children
 [robot_state_publisher-2] Link joint1 had 1 children
 [robot_state_publisher-2] Link joint2 had 1 children
@@ -25,26 +25,26 @@
 [robot_state_publisher-2] Link gripper_right1 had 0 children
 [robot_state_publisher-2] Link gripper_left3 had 1 children
 [robot_state_publisher-2] Link gripper_left1 had 0 children
-[robot_state_publisher-2] [INFO] [1785134542.143320685] [robot_state_publisher]: got segment camera_flange
-[robot_state_publisher-2] [INFO] [1785134542.144041635] [robot_state_publisher]: got segment g_base
-[robot_state_publisher-2] [INFO] [1785134542.144239228] [robot_state_publisher]: got segment gripper_base
-[robot_state_publisher-2] [INFO] [1785134542.144294516] [robot_state_publisher]: got segment gripper_left1
-[robot_state_publisher-2] [INFO] [1785134542.144334134] [robot_state_publisher]: got segment gripper_left2
-[robot_state_publisher-2] [INFO] [1785134542.144371790] [robot_state_publisher]: got segment gripper_left3
-[robot_state_publisher-2] [INFO] [1785134542.144410575] [robot_state_publisher]: got segment gripper_right1
-[robot_state_publisher-2] [INFO] [1785134542.144449860] [robot_state_publisher]: got segment gripper_right2
-[robot_state_publisher-2] [INFO] [1785134542.144489404] [robot_state_publisher]: got segment gripper_right3
-[robot_state_publisher-2] [INFO] [1785134542.144526504] [robot_state_publisher]: got segment joint1
-[robot_state_publisher-2] [INFO] [1785134542.144567863] [robot_state_publisher]: got segment joint2
-[robot_state_publisher-2] [INFO] [1785134542.144605481] [robot_state_publisher]: got segment joint3
-[robot_state_publisher-2] [INFO] [1785134542.144642359] [robot_state_publisher]: got segment joint4
-[robot_state_publisher-2] [INFO] [1785134542.144674976] [robot_state_publisher]: got segment joint5
-[robot_state_publisher-2] [INFO] [1785134542.144709742] [robot_state_publisher]: got segment joint6
-[robot_state_publisher-2] [INFO] [1785134542.144742766] [robot_state_publisher]: got segment joint6_flange
-[robot_state_publisher-2] [INFO] [1785134542.144876958] [robot_state_publisher]: got segment world
-[robot_state_publisher-2] [INFO] [1785134542.144933487] [robot_state_publisher]: got segment wrist_camera_link
-[robot_state_publisher-2] [INFO] [1785134542.144972698] [robot_state_publisher]: got segment wrist_camera_optical_frame
-[ros2_control_node-3] [INFO] [1785134542.163964660] [mycobot_hardware]: Configured for 7 joints, bridge socket: /tmp/mycobot_hardware_bridge.sock
+[robot_state_publisher-2] [INFO] [1785135234.337631778] [robot_state_publisher]: got segment camera_flange
+[robot_state_publisher-2] [INFO] [1785135234.338180844] [robot_state_publisher]: got segment g_base
+[robot_state_publisher-2] [INFO] [1785135234.338292550] [robot_state_publisher]: got segment gripper_base
+[robot_state_publisher-2] [INFO] [1785135234.338341578] [robot_state_publisher]: got segment gripper_left1
+[robot_state_publisher-2] [INFO] [1785135234.338380863] [robot_state_publisher]: got segment gripper_left2
+[robot_state_publisher-2] [INFO] [1785135234.338416055] [robot_state_publisher]: got segment gripper_left3
+[robot_state_publisher-2] [INFO] [1785135234.338451376] [robot_state_publisher]: got segment gripper_right1
+[robot_state_publisher-2] [INFO] [1785135234.338485623] [robot_state_publisher]: got segment gripper_right2
+[robot_state_publisher-2] [INFO] [1785135234.338521704] [robot_state_publisher]: got segment gripper_right3
+[robot_state_publisher-2] [INFO] [1785135234.338557748] [robot_state_publisher]: got segment joint1
+[robot_state_publisher-2] [INFO] [1785135234.338594014] [robot_state_publisher]: got segment joint2
+[robot_state_publisher-2] [INFO] [1785135234.338629391] [robot_state_publisher]: got segment joint3
+[robot_state_publisher-2] [INFO] [1785135234.338669417] [robot_state_publisher]: got segment joint4
+[robot_state_publisher-2] [INFO] [1785135234.338710813] [robot_state_publisher]: got segment joint5
+[robot_state_publisher-2] [INFO] [1785135234.338743264] [robot_state_publisher]: got segment joint6
+[robot_state_publisher-2] [INFO] [1785135234.338778845] [robot_state_publisher]: got segment joint6_flange
+[robot_state_publisher-2] [INFO] [1785135234.338813870] [robot_state_publisher]: got segment world
+[robot_state_publisher-2] [INFO] [1785135234.338852636] [robot_state_publisher]: got segment wrist_camera_link
+[robot_state_publisher-2] [INFO] [1785135234.338895255] [robot_state_publisher]: got segment wrist_camera_optical_frame
+[ros2_control_node-3] [INFO] [1785135234.400082244] [mycobot_hardware]: Configured for 7 joints, bridge socket: /tmp/mycobot_hardware_bridge.sock
 [mycobot_bridge.py-1] [mycobot_bridge] connecting to /dev/ttyAMA0 @ 1000000...
 [mycobot_bridge.py-1] [mycobot_bridge] connected.
 [mycobot_bridge.py-1] [mycobot_bridge] read timeout capped at 0.06s per attempt (pymycobot's Linux default is 0.5s)
@@ -52,277 +52,134 @@
 [mycobot_bridge.py-1] [mycobot_bridge] writes=async, max command rate=30.0Hz, motion read interval=0.5s, speed=25..50
 [mycobot_bridge.py-1] [mycobot_bridge] serial loop starting
 [mycobot_bridge.py-1] [mycobot_bridge] listening on /tmp/mycobot_hardware_bridge.sock
-[ros2_control_node-3] [INFO] [1785134544.567808751] [mycobot_hardware]: Connected to mycobot_bridge.py after 12 retries
+[ros2_control_node-3] [INFO] [1785135236.811931555] [mycobot_hardware]: Connected to mycobot_bridge.py after 12 retries
 [mycobot_bridge.py-1] [mycobot_bridge] mycobot_system.cpp connected
-[ros2_control_node-3] [INFO] [1785134544.569132851] [mycobot_hardware]: mycobot hardware activated.
-[ros2_control_node-3] [INFO] [1785134544.582200778] [controller_manager]: update rate is 100 Hz
-[ros2_control_node-3] [INFO] [1785134544.583197242] [controller_manager]: RT kernel is recommended for better performance
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=first send_angles=1ms gripper=65ms (sent) speed=50  target_deg=[-0.79, -0.79, -0.79, -2.19, 0.7, -44.2]
-[INFO] [bash-4]: process started with pid [8711]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=401.7Hz (last read 14ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=119.9Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=90.2Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-4] 1785134547.760319 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
-[bash-4] 1785134547.760425 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
-[INFO] [bash-5]: process started with pid [8745]
-[ros2_control_node-3] [INFO] [1785134548.008612735] [controller_manager]: Loading controller 'joint_state_broadcaster'
-[bash-4] [INFO] [1785134548.132211275] [spawner_joint_state_broadcaster]: Loaded joint_state_broadcaster
-[ros2_control_node-3] [INFO] [1785134548.143534802] [controller_manager]: Configuring controller 'joint_state_broadcaster'
-[ros2_control_node-3] [INFO] [1785134548.153217781] [joint_state_broadcaster]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
-[bash-4] [INFO] [1785134548.220280203] [spawner_joint_state_broadcaster]: Configured and started joint_state_broadcaster
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=64.5Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[INFO] [bash-4]: process has finished cleanly [pid 8711]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=72.7Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=88.7Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[INFO] [bash-6]: process started with pid [8774]
-[bash-5] 1785134551.479184 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
-[bash-5] 1785134551.479281 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=71.0Hz (last read 32ms) -- this is the real ceiling on commands/sec reaching the arm
-[ros2_control_node-3] [INFO] [1785134551.837623561] [controller_manager]: Loading controller 'arm_group_controller'
-[bash-5] [INFO] [1785134552.023393533] [spawner_arm_group_controller]: Loaded arm_group_controller
-[ros2_control_node-3] [INFO] [1785134552.047693600] [controller_manager]: Configuring controller 'arm_group_controller'
-[ros2_control_node-3] [INFO] [1785134552.048209956] [arm_group_controller]: Command interfaces are [position] and and state interfaces are [position velocity].
-[ros2_control_node-3] [INFO] [1785134552.060674789] [arm_group_controller]: Controller state will be published at 50.00 Hz.
-[ros2_control_node-3] [INFO] [1785134552.108312242] [arm_group_controller]: Action status changes will be monitored at 20.00 Hz.
-[bash-5] [INFO] [1785134552.210061285] [spawner_arm_group_controller]: Configured and started arm_group_controller
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=50.3Hz (last read 16ms) -- this is the real ceiling on commands/sec reaching the arm
-[INFO] [bash-5]: process has finished cleanly [pid 8745]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=78.4Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=85.3Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-6] 1785134554.739698 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
-[bash-6] 1785134554.739790 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
-[ros2_control_node-3] [INFO] [1785134554.999831217] [controller_manager]: Loading controller 'gripper_group_controller'
-[bash-6] [INFO] [1785134555.091232898] [spawner_gripper_group_controller]: Loaded gripper_group_controller
-[ros2_control_node-3] [INFO] [1785134555.095068264] [controller_manager]: Configuring controller 'gripper_group_controller'
-[ros2_control_node-3] [INFO] [1785134555.095322330] [gripper_group_controller]: Command interfaces are [position] and and state interfaces are [position velocity].
-[ros2_control_node-3] [INFO] [1785134555.096869657] [gripper_group_controller]: Controller state will be published at 50.00 Hz.
-[ros2_control_node-3] [INFO] [1785134555.099384572] [gripper_group_controller]: Action status changes will be monitored at 20.00 Hz.
-[bash-6] [INFO] [1785134555.180539020] [spawner_gripper_group_controller]: Configured and started gripper_group_controller
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=64.2Hz (last read 16ms) -- this is the real ceiling on commands/sec reaching the arm
-[INFO] [bash-6]: process has finished cleanly [pid 8774]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=91.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.4Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.4Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.5Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=97.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=97.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=97.9Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=91.2Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=92.4Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.0Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=92.2Hz (last read 14ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.4Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.3Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.9Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.9Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.9Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=97.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.8Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.7Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.9Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.3Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.9Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.8Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.7Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.9Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.3Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.6Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=97.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.9Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.7Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.2Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.6Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.6Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[ros2_control_node-3] [INFO] [1785134602.989101355] [arm_group_controller]: Received new action goal
-[ros2_control_node-3] [INFO] [1785134602.989330120] [arm_group_controller]: Accepted new action goal
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=58413ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.0, 0.0, 0.0, -0.0, -0.0, -0.15]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.0, 0.0, 0.0, -0.0, -0.0, -0.44]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.0, 0.0, 0.0, -0.0, -0.0, -1.07]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-0.0, 0.0, 0.0, -0.0, -0.0, -1.66]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.0, 0.0, 0.0, -0.0, -0.0, -2.65]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.0, 0.0, 0.0, -0.0, -0.0, -3.53]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-0.0, 0.0, 0.0, -0.0, -0.0, -4.42]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[-0.01, 0.0, 0.0, -0.0, -0.0, -5.77]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=37  target_deg=[-0.01, 0.0, 0.01, -0.0, -0.0, -7.23]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=33ms send_angles=0ms gripper=0ms (skipped) speed=28  target_deg=[-0.01, 0.0, 0.01, -0.0, -0.0, -8.32]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=1ms gripper=0ms (skipped) speed=28  target_deg=[-0.01, 0.0, 0.01, -0.0, -0.0, -9.52]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[-0.01, 0.01, 0.01, -0.0, -0.0, -11.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=39ms send_angles=4ms gripper=0ms (skipped) speed=35  target_deg=[-0.01, 0.01, 0.01, -0.01, -0.01, -12.58]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[-0.01, 0.01, 0.01, -0.01, -0.01, -14.04]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=27  target_deg=[-0.02, 0.01, 0.01, -0.01, -0.01, -15.16]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=39  target_deg=[-0.02, 0.01, 0.01, -0.01, -0.01, -16.68]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[-0.02, 0.01, 0.02, -0.01, -0.01, -18.07]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=49  target_deg=[-0.02, 0.01, 0.02, -0.01, -0.01, -19.98]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=39  target_deg=[-0.02, 0.01, 0.02, -0.01, -0.01, -21.47]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=33ms send_angles=1ms gripper=0ms (skipped) speed=40  target_deg=[-0.02, 0.01, 0.02, -0.01, -0.01, -23.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=50  target_deg=[-0.03, 0.01, 0.02, -0.01, -0.01, -25.03]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=46ms send_angles=3ms gripper=0ms (skipped) speed=37  target_deg=[-0.03, 0.01, 0.02, -0.01, -0.01, -26.97]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=45  target_deg=[-0.03, 0.01, 0.02, -0.01, -0.01, -28.7]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=336.4Hz (last read 17ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=30  target_deg=[-0.03, 0.01, 0.03, -0.01, -0.01, -29.86]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=36  target_deg=[-0.03, 0.02, 0.03, -0.01, -0.01, -31.28]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=34  target_deg=[-0.03, 0.02, 0.03, -0.01, -0.01, -32.67]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=32  target_deg=[-0.03, 0.02, 0.03, -0.02, -0.02, -33.93]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=31  target_deg=[-0.04, 0.02, 0.03, -0.02, -0.02, -35.13]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=39  target_deg=[-0.04, 0.02, 0.03, -0.02, -0.02, -36.62]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=29  target_deg=[-0.04, 0.02, 0.03, -0.02, -0.02, -37.79]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=27  target_deg=[-0.04, 0.02, 0.03, -0.02, -0.02, -38.84]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=34  target_deg=[-0.04, 0.02, 0.03, -0.02, -0.02, -40.21]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.04, 0.02, 0.04, -0.02, -0.02, -41.18]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=29  target_deg=[-0.04, 0.02, 0.04, -0.02, -0.02, -42.32]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-0.04, 0.02, 0.04, -0.02, -0.02, -43.09]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-0.04, 0.02, 0.04, -0.02, -0.02, -43.92]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=4ms gripper=0ms (skipped) speed=25  target_deg=[-0.04, 0.02, 0.04, -0.02, -0.02, -44.41]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -44.84]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=3ms gripper=0ms (skipped) speed=25  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -44.99]
-[ros2_control_node-3] [INFO] [1785134604.387827901] [arm_group_controller]: Goal reached, success!
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=405.6Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[ros2_control_node-3] [INFO] [1785134604.998358150] [gripper_group_controller]: Received new action goal
-[ros2_control_node-3] [INFO] [1785134604.998535313] [gripper_group_controller]: Accepted new action goal
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=606ms send_angles=0ms gripper=118ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=130ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=7ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=117ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=120ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=33ms send_angles=0ms gripper=128ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=131ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=65ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=70ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=5ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=80ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=123ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=170.9Hz (last read 72ms) -- this is the real ceiling on commands/sec reaching the arm
-[ros2_control_node-3] [INFO] [1785134606.004222353] [gripper_group_controller]: Goal reached, success!
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=128ms send_angles=1ms gripper=104ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=113ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[-0.05, 0.02, 0.04, -0.02, -0.02, -45.0]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=406.4Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 1/20: still short by arm 0.0333 rad (> 0.03), re-commanding at speed 50
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 2/20: still short by arm 0.0333 rad (> 0.03), re-commanding at speed 50
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=109.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 3/20: still short by arm 0.0333 rad (> 0.03), re-commanding at speed 50
-[mycobot_bridge.py-1] [mycobot_bridge] WARNING: get_angles() returned -1, expected a 6-element list -- keeping last known positions for this read
-[mycobot_bridge.py-1] [mycobot_bridge] WARNING: get_angles() returned -1, expected a 6-element list -- keeping last known positions for this read
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 4/20: still short by arm 0.0333 rad (> 0.03), re-commanding at speed 50
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle giving up: 0.0333 rad error stopped improving over 3 attempts -- most likely servo deadband or a physically blocked joint, not a lost command
-[mycobot_bridge.py-1] [mycobot_bridge] WARNING: get_angles() returned -1, expected a 6-element list -- keeping last known positions for this read
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=11.3Hz (last read 302ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] WARNING: get_angles() returned -1, expected a 6-element list -- keeping last known positions for this read
-[mycobot_bridge.py-1] [mycobot_bridge] WARNING: get_angles() returned -1, expected a 6-element list -- keeping last known positions for this read
-[mycobot_bridge.py-1] [mycobot_bridge] WARNING: get_angles() returned -1, expected a 6-element list -- keeping last known positions for this read
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=3.5Hz (last read 238ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.4Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.5Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.7Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.7Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.8Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.4Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.2Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.9Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=91.8Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.7Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.3Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.0Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.8Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.3Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.6Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.8Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.6Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.2Hz (last read 13ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.5Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.5Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.3Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.6Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.0Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.3Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=96.7Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.9Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.4Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.7Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.8Hz (last read 13ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.5Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.9Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.8Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.8Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.4Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.8Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.0Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.6Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.1Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=93.3Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.5Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=95.5Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[ros2_control_node-3] [INFO] [1785134666.045075779] [arm_group_controller]: Received new action goal
-[ros2_control_node-3] [INFO] [1785134666.045257721] [arm_group_controller]: Accepted new action goal
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=60034ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[0.0, -0.0, 0.0, -0.0, 0.0, -0.01]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.0, -0.0, 0.0, -0.0, 0.0, -0.15]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.0, -0.0, 0.0, -0.0, 0.0, -0.56]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.0, -0.0, 0.0, -0.0, 0.0, -1.09]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[0.0, -0.0, 0.0, -0.0, 0.0, -1.88]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.0, -0.0, 0.0, -0.0, 0.0, -2.63]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=3ms gripper=0ms (skipped) speed=25  target_deg=[0.0, -0.0, 0.0, -0.0, 0.0, -3.47]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=33  target_deg=[0.0, -0.0, 0.0, -0.0, 0.01, -4.76]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=26  target_deg=[0.0, -0.0, 0.0, -0.0, 0.01, -5.75]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=28  target_deg=[0.01, -0.0, 0.0, -0.0, 0.01, -6.88]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[0.01, -0.01, 0.0, -0.01, 0.01, -8.3]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=199.7Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=39ms send_angles=3ms gripper=0ms (skipped) speed=27  target_deg=[0.01, -0.01, 0.0, -0.01, 0.01, -9.47]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=49  target_deg=[0.01, -0.01, 0.0, -0.01, 0.01, -11.37]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=30  target_deg=[0.01, -0.01, 0.0, -0.01, 0.02, -12.57]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=28  target_deg=[0.01, -0.01, 0.0, -0.01, 0.02, -13.65]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=185ms send_angles=1ms gripper=0ms (skipped) speed=39  target_deg=[0.02, -0.02, 0.0, -0.02, 0.03, -22.02]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[0.02, -0.02, 0.01, -0.02, 0.03, -23.46]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=50  target_deg=[0.02, -0.02, 0.01, -0.02, 0.03, -25.52]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[0.02, -0.02, 0.01, -0.02, 0.03, -26.91]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=35  target_deg=[0.02, -0.02, 0.01, -0.02, 0.04, -28.3]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=40  target_deg=[0.02, -0.02, 0.01, -0.02, 0.04, -29.84]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[0.03, -0.02, 0.01, -0.02, 0.04, -31.3]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=29  target_deg=[0.03, -0.02, 0.01, -0.02, 0.04, -32.4]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=31  target_deg=[0.03, -0.02, 0.01, -0.02, 0.04, -33.59]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=28  target_deg=[0.03, -0.02, 0.01, -0.02, 0.04, -34.69]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=41  target_deg=[0.03, -0.03, 0.01, -0.03, 0.05, -36.34]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[0.03, -0.03, 0.01, -0.03, 0.05, -37.78]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=28  target_deg=[0.03, -0.03, 0.01, -0.03, 0.05, -38.86]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=34  target_deg=[0.03, -0.03, 0.01, -0.03, 0.05, -40.21]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[0.03, -0.03, 0.01, -0.03, 0.05, -41.2]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.04, -0.03, 0.01, -0.03, 0.05, -42.21]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[0.04, -0.03, 0.01, -0.03, 0.05, -43.09]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.04, -0.03, 0.01, -0.03, 0.06, -43.95]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.04, -0.03, 0.01, -0.03, 0.06, -44.45]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.04, -0.03, 0.01, -0.03, 0.06, -44.87]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.04, -0.03, 0.01, -0.03, 0.06, -45.03]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=317.3Hz (last read 15ms) -- this is the real ceiling on commands/sec reaching the arm
-[ros2_control_node-3] [INFO] [1785134667.437332096] [arm_group_controller]: Goal reached, success!
+[ros2_control_node-3] [INFO] [1785135236.813535022] [mycobot_hardware]: mycobot hardware activated.
+[ros2_control_node-3] [INFO] [1785135236.854646920] [controller_manager]: update rate is 100 Hz
+[ros2_control_node-3] [INFO] [1785135236.857555113] [controller_manager]: RT kernel is recommended for better performance
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=first send_angles=1ms gripper=121ms (sent) speed=50  target_deg=[-0.79, -0.79, -0.79, -1.93, 0.7, -44.12]
+[INFO] [bash-4]: process started with pid [9037]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=367.6Hz (last read 23ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=65.5Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=40.9Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[INFO] [bash-5]: process started with pid [9064]
+[bash-4] 1785135240.265894 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
+[bash-4] 1785135240.270243 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
+[bash-4] Traceback (most recent call last):
+[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
+[bash-4]     ret = main()
+[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 162, in main
+[bash-4]     if not wait_for_controller_manager(node, controller_manager_name,
+[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 95, in wait_for_controller_manager
+[bash-4]     node_and_namespace = wait_for_value_or(
+[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 52, in wait_for_value_or
+[bash-4]     if result := function():
+[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 96, in <lambda>
+[bash-4]     lambda: find_node_and_namespace(node, controller_manager),
+[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 67, in find_node_and_namespace
+[bash-4]     node_names_and_namespaces = node.get_node_names_and_namespaces()
+[bash-4]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 1814, in get_node_names_and_namespaces
+[bash-4]     return self.handle.get_node_names_and_namespaces()
+[bash-4] rclpy._rclpy_pybind11.RCLError: Failed to get node names: empty node name returned by the RMW layer, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/graph.c:360
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=33.6Hz (last read 28ms) -- this is the real ceiling on commands/sec reaching the arm
+[bash-4] [retrying_spawner] attempt 1 for joint_state_broadcaster failed, retrying in 2s...
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=42.1Hz (last read 23ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] 
+[ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[ros2_control_node-3] This error state is being overwritten:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] with this new error message:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
+[ros2_control_node-3] <<<
+[robot_state_publisher-2] 
+[robot_state_publisher-2] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[robot_state_publisher-2] This error state is being overwritten:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] with this new error message:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] rcutils_reset_error() should be called after error handling to avoid this.
+[robot_state_publisher-2] <<<
+[ros2_control_node-3] 
+[ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[ros2_control_node-3] This error state is being overwritten:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] with this new error message:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
+[ros2_control_node-3] <<<
+[robot_state_publisher-2] 
+[robot_state_publisher-2] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[robot_state_publisher-2] This error state is being overwritten:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] with this new error message:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] rcutils_reset_error() should be called after error handling to avoid this.
+[robot_state_publisher-2] <<<
+[robot_state_publisher-2] 
+[robot_state_publisher-2] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[robot_state_publisher-2] This error state is being overwritten:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] with this new error message:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] rcutils_reset_error() should be called after error handling to avoid this.
+[robot_state_publisher-2] <<<
+[robot_state_publisher-2] 
+[robot_state_publisher-2] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[robot_state_publisher-2] This error state is being overwritten:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] with this new error message:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] rcutils_reset_error() should be called after error handling to avoid this.
+[robot_state_publisher-2] <<<
+[ros2_control_node-3] 
+[ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[ros2_control_node-3] This error state is being overwritten:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] with this new error message:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
+[ros2_control_node-3] <<<
+[ros2_control_node-3] 
+[ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[ros2_control_node-3] This error state is being overwritten:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] with this new error message:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
+[ros2_control_node-3] <<<
 [ros2_control_node-3] 
 [ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
 [ros2_control_node-3] This error state is being overwritten:
@@ -371,18 +228,738 @@
 [ros2_control_node-3] 
 [ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
 [ros2_control_node-3] <<<
-[ros2_control_node-3] 
-[ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[ros2_control_node-3] This error state is being overwritten:
-[ros2_control_node-3] 
-[ros2_control_node-3]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-[ros2_control_node-3] 
-[ros2_control_node-3] with this new error message:
-[ros2_control_node-3] 
-[ros2_control_node-3]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-[ros2_control_node-3] 
-[ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
-[ros2_control_node-3] <<<
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=35.0Hz (last read 25ms) -- this is the real ceiling on commands/sec reaching the arm
+[INFO] [bash-6]: process started with pid [9102]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=33.4Hz (last read 30ms) -- this is the real ceiling on commands/sec reaching the arm
+[bash-5] 1785135244.083203 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
+[bash-5] 1785135244.083392 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
+[ros2_control_node-3] [INFO] [1785135244.420869391] [controller_manager]: Loading controller 'arm_group_controller'
+[bash-5] [INFO] [1785135244.623774386] [spawner_arm_group_controller]: Loaded arm_group_controller
+[ros2_control_node-3] [INFO] [1785135244.632855326] [controller_manager]: Configuring controller 'arm_group_controller'
+[ros2_control_node-3] [INFO] [1785135244.633254160] [arm_group_controller]: Command interfaces are [position] and and state interfaces are [position velocity].
+[ros2_control_node-3] [INFO] [1785135244.639194179] [arm_group_controller]: Controller state will be published at 50.00 Hz.
+[ros2_control_node-3] [INFO] [1785135244.644534271] [arm_group_controller]: Action status changes will be monitored at 20.00 Hz.
+[bash-5] [INFO] [1785135244.723698977] [spawner_arm_group_controller]: Configured and started arm_group_controller
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=21.6Hz (last read 41ms) -- this is the real ceiling on commands/sec reaching the arm
+[INFO] [bash-5]: process has finished cleanly [pid 9064]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=33.0Hz (last read 24ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=37.9Hz (last read 31ms) -- this is the real ceiling on commands/sec reaching the arm
+[bash-4] 1785135247.457892 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
+[bash-4] 1785135247.458019 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
+[bash-6] 1785135247.555051 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
+[bash-6] 1785135247.561142 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
+[ros2_control_node-3] [INFO] [1785135247.805045943] [controller_manager]: Loading controller 'joint_state_broadcaster'
+[ros2_control_node-3] [INFO] [1785135247.924912655] [controller_manager]: Loading controller 'gripper_group_controller'
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=29.9Hz (last read 49ms) -- this is the real ceiling on commands/sec reaching the arm
+[bash-4] [INFO] [1785135248.004136205] [spawner_joint_state_broadcaster]: Loaded joint_state_broadcaster
+[ros2_control_node-3] [INFO] [1785135248.038436217] [controller_manager]: Configuring controller 'joint_state_broadcaster'
+[ros2_control_node-3] [INFO] [1785135248.039002786] [joint_state_broadcaster]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+[bash-4] [INFO] [1785135248.114340720] [spawner_joint_state_broadcaster]: Configured and started joint_state_broadcaster
+[bash-6] [INFO] [1785135248.120090963] [spawner_gripper_group_controller]: Loaded gripper_group_controller
+[ros2_control_node-3] [INFO] [1785135248.129180442] [controller_manager]: Configuring controller 'gripper_group_controller'
+[ros2_control_node-3] [INFO] [1785135248.129487999] [gripper_group_controller]: Command interfaces are [position] and and state interfaces are [position velocity].
+[ros2_control_node-3] [INFO] [1785135248.146033355] [gripper_group_controller]: Controller state will be published at 50.00 Hz.
+[ros2_control_node-3] [INFO] [1785135248.169627642] [gripper_group_controller]: Action status changes will be monitored at 20.00 Hz.
+[bash-6] [INFO] [1785135248.284314792] [spawner_gripper_group_controller]: Configured and started gripper_group_controller
+[INFO] [bash-4]: process has finished cleanly [pid 9037]
+[INFO] [bash-6]: process has finished cleanly [pid 9102]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=13.8Hz (last read 25ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=44.7Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.9Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.4Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.0Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.3Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.2Hz (last read 23ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.2Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=43.1Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=40.3Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=38.7Hz (last read 28ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=40.4Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.1Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.1Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.2Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.4Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.1Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.7Hz (last read 26ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.0Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.5Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.2Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.5Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.2Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.1Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.4Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.1Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.5Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.9Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.1Hz (last read 23ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.8Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.1Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.9Hz (last read 24ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.1Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.2Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.8Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=46.2Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135285.234751615] [arm_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135285.235002828] [arm_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=48393ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.78, -0.78, -0.78, -3.03, 0.69, -43.35]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.74, -0.74, -0.74, -2.87, 0.66, -43.43]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.65, -0.64, -0.64, -2.49, 0.58, -43.63]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.56, -0.54, -0.54, -2.12, 0.5, -43.83]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-0.43, -0.4, -0.4, -1.58, 0.38, -44.11]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.32, -0.28, -0.28, -1.14, 0.29, -44.34]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=116.9Hz (last read 26ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.2, -0.15, -0.15, -0.64, 0.18, -44.6]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.15, -0.09, -0.09, -0.41, 0.13, -44.72]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.06, 0.01, 0.02, -0.03, 0.05, -44.92]
+[ros2_control_node-3] [INFO] [1785135285.569128623] [arm_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=426.2Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 1/20: still short by arm 0.0360 rad (> 0.03), re-commanding at speed 50
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 2/20: still short by arm 0.0360 rad (> 0.03), re-commanding at speed 50
+[ros2_control_node-3] [INFO] [1785135287.243429320] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135287.243624116] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=1713ms send_angles=0ms gripper=4ms (sent) speed=25  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=148.7Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135287.749625616] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135287.749794925] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=524ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=11ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=5ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=0ms gripper=5ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=5ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=4ms gripper=4ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=123ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=158ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=9ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=0ms gripper=3ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=3ms gripper=118ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=278.0Hz (last read 34ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=124ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=6ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=1ms gripper=5ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[ros2_control_node-3] [INFO] [1785135288.761021002] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=166ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=197ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[-0.04, 0.03, 0.04, 0.04, 0.03, -44.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=353.6Hz (last read 23ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 1/20: still short by arm 0.0360 rad (> 0.03), re-commanding at speed 50
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 2/20: still short by arm 0.0360 rad (> 0.03), re-commanding at speed 50
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=128.8Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 3/20: still short by arm 0.0360 rad (> 0.03), re-commanding at speed 50
+[ros2_control_node-3] [INFO] [1785135290.984979332] [arm_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135290.985187723] [arm_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=2144ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-0.79, -0.79, -0.79, -2.02, 0.7, -44.12]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.68, -0.83, -0.82, -2.03, 0.7, -43.97]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-0.48, -0.91, -0.89, -2.05, 0.7, -43.69]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=4ms gripper=0ms (skipped) speed=25  target_deg=[-0.18, -1.03, -0.99, -2.08, 0.7, -43.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.34, -1.24, -1.15, -2.13, 0.69, -42.53]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.8, -1.42, -1.3, -2.18, 0.69, -41.87]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=26  target_deg=[1.53, -1.71, -1.53, -2.25, 0.68, -40.85]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=27  target_deg=[2.31, -2.02, -1.78, -2.33, 0.68, -39.75]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[2.95, -2.28, -1.99, -2.4, 0.67, -38.84]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=31  target_deg=[3.79, -2.61, -2.26, -2.48, 0.67, -37.66]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[4.25, -2.79, -2.41, -2.53, 0.67, -37.01]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=38  target_deg=[5.3, -3.21, -2.74, -2.63, 0.66, -35.53]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=30  target_deg=[6.13, -3.54, -3.01, -2.71, 0.65, -34.36]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[7.15, -3.95, -3.34, -2.82, 0.65, -32.91]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=8ms gripper=0ms (skipped) speed=47  target_deg=[8.5, -4.48, -3.77, -2.95, 0.64, -31.02]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=191.1Hz (last read 87ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=101ms send_angles=1ms gripper=0ms (skipped) speed=41  target_deg=[11.88, -5.82, -4.85, -3.29, 0.62, -26.25]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=4ms gripper=0ms (skipped) speed=42  target_deg=[13.08, -6.3, -5.24, -3.41, 0.61, -24.56]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[14.15, -6.72, -5.58, -3.52, 0.6, -23.05]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[15.47, -7.25, -6.0, -3.65, 0.59, -21.19]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[16.44, -7.64, -6.32, -3.75, 0.58, -19.81]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=45  target_deg=[17.74, -8.15, -6.73, -3.88, 0.58, -17.98]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=34  target_deg=[18.7, -8.53, -7.04, -3.98, 0.57, -16.62]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=4ms gripper=0ms (skipped) speed=34  target_deg=[19.7, -8.93, -7.36, -4.08, 0.56, -15.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[20.97, -9.44, -7.77, -4.2, 0.55, -13.42]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=39ms send_angles=1ms gripper=0ms (skipped) speed=44  target_deg=[22.36, -9.98, -8.21, -4.34, 0.54, -11.47]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=43  target_deg=[23.57, -10.47, -8.6, -4.47, 0.54, -9.75]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[24.59, -10.87, -8.93, -4.57, 0.53, -8.32]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=46  target_deg=[25.87, -11.38, -9.34, -4.7, 0.52, -6.51]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=36  target_deg=[26.87, -11.78, -9.66, -4.8, 0.51, -5.11]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=47ms send_angles=1ms gripper=0ms (skipped) speed=34  target_deg=[28.14, -12.28, -10.07, -4.92, 0.51, -3.31]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=105ms send_angles=0ms gripper=0ms (skipped) speed=42  target_deg=[31.7, -13.7, -11.21, -5.28, 0.48, 1.71]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[32.68, -14.09, -11.53, -5.38, 0.48, 3.1]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=46  target_deg=[33.97, -14.6, -11.94, -5.51, 0.47, 4.92]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=38  target_deg=[35.06, -15.03, -12.29, -5.62, 0.46, 6.45]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=43  target_deg=[36.24, -15.5, -12.67, -5.74, 0.45, 8.12]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=36  target_deg=[37.23, -15.9, -12.99, -5.84, 0.45, 9.52]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=45  target_deg=[38.52, -16.4, -13.4, -5.97, 0.44, 11.33]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[39.51, -16.8, -13.72, -6.07, 0.43, 12.73]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[40.8, -17.31, -14.13, -6.2, 0.42, 14.55]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[41.8, -17.71, -14.45, -6.3, 0.41, 15.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[43.06, -18.21, -14.86, -6.42, 0.41, 17.75]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=36  target_deg=[44.09, -18.62, -15.19, -6.53, 0.4, 19.19]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=339.1Hz (last read 102ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[45.35, -19.12, -15.59, -6.65, 0.39, 20.97]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=33  target_deg=[46.32, -19.5, -15.9, -6.75, 0.38, 22.33]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=48  target_deg=[47.65, -20.03, -16.33, -6.88, 0.38, 24.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=80ms send_angles=0ms gripper=0ms (skipped) speed=40  target_deg=[50.22, -21.05, -17.15, -7.14, 0.36, 27.84]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=3ms gripper=0ms (skipped) speed=41  target_deg=[51.42, -21.53, -17.54, -7.26, 0.35, 29.54]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=38  target_deg=[52.49, -21.96, -17.88, -7.37, 0.34, 31.05]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=3ms gripper=0ms (skipped) speed=36  target_deg=[53.53, -22.37, -18.21, -7.47, 0.34, 32.5]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=43  target_deg=[54.77, -22.86, -18.61, -7.6, 0.33, 34.25]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=3ms gripper=0ms (skipped) speed=35  target_deg=[55.77, -23.26, -18.93, -7.7, 0.32, 35.67]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=44  target_deg=[57.04, -23.76, -19.34, -7.83, 0.31, 37.46]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=3ms gripper=0ms (skipped) speed=36  target_deg=[58.04, -24.16, -19.66, -7.93, 0.31, 38.88]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[59.31, -24.66, -20.07, -8.05, 0.3, 40.66]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=3ms gripper=0ms (skipped) speed=37  target_deg=[60.33, -25.07, -20.39, -8.16, 0.29, 42.1]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[61.6, -25.58, -20.8, -8.28, 0.28, 43.9]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[62.65, -25.99, -21.14, -8.39, 0.27, 45.38]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=43  target_deg=[63.86, -26.47, -21.53, -8.51, 0.27, 47.09]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=3ms gripper=0ms (skipped) speed=37  target_deg=[64.88, -26.88, -21.86, -8.61, 0.26, 48.52]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=45  target_deg=[66.15, -27.38, -22.26, -8.74, 0.25, 50.31]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=49ms send_angles=1ms gripper=0ms (skipped) speed=33  target_deg=[67.48, -27.91, -22.69, -8.87, 0.24, 52.18]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[68.76, -28.42, -23.1, -9.0, 0.23, 54.0]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=37  target_deg=[69.79, -28.83, -23.43, -9.11, 0.23, 55.45]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=43  target_deg=[71.01, -29.31, -23.82, -9.23, 0.22, 57.17]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[72.08, -29.74, -24.16, -9.33, 0.21, 58.67]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=44  target_deg=[73.28, -30.21, -24.55, -9.46, 0.2, 60.37]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[74.32, -30.63, -24.88, -9.56, 0.2, 61.84]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=43  target_deg=[75.56, -31.12, -25.28, -9.68, 0.19, 63.58]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=46  target_deg=[76.86, -31.64, -25.7, -9.82, 0.18, 65.42]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=346.8Hz (last read 35ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=36  target_deg=[77.85, -32.03, -26.02, -9.91, 0.17, 66.82]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=35  target_deg=[78.83, -32.42, -26.33, -10.01, 0.17, 68.2]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=47  target_deg=[80.13, -32.94, -26.75, -10.14, 0.16, 70.04]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=35  target_deg=[81.08, -33.31, -27.05, -10.24, 0.15, 71.38]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[82.14, -33.74, -27.39, -10.35, 0.14, 72.87]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=43  target_deg=[83.36, -34.22, -27.78, -10.47, 0.14, 74.59]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=45ms send_angles=0ms gripper=0ms (skipped) speed=44  target_deg=[84.98, -34.86, -28.3, -10.63, 0.13, 76.88]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=35  target_deg=[85.98, -35.26, -28.62, -10.73, 0.12, 78.29]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[87.25, -35.77, -29.03, -10.86, 0.11, 80.09]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=37  target_deg=[88.28, -36.17, -29.36, -10.96, 0.1, 81.52]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=33ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[89.22, -36.55, -29.66, -11.06, 0.1, 82.86]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=35  target_deg=[90.18, -36.93, -29.97, -11.15, 0.09, 84.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=48  target_deg=[91.51, -37.46, -30.4, -11.29, 0.08, 86.09]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=33  target_deg=[92.47, -37.84, -30.71, -11.38, 0.08, 87.44]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=47  target_deg=[93.78, -38.36, -31.13, -11.51, 0.07, 89.29]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[94.87, -38.79, -31.48, -11.62, 0.06, 90.83]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=50  target_deg=[96.32, -39.37, -31.94, -11.77, 0.05, 92.87]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[97.61, -39.88, -32.36, -11.9, 0.04, 94.7]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=30  target_deg=[98.46, -40.22, -32.63, -11.98, 0.04, 95.89]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[99.14, -40.49, -32.84, -12.05, 0.03, 96.85]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=31  target_deg=[99.98, -40.82, -33.11, -12.14, 0.02, 98.03]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=149ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[103.0, -42.02, -34.08, -12.44, 0.0, 102.3]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=3ms gripper=0ms (skipped) speed=25  target_deg=[103.51, -42.22, -34.25, -12.49, 0.0, 103.02]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[104.04, -42.43, -34.42, -12.54, -0.0, 103.76]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.37, -42.56, -34.52, -12.58, -0.0, 104.22]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=321.6Hz (last read 131ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.64, -42.67, -34.61, -12.6, -0.01, 104.61]
+[ros2_control_node-3] [INFO] [1785135294.639207131] [arm_group_controller]: Goal reached, success!
+[ros2_control_node-3] [INFO] [1785135295.505473299] [arm_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135295.505647443] [arm_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=906ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[103.97, -43.68, -35.24, -13.62, -0.61, 103.79]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=441.8Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=102ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[103.98, -43.62, -35.53, -13.36, -0.6, 103.8]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[103.98, -43.59, -35.72, -13.2, -0.6, 103.8]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[103.99, -43.52, -36.08, -12.88, -0.59, 103.81]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[104.0, -43.45, -36.42, -12.58, -0.59, 103.82]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.01, -43.36, -36.89, -12.16, -0.58, 103.84]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.02, -43.26, -37.41, -11.71, -0.57, 103.85]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.03, -43.15, -37.99, -11.19, -0.56, 103.87]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[104.05, -43.04, -38.56, -10.69, -0.55, 103.88]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.07, -42.89, -39.37, -9.96, -0.53, 103.91]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.08, -42.78, -40.05, -9.35, -0.52, 103.93]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=39ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.11, -42.61, -41.09, -8.38, -0.5, 103.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.13, -42.5, -41.81, -7.71, -0.48, 103.98]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=148ms send_angles=1ms gripper=0ms (skipped) speed=27  target_deg=[104.26, -41.96, -46.41, -3.22, -0.37, 104.14]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[104.3, -41.87, -47.75, -1.84, -0.34, 104.19]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=32  target_deg=[104.34, -41.8, -48.94, -0.59, -0.31, 104.24]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=31  target_deg=[104.37, -41.77, -50.06, 0.62, -0.28, 104.29]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=27  target_deg=[104.41, -41.76, -51.0, 1.65, -0.26, 104.33]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[104.44, -41.76, -51.83, 2.58, -0.23, 104.36]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=31  target_deg=[104.48, -41.79, -52.9, 3.81, -0.2, 104.41]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[104.51, -41.82, -53.64, 4.68, -0.18, 104.45]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=27  target_deg=[104.54, -41.87, -54.55, 5.76, -0.15, 104.49]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.57, -41.94, -55.31, 6.69, -0.13, 104.53]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.6, -42.0, -55.91, 7.43, -0.11, 104.56]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.63, -42.08, -56.59, 8.28, -0.09, 104.6]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[104.65, -42.14, -57.03, 8.85, -0.07, 104.62]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=323.6Hz (last read 134ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.67, -42.22, -57.55, 9.53, -0.06, 104.65]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[104.68, -42.27, -57.87, 9.94, -0.04, 104.67]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=196ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[104.74, -42.48, -59.12, 11.59, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135296.878943026] [arm_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=362.8Hz (last read 24ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135297.874001910] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135297.874195594] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=1051ms send_angles=0ms gripper=122ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=125ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135298.178587805] [gripper_group_controller]: Goal reached, success!
+[ros2_control_node-3] [INFO] [1785135298.183220876] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135298.183446270] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=178ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=65ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=69ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=53ms send_angles=0ms gripper=5ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135298.501171162] [gripper_group_controller]: Goal reached, success!
+[ros2_control_node-3] [INFO] [1785135298.501305131] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135298.504632421] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=6ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=272.5Hz (last read 28ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=8ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=66ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135298.821748161] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=74ms send_angles=1ms gripper=104ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=113ms send_angles=1ms gripper=5ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135298.964978357] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135298.965391045] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=95ms send_angles=1ms gripper=163ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=168ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=5ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135299.278581310] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=229ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=233ms send_angles=0ms gripper=129ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=78.3Hz (last read 126ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135299.735875954] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135299.736261044] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=296ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=5ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=4ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=4ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=5ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135300.040698356] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135300.041048440] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=5ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=2ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=6ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135300.352514846] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=172ms send_angles=0ms gripper=6ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135300.384663492] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135300.385098574] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=164ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=167ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=6ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135300.700344946] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=228.8Hz (last read 162ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=38ms send_angles=1ms gripper=9ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135300.915360633] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135300.915835277] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=180ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=159ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135301.223648758] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135301.224170856] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=163ms send_angles=0ms gripper=108ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=113ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=163ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135301.540326991] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=295ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=162.9Hz (last read 132ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135302.105370486] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135302.105645000] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=545ms send_angles=1ms gripper=122ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=125ms send_angles=0ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=65ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135302.411432972] [gripper_group_controller]: Goal reached, success!
+[ros2_control_node-3] [INFO] [1785135302.414014067] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135302.414352537] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=70ms send_angles=2ms gripper=10ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=7ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=27ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135302.730367276] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=245.6Hz (last read 186ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135302.795221803] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135302.795500133] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=196ms send_angles=2ms gripper=65ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=70ms send_angles=2ms gripper=5ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=118ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=122ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135303.113705466] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=68ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=72ms send_angles=2ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135303.324522663] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135303.324816811] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=152ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=119ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=122ms send_angles=0ms gripper=5ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=5ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135303.630725010] [gripper_group_controller]: Goal reached, success!
+[ros2_control_node-3] [INFO] [1785135303.636871438] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135303.637221762] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=127ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=131ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=6ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=168.8Hz (last read 31ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=0ms gripper=121ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135303.943382730] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=147ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135304.483468239] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135304.483669647] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=516ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=117ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=120ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=6ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=3ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=312.6Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135304.791604318] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=44ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[104.74, -42.49, -59.16, 11.64, -0.0, 104.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=443.2Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=50.0Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.4Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.4Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=45.2Hz (last read 23ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135310.315276262] [arm_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135310.315468076] [arm_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=5529ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[103.97, -43.94, -59.67, 10.1, -0.43, 103.97]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=98ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[103.98, -43.83, -59.43, 9.81, -0.42, 103.98]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[103.99, -43.76, -59.27, 9.61, -0.42, 103.99]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.0, -43.67, -59.06, 9.36, -0.41, 104.0]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.02, -43.52, -58.72, 8.95, -0.4, 104.02]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=39ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.04, -43.34, -58.28, 8.42, -0.39, 104.04]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.06, -43.15, -57.79, 7.85, -0.37, 104.06]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.08, -42.98, -57.33, 7.32, -0.36, 104.08]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.11, -42.83, -56.86, 6.79, -0.35, 104.1]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[104.14, -42.59, -56.1, 5.95, -0.33, 104.14]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.16, -42.43, -55.5, 5.3, -0.31, 104.16]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=38ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.2, -42.21, -54.57, 4.32, -0.29, 104.2]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.24, -42.03, -53.63, 3.36, -0.27, 104.23]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=206.5Hz (last read 39ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=53ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[104.29, -41.81, -52.26, 2.0, -0.24, 104.28]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=4ms gripper=0ms (skipped) speed=25  target_deg=[104.32, -41.69, -51.33, 1.1, -0.22, 104.32]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=30  target_deg=[104.36, -41.58, -50.11, -0.04, -0.2, 104.36]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=1ms gripper=0ms (skipped) speed=34  target_deg=[104.41, -41.5, -48.66, -1.37, -0.18, 104.4]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=26  target_deg=[104.44, -41.47, -47.66, -2.26, -0.16, 104.43]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=36  target_deg=[104.48, -41.47, -46.19, -3.53, -0.14, 104.47]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=27  target_deg=[104.51, -41.5, -45.16, -4.42, -0.12, 104.5]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[104.53, -41.54, -44.15, -5.25, -0.11, 104.53]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=32  target_deg=[104.57, -41.63, -42.88, -6.3, -0.09, 104.56]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=29  target_deg=[104.59, -41.72, -41.72, -7.24, -0.08, 104.59]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.61, -41.81, -40.86, -7.91, -0.07, 104.61]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.64, -41.93, -39.87, -8.69, -0.05, 104.63]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.65, -42.02, -39.12, -9.27, -0.05, 104.65]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.67, -42.11, -38.51, -9.73, -0.04, 104.66]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[104.68, -42.2, -37.9, -10.2, -0.03, 104.68]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=162ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[104.73, -42.59, -35.47, -12.01, -0.01, 104.73]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=4ms gripper=0ms (skipped) speed=25  target_deg=[104.73, -42.64, -35.2, -12.21, -0.01, 104.73]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[104.74, -42.68, -34.95, -12.4, -0.0, 104.74]
+[ros2_control_node-3] [INFO] [1785135311.679969402] [arm_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=332.5Hz (last read 151ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=324.9Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135313.643273541] [arm_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135313.643497675] [arm_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=2070ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[103.97, -44.03, -36.29, -13.35, -0.61, 103.97]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[103.82, -44.03, -36.28, -13.36, -0.61, 103.82]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[103.53, -44.03, -36.26, -13.37, -0.61, 103.53]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[103.07, -44.04, -36.22, -13.39, -0.61, 103.07]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[102.37, -44.05, -36.17, -13.42, -0.6, 102.37]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=3ms gripper=0ms (skipped) speed=25  target_deg=[101.68, -44.05, -36.11, -13.45, -0.6, 101.68]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=26  target_deg=[100.66, -44.06, -36.04, -13.5, -0.6, 100.66]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=120.9Hz (last read 23ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=3ms gripper=0ms (skipped) speed=25  target_deg=[99.8, -44.07, -35.97, -13.54, -0.6, 99.8]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=30  target_deg=[98.56, -44.09, -35.88, -13.6, -0.59, 98.56]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[97.68, -44.1, -35.81, -13.64, -0.59, 97.68]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=33  target_deg=[96.42, -44.11, -35.71, -13.69, -0.58, 96.42]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[95.44, -44.12, -35.64, -13.74, -0.58, 95.44]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=33  target_deg=[94.17, -44.13, -35.54, -13.8, -0.58, 94.17]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=33  target_deg=[92.86, -44.15, -35.44, -13.86, -0.57, 92.86]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=46  target_deg=[91.07, -44.16, -35.3, -13.94, -0.57, 91.06]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=47ms send_angles=0ms gripper=0ms (skipped) speed=37  target_deg=[89.05, -44.19, -35.15, -14.03, -0.56, 89.05]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=41  target_deg=[87.49, -44.2, -35.03, -14.1, -0.55, 87.49]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[85.64, -44.22, -34.88, -14.19, -0.55, 85.64]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=38ms send_angles=3ms gripper=0ms (skipped) speed=44  target_deg=[83.72, -44.24, -34.74, -14.27, -0.54, 83.72]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=32  target_deg=[82.44, -44.25, -34.64, -14.33, -0.54, 82.43]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=3ms gripper=0ms (skipped) speed=46  target_deg=[80.47, -44.27, -34.49, -14.42, -0.53, 80.47]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=43  target_deg=[78.75, -44.29, -34.35, -14.5, -0.53, 78.75]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[77.34, -44.31, -34.25, -14.57, -0.52, 77.34]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=46  target_deg=[75.56, -44.33, -34.11, -14.65, -0.51, 75.55]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[74.13, -44.34, -34.0, -14.71, -0.51, 74.13]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=44  target_deg=[72.34, -44.36, -33.86, -14.79, -0.5, 72.34]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[70.9, -44.37, -33.75, -14.86, -0.5, 70.9]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=43  target_deg=[69.14, -44.39, -33.62, -14.94, -0.49, 69.14]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[67.7, -44.41, -33.51, -15.01, -0.49, 67.7]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=47  target_deg=[65.9, -44.43, -33.37, -15.09, -0.48, 65.89]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=151ms send_angles=0ms gripper=0ms (skipped) speed=40  target_deg=[59.02, -44.5, -32.84, -15.4, -0.46, 59.02]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=35  target_deg=[57.62, -44.51, -32.73, -15.47, -0.45, 57.61]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=312.4Hz (last read 144ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=47  target_deg=[55.81, -44.53, -32.6, -15.55, -0.45, 55.81]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=35  target_deg=[54.47, -44.54, -32.49, -15.61, -0.44, 54.47]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=38  target_deg=[52.97, -44.56, -32.38, -15.68, -0.44, 52.97]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=44  target_deg=[51.26, -44.58, -32.25, -15.76, -0.43, 51.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=39ms send_angles=4ms gripper=0ms (skipped) speed=34  target_deg=[49.78, -44.59, -32.13, -15.82, -0.43, 49.77]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[48.05, -44.61, -32.0, -15.9, -0.42, 48.05]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[46.65, -44.63, -31.89, -15.97, -0.42, 46.64]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[44.84, -44.64, -31.75, -16.05, -0.41, 44.84]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=3ms gripper=0ms (skipped) speed=38  target_deg=[43.35, -44.66, -31.64, -16.12, -0.41, 43.35]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[41.61, -44.68, -31.51, -16.2, -0.4, 41.61]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=33  target_deg=[40.27, -44.69, -31.4, -16.26, -0.4, 40.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=48  target_deg=[38.36, -44.71, -31.26, -16.34, -0.39, 38.35]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=0ms (skipped) speed=32  target_deg=[37.06, -44.73, -31.16, -16.4, -0.39, 37.05]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=98ms send_angles=0ms gripper=0ms (skipped) speed=42  target_deg=[32.4, -44.77, -30.8, -16.62, -0.37, 32.39]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[30.6, -44.79, -30.66, -16.7, -0.36, 30.59]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=33  target_deg=[29.27, -44.81, -30.56, -16.76, -0.36, 29.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=35  target_deg=[27.88, -44.82, -30.45, -16.82, -0.35, 27.87]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=46  target_deg=[26.05, -44.84, -30.31, -16.91, -0.35, 26.04]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=4ms gripper=0ms (skipped) speed=34  target_deg=[24.65, -44.85, -30.2, -16.97, -0.34, 24.64]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[22.84, -44.87, -30.07, -17.05, -0.34, 22.83]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=48  target_deg=[20.91, -44.89, -29.92, -17.14, -0.33, 20.9]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=31  target_deg=[19.64, -44.91, -29.82, -17.2, -0.33, 19.64]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[17.69, -44.93, -29.67, -17.29, -0.32, 17.69]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=0ms gripper=0ms (skipped) speed=43  target_deg=[15.93, -44.94, -29.54, -17.37, -0.31, 15.92]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[14.54, -44.96, -29.43, -17.43, -0.31, 14.53]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[12.76, -44.98, -29.29, -17.51, -0.3, 12.75]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[11.35, -44.99, -29.18, -17.58, -0.3, 11.34]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=354.0Hz (last read 85ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=33  target_deg=[9.99, -45.01, -29.08, -17.64, -0.29, 9.98]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=187ms send_angles=0ms gripper=0ms (skipped) speed=41  target_deg=[1.31, -45.1, -28.41, -18.03, -0.27, 1.3]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=46  target_deg=[-0.53, -45.12, -28.27, -18.12, -0.26, -0.54]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[-1.95, -45.13, -28.16, -18.18, -0.25, -1.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=34  target_deg=[-3.27, -45.14, -28.06, -18.24, -0.25, -3.28]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[-5.13, -45.16, -27.92, -18.33, -0.24, -5.13]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[-6.96, -45.18, -27.78, -18.41, -0.24, -6.97]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=2ms gripper=0ms (skipped) speed=35  target_deg=[-8.42, -45.2, -27.67, -18.48, -0.23, -8.43]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[-10.2, -45.22, -27.53, -18.56, -0.23, -10.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=35  target_deg=[-11.58, -45.23, -27.42, -18.62, -0.22, -11.59]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[-13.36, -45.25, -27.29, -18.7, -0.22, -13.37]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[-14.77, -45.26, -27.18, -18.77, -0.21, -14.78]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=1ms gripper=0ms (skipped) speed=44  target_deg=[-16.6, -45.28, -27.04, -18.85, -0.21, -16.61]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=35  target_deg=[-18.01, -45.3, -26.93, -18.92, -0.2, -18.02]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=46  target_deg=[-19.79, -45.32, -26.79, -19.0, -0.2, -19.8]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=37  target_deg=[-21.2, -45.33, -26.69, -19.06, -0.19, -21.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=145ms send_angles=0ms gripper=0ms (skipped) speed=41  target_deg=[-28.03, -45.4, -26.16, -19.37, -0.17, -28.04]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[-29.46, -45.42, -26.05, -19.44, -0.16, -29.47]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=4ms gripper=0ms (skipped) speed=34  target_deg=[-30.78, -45.43, -25.95, -19.5, -0.16, -30.79]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=48  target_deg=[-32.63, -45.45, -25.81, -19.58, -0.15, -32.64]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=34  target_deg=[-33.99, -45.46, -25.7, -19.65, -0.15, -34.0]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=259.1Hz (last read 133ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=48  target_deg=[-35.87, -45.48, -25.56, -19.73, -0.14, -35.88]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=34  target_deg=[-37.2, -45.5, -25.46, -19.79, -0.14, -37.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=48  target_deg=[-39.11, -45.52, -25.31, -19.88, -0.13, -39.12]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=4ms gripper=0ms (skipped) speed=32  target_deg=[-40.44, -45.53, -25.21, -19.94, -0.13, -40.45]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[-42.24, -45.55, -25.07, -20.02, -0.12, -42.25]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[-43.68, -45.56, -24.96, -20.09, -0.12, -43.69]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=45  target_deg=[-45.45, -45.58, -24.83, -20.17, -0.11, -45.47]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=39  target_deg=[-46.97, -45.6, -24.71, -20.24, -0.1, -46.98]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=42  target_deg=[-48.65, -45.62, -24.58, -20.31, -0.1, -48.67]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=3ms gripper=0ms (skipped) speed=35  target_deg=[-50.06, -45.63, -24.47, -20.38, -0.09, -50.07]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=42ms send_angles=0ms gripper=0ms (skipped) speed=47  target_deg=[-52.31, -45.65, -24.3, -20.48, -0.09, -52.33]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=28  target_deg=[-53.39, -45.67, -24.22, -20.53, -0.08, -53.41]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=42  target_deg=[-55.08, -45.68, -24.09, -20.61, -0.08, -55.09]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[-56.92, -45.7, -23.95, -20.69, -0.07, -56.93]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=41ms send_angles=1ms gripper=0ms (skipped) speed=42  target_deg=[-58.84, -45.72, -23.8, -20.78, -0.06, -58.86]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=38  target_deg=[-60.34, -45.74, -23.68, -20.85, -0.06, -60.35]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=50  target_deg=[-62.37, -45.76, -23.53, -20.94, -0.05, -62.39]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=35  target_deg=[-63.81, -45.77, -23.42, -21.01, -0.05, -63.82]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=43  target_deg=[-65.47, -45.79, -23.29, -21.08, -0.04, -65.49]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-66.46, -45.8, -23.21, -21.13, -0.04, -66.48]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=0ms (skipped) speed=30  target_deg=[-67.69, -45.81, -23.12, -21.18, -0.03, -67.71]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-68.62, -45.82, -23.05, -21.23, -0.03, -68.64]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=31  target_deg=[-69.9, -45.84, -22.95, -21.28, -0.03, -69.92]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-70.77, -45.85, -22.88, -21.32, -0.02, -70.79]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=29  target_deg=[-71.93, -45.86, -22.79, -21.38, -0.02, -71.95]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=96ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-74.19, -45.88, -22.62, -21.48, -0.01, -74.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.69, -45.89, -22.58, -21.5, -0.01, -74.7]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=323.8Hz (last read 87ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-75.07, -45.89, -22.55, -21.52, -0.01, -75.08]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.2, -45.89, -22.54, -21.53, -0.01, -75.22]
+[ros2_control_node-3] [INFO] [1785135317.961120691] [arm_group_controller]: Goal reached, success!
+[ros2_control_node-3] [INFO] [1785135318.894305013] [arm_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135318.894506940] [arm_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=438.6Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=945ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-74.53, -46.4, -24.34, -22.58, 0.79, -74.44]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=111ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.54, -46.3, -24.69, -22.3, 0.78, -74.45]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.54, -46.23, -24.9, -22.13, 0.78, -74.45]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-74.55, -46.16, -25.17, -21.92, 0.77, -74.46]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.56, -46.03, -25.61, -21.57, 0.76, -74.47]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=3ms gripper=0ms (skipped) speed=25  target_deg=[-74.56, -45.91, -26.0, -21.26, 0.75, -74.48]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.58, -45.73, -26.59, -20.78, 0.74, -74.49]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.59, -45.58, -27.13, -20.36, 0.73, -74.5]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.6, -45.36, -27.86, -19.77, 0.71, -74.52]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-74.61, -45.17, -28.49, -19.27, 0.69, -74.53]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-74.63, -44.91, -29.39, -18.55, 0.67, -74.55]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.65, -44.69, -30.17, -17.92, 0.65, -74.57]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=27  target_deg=[-74.67, -44.4, -31.22, -17.05, 0.63, -74.6]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=160ms send_angles=1ms gripper=0ms (skipped) speed=26  target_deg=[-74.79, -43.19, -36.04, -12.88, 0.49, -74.73]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[-74.83, -42.88, -37.47, -11.58, 0.45, -74.78]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=3ms gripper=0ms (skipped) speed=27  target_deg=[-74.87, -42.65, -38.57, -10.56, 0.41, -74.81]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=34  target_deg=[-74.91, -42.39, -39.92, -9.29, 0.37, -74.86]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.94, -42.21, -40.89, -8.36, 0.33, -74.89]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=30  target_deg=[-74.98, -42.0, -42.08, -7.19, 0.29, -74.94]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.01, -41.87, -42.95, -6.33, 0.26, -74.97]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=26  target_deg=[-75.04, -41.71, -43.97, -5.29, 0.22, -75.01]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.07, -41.61, -44.7, -4.55, 0.2, -75.04]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.1, -41.5, -45.57, -3.64, 0.16, -75.08]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=340.0Hz (last read 154ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=46ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-75.13, -41.41, -46.39, -2.77, 0.13, -75.11]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.16, -41.34, -47.07, -2.05, 0.1, -75.14]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.18, -41.29, -47.55, -1.53, 0.08, -75.16]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-75.2, -41.25, -48.07, -0.95, 0.06, -75.19]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.21, -41.21, -48.45, -0.54, 0.05, -75.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=78ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-75.24, -41.15, -49.13, 0.21, 0.02, -75.24]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-75.25, -41.14, -49.31, 0.4, 0.01, -75.25]
+[ros2_control_node-3] [INFO] [1785135320.249054421] [arm_group_controller]: Goal reached, success!
+[ros2_control_node-3] [INFO] [1785135320.746994820] [gripper_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135320.747163277] [gripper_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=594ms send_angles=0ms gripper=3ms (sent) speed=25  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=7ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=42ms send_angles=2ms gripper=4ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=9ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=370.3Hz (last read 22ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=3ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=3ms gripper=125ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=131ms send_angles=1ms gripper=7ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=3ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=86ms send_angles=0ms gripper=6ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=2ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=12ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=119ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=123ms send_angles=1ms gripper=4ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=4ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=8ms gripper=3ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=127ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=131ms send_angles=0ms gripper=5ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[ros2_control_node-3] [INFO] [1785135321.750969354] [gripper_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=123ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=153ms send_angles=0ms gripper=3ms (sent) speed=50  target_deg=[-75.26, -41.11, -49.56, 0.68, -0.0, -75.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=123.9Hz (last read 29ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 1/20: still short by arm 0.0416 rad (> 0.03), re-commanding at speed 50
+[ros2_control_node-3] [INFO] [1785135322.903094468] [arm_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135322.903284856] [arm_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=385.3Hz (last read 23ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=1058ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-74.53, -43.5, -49.92, -1.31, 0.61, -74.53]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=100ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.55, -43.43, -49.57, -1.63, 0.6, -74.54]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-74.55, -43.38, -49.35, -1.83, 0.59, -74.55]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-74.57, -43.33, -49.09, -2.08, 0.58, -74.57]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.59, -43.24, -48.65, -2.47, 0.56, -74.58]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=3ms gripper=0ms (skipped) speed=25  target_deg=[-74.6, -43.16, -48.26, -2.84, 0.54, -74.6]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.63, -43.06, -47.65, -3.38, 0.52, -74.62]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.65, -42.97, -46.99, -3.96, 0.5, -74.65]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=37ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.68, -42.89, -46.34, -4.53, 0.47, -74.67]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-74.7, -42.83, -45.74, -5.03, 0.45, -74.7]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.73, -42.76, -44.81, -5.81, 0.42, -74.73]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.77, -42.71, -43.82, -6.63, 0.39, -74.76]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.8, -42.69, -43.03, -7.27, 0.37, -74.79]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=85ms send_angles=1ms gripper=0ms (skipped) speed=28  target_deg=[-74.88, -42.74, -40.25, -9.43, 0.3, -74.88]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=26  target_deg=[-74.91, -42.79, -39.26, -10.19, 0.27, -74.91]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=28  target_deg=[-74.94, -42.87, -38.14, -11.02, 0.25, -74.94]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[-74.98, -43.02, -36.67, -12.09, 0.22, -74.97]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=32  target_deg=[-75.01, -43.17, -35.42, -12.99, 0.19, -75.01]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=35  target_deg=[-75.05, -43.37, -34.0, -13.99, 0.16, -75.04]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=26  target_deg=[-75.07, -43.55, -32.92, -14.74, 0.14, -75.07]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=33  target_deg=[-75.1, -43.78, -31.62, -15.63, 0.12, -75.09]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=7ms gripper=0ms (skipped) speed=25  target_deg=[-75.12, -43.97, -30.62, -16.3, 0.11, -75.11]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=28  target_deg=[-75.14, -44.2, -29.5, -17.05, 0.09, -75.14]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.16, -44.39, -28.62, -17.64, 0.08, -75.15]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-75.17, -44.61, -27.67, -18.26, 0.06, -75.17]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=4ms gripper=0ms (skipped) speed=25  target_deg=[-75.19, -44.81, -26.8, -18.82, 0.05, -75.19]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=350.8Hz (last read 69ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-75.2, -44.98, -26.12, -19.26, 0.04, -75.2]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.21, -45.14, -25.51, -19.65, 0.03, -75.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=85ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-75.23, -45.5, -24.12, -20.54, 0.02, -75.23]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=7ms gripper=0ms (skipped) speed=25  target_deg=[-75.24, -45.6, -23.74, -20.78, 0.01, -75.24]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-75.24, -45.7, -23.34, -21.04, 0.01, -75.24]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-75.25, -45.77, -23.07, -21.21, 0.01, -75.25]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-75.25, -45.83, -22.83, -21.36, 0.0, -75.25]
+[ros2_control_node-3] [INFO] [1785135324.290151441] [arm_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=401.9Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=147.9Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] [INFO] [1785135326.113247079] [arm_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135326.114907964] [arm_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=1935ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-74.52, -46.57, -24.25, -22.41, 0.7, -74.53]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=33ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-74.3, -46.44, -24.18, -22.34, 0.7, -74.44]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-73.99, -46.24, -24.07, -22.25, 0.69, -74.31]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-73.36, -45.85, -23.87, -22.06, 0.69, -74.07]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-72.76, -45.48, -23.68, -21.88, 0.68, -73.83]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-72.06, -45.04, -23.45, -21.67, 0.68, -73.55]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=26  target_deg=[-71.0, -44.37, -23.1, -21.35, 0.67, -73.13]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=26  target_deg=[-69.97, -43.73, -22.77, -21.04, 0.66, -72.73]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-69.11, -43.19, -22.49, -20.78, 0.65, -72.38]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=29  target_deg=[-67.95, -42.47, -22.11, -20.43, 0.64, -71.93]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-67.06, -41.91, -21.82, -20.16, 0.63, -71.57]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-66.09, -41.31, -21.51, -19.87, 0.62, -71.19]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=47  target_deg=[-64.27, -40.17, -20.92, -19.32, 0.6, -70.47]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=48  target_deg=[-62.35, -38.97, -20.29, -18.74, 0.59, -69.71]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=38  target_deg=[-60.81, -38.0, -19.79, -18.27, 0.57, -69.1]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=43ms send_angles=1ms gripper=0ms (skipped) speed=39  target_deg=[-58.88, -36.8, -19.16, -17.69, 0.55, -68.33]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=43  target_deg=[-57.12, -35.7, -18.59, -17.16, 0.54, -67.64]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=4ms gripper=0ms (skipped) speed=35  target_deg=[-55.7, -34.81, -18.13, -16.73, 0.52, -67.08]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=47  target_deg=[-53.84, -33.65, -17.52, -16.17, 0.51, -66.34]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=34  target_deg=[-52.52, -32.82, -17.09, -15.77, 0.49, -65.82]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=46  target_deg=[-50.7, -31.69, -16.5, -15.23, 0.48, -65.1]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=40  target_deg=[-49.16, -30.73, -16.0, -14.76, 0.46, -64.49]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=42  target_deg=[-47.5, -29.69, -15.46, -14.26, 0.45, -63.83]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=303.9Hz (last read 29ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=35  target_deg=[-46.05, -28.78, -14.99, -13.82, 0.43, -63.26]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=45  target_deg=[-44.29, -27.68, -14.42, -13.29, 0.42, -62.56]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=2ms gripper=0ms (skipped) speed=36  target_deg=[-42.81, -26.75, -13.94, -12.85, 0.4, -61.97]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=3ms gripper=0ms (skipped) speed=33  target_deg=[-41.54, -25.96, -13.52, -12.46, 0.39, -61.47]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=47  target_deg=[-39.63, -24.77, -12.9, -11.89, 0.37, -60.71]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=3ms gripper=0ms (skipped) speed=33  target_deg=[-38.33, -23.95, -12.48, -11.49, 0.36, -60.2]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=48  target_deg=[-36.47, -22.79, -11.88, -10.93, 0.34, -59.46]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=43ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[-34.63, -21.64, -11.28, -10.38, 0.33, -58.73]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=45  target_deg=[-32.83, -20.52, -10.69, -9.84, 0.31, -58.02]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=36  target_deg=[-31.41, -19.63, -10.23, -9.41, 0.3, -57.46]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[-29.62, -18.51, -9.65, -8.87, 0.28, -56.75]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[-28.17, -17.6, -9.18, -8.43, 0.27, -56.17]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=45  target_deg=[-26.41, -16.5, -8.6, -7.9, 0.25, -55.48]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=37  target_deg=[-24.95, -15.59, -8.13, -7.46, 0.23, -54.9]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=44  target_deg=[-23.2, -14.5, -7.56, -6.93, 0.22, -54.21]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[-21.78, -13.61, -7.1, -6.5, 0.21, -53.64]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=45  target_deg=[-19.99, -12.49, -6.52, -5.97, 0.19, -52.94]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[-18.53, -11.58, -6.04, -5.53, 0.17, -52.36]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=46  target_deg=[-16.78, -10.48, -5.47, -5.0, 0.16, -51.66]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=36  target_deg=[-15.36, -9.6, -5.01, -4.57, 0.14, -51.1]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=33ms send_angles=1ms gripper=0ms (skipped) speed=36  target_deg=[-13.97, -8.73, -4.56, -4.15, 0.13, -50.55]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=50  target_deg=[-11.94, -7.46, -3.9, -3.54, 0.11, -49.75]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=45ms send_angles=1ms gripper=0ms (skipped) speed=39  target_deg=[-9.94, -6.21, -3.25, -2.94, 0.09, -48.96]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=42  target_deg=[-8.27, -5.17, -2.71, -2.43, 0.08, -48.3]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-7.34, -4.58, -2.41, -2.15, 0.07, -47.93]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=30  target_deg=[-6.16, -3.85, -2.02, -1.8, 0.06, -47.46]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-5.31, -3.32, -1.75, -1.54, 0.05, -47.12]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=29  target_deg=[-4.17, -2.61, -1.38, -1.2, 0.04, -46.67]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-3.37, -2.1, -1.11, -0.95, 0.03, -46.36]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=361.9Hz (last read 27ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=43ms send_angles=5ms gripper=0ms (skipped) speed=25  target_deg=[-2.32, -1.45, -0.77, -0.64, 0.02, -45.94]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-1.5, -0.93, -0.51, -0.39, 0.01, -45.62]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.93, -0.58, -0.32, -0.22, 0.01, -45.39]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-0.41, -0.26, -0.15, -0.06, 0.0, -45.19]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-0.15, -0.09, -0.07, 0.01, 0.0, -45.08]
+[ros2_control_node-3] [INFO] [1785135328.149386091] [arm_group_controller]: Goal reached, success!
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.04, -0.03, -0.03, 0.05, 0.0, -45.04]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=421.2Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 1/20: still short by arm 0.0314 rad (> 0.03), re-commanding at speed 50
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 2/20: still short by arm 0.0314 rad (> 0.03), re-commanding at speed 50
+[ros2_control_node-3] [INFO] [1785135329.780287350] [arm_group_controller]: Received new action goal
+[ros2_control_node-3] [INFO] [1785135329.780569255] [arm_group_controller]: Accepted new action goal
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=1644ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-1.05, -0.7, -0.96, -1.75, 0.7, -44.29]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=45ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.93, -0.63, -0.86, -1.56, 0.63, -44.36]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=0ms gripper=0ms (skipped) speed=25  target_deg=[-0.77, -0.53, -0.72, -1.32, 0.53, -44.46]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=34ms send_angles=2ms gripper=0ms (skipped) speed=25  target_deg=[-0.57, -0.41, -0.55, -1.01, 0.41, -44.58]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=159.9Hz (last read 140ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[-0.31, -0.24, -0.32, -0.6, 0.25, -44.74]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=36ms send_angles=7ms gripper=0ms (skipped) speed=25  target_deg=[-0.13, -0.13, -0.17, -0.33, 0.15, -44.85]
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING dt=35ms send_angles=1ms gripper=0ms (skipped) speed=25  target_deg=[0.03, -0.04, -0.03, -0.09, 0.05, -44.95]
 [robot_state_publisher-2] 
 [robot_state_publisher-2] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
 [robot_state_publisher-2] This error state is being overwritten:
@@ -395,12 +972,71 @@
 [robot_state_publisher-2] 
 [robot_state_publisher-2] rcutils_reset_error() should be called after error handling to avoid this.
 [robot_state_publisher-2] <<<
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 1/20: still short by arm 0.0331 rad (> 0.03), re-commanding at speed 50
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=384.4Hz (last read 119ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 2/20: still short by arm 0.0331 rad (> 0.03), re-commanding at speed 50
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 3/20: still short by arm 0.0331 rad (> 0.03), re-commanding at speed 50
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=80.6Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 4/20: still short by arm 0.0331 rad (> 0.03), re-commanding at speed 50
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle giving up: 0.0331 rad error stopped improving over 3 attempts -- most likely servo deadband or a physically blocked joint, not a lost command
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=90.2Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=94.4Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
+[ros2_control_node-3] 
+[ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[ros2_control_node-3] This error state is being overwritten:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] with this new error message:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
+[ros2_control_node-3] <<<
+[ros2_control_node-3] [INFO] [1785135330.039778972] [arm_group_controller]: Goal reached, success!
+[ros2_control_node-3] 
+[ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[ros2_control_node-3] This error state is being overwritten:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] with this new error message:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
+[ros2_control_node-3] <<<
+[robot_state_publisher-2] 
+[robot_state_publisher-2] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[robot_state_publisher-2] This error state is being overwritten:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] with this new error message:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] rcutils_reset_error() should be called after error handling to avoid this.
+[robot_state_publisher-2] <<<
+[robot_state_publisher-2] 
+[robot_state_publisher-2] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[robot_state_publisher-2] This error state is being overwritten:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] with this new error message:
+[robot_state_publisher-2] 
+[robot_state_publisher-2]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[robot_state_publisher-2] 
+[robot_state_publisher-2] rcutils_reset_error() should be called after error handling to avoid this.
+[robot_state_publisher-2] <<<
+[ros2_control_node-3] 
+[ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[ros2_control_node-3] This error state is being overwritten:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] with this new error message:
+[ros2_control_node-3] 
+[ros2_control_node-3]   'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+[ros2_control_node-3] 
+[ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
+[ros2_control_node-3] <<<
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=429.9Hz (last read 24ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 1/20: still short by arm 0.0360 rad (> 0.03), re-commanding at speed 50
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 2/20: still short by arm 0.0360 rad (> 0.03), re-commanding at speed 50
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=51.7Hz (last read 23ms) -- this is the real ceiling on commands/sec reaching the arm
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 3/20: still short by arm 0.0360 rad (> 0.03), re-commanding at speed 50
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle re-send 4/20: still short by arm 0.0360 rad (> 0.03), re-commanding at speed 50
+[mycobot_bridge.py-1] [mycobot_bridge] TIMING settle giving up: 0.0360 rad error stopped improving over 3 attempts -- most likely servo deadband or a physically blocked joint, not a lost command

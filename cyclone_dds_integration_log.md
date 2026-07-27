@@ -1401,3 +1401,119 @@ deterministic, no constraint sampling. Every Cartesian segment `fraction=1.00`.
 4. `_FALLBACK_MAX_JOINT_SPEED` is still 0.5 rad/s against joint_limits.yaml's
    1.0. Now that the command path is no longer starved, raising it is worth a
    careful hardware test.
+
+## Session 5 (2026-07-27/28): four requested fixes, three self-inflicted regressions
+
+Requested: restore feedback during motion, unstream the gripper, watchdog the
+`/joint_states` reader, raise the speed limit. All four landed, but three of
+them regressed first and the regressions are the useful part of this entry.
+
+Commits: `8c62212` `9a68d7e` `f69182e` `4d8e187` `8247ea8`.
+
+### 5a. The half-duplex tradeoff (the real finding)
+
+`motion_read_interval` was cut 1.5s -> 0.05s on the grounds that
+`DEFAULT_READ_TIMEOUT_SEC` had made reads cheap (10-25ms measured). **Sized
+from the median and ignored the failure rate**, which was the wrong statistic.
+Reads still fail during motion -- the firmware defers its reply while driving
+-- and each failure blocks writes for 100ms (one timeout) or 300ms (three).
+Going from 0.67 to 20 reads/sec multiplied the blackouts by 30x:
+
+```
+1150 command gaps: median 35ms, p90 182ms
+  236 of 1150 (20%) over 100ms, 90 over 300ms
+```
+
+against a near-uniform 34-36ms before. The speed raise compounded it: a 180ms
+gap advances the trajectory 8.2 degrees at 0.8 rad/s versus 5.2 at 0.5.
+
+Settled at 0.5s, plus two supporting changes: read timeout 0.1 -> 0.06s
+(bounding one read's worst blackout at 3 x timeout, 300ms -> 180ms), and
+**write before read** in the serial loop, so a command that is already due no
+longer waits behind a read.
+
+**Keep this:** on this hardware a high feedback rate and smooth motion are
+mutually exclusive. Reads and writes share one half-duplex link AND reads are
+unreliable *exactly while the arm is moving*. Raising the rate buys blackouts,
+not information. Anything needing fast feedback during motion must get it from
+somewhere other than this serial link -- which is the strongest argument for
+doing the correction loop on the Pi with the wrist camera.
+
+### 5b. Gripper: a false analogy
+
+The gripper was rate-limited to one command per 0.4s, reasoning that streaming
+a point-to-point API is inherently bad. **The analogy with the arm was false.**
+The arm's problem was too FEW commands (11 per trajectory, 31-degree jumps).
+The gripper was already getting ~30 per goal, each moving the target ~3% of the
+jaw's span, and the firmware roughly kept pace -- the aborts did not matter
+because each new target was already close to where the jaw was.
+
+Measured effect of the rate limit: exactly three commands per 1s goal, so the
+jaw darted to 33% of span, ARRIVED AND STOPPED, waited, darted to 66%, stopped,
+darted to 100%. Three discrete steps, worse than the thing it replaced.
+Reverted in `f69182e`.
+
+The quantised-value gate was kept and is independent: the gripper output step
+is 0.0075 rad while the old threshold was 0.001, so comparing the integers
+rejects commands that re-send a byte-identical value whose only effect is to
+abort the move in progress. Verified it passes all 31 commands of a full-span
+1s close, i.e. no change in the streaming case.
+
+### 5c. Overgripping, then the modulo bug
+
+Adding the gripper to `_serial_settle_if_needed` (Session 4) caused
+overgripping exactly as flagged: after contact was detected at -0.2325 with
+-0.300 still commanded, settle re-sent -0.300 at speed 50 four times, squeezing
+harder each time. The stall detector was not enough -- three extra full-speed
+squeezes on a gripped object is already too many.
+
+Fixed by making settle **direction-aware**. Higher value is more open, so the
+sign of the error separates the cases: commanded more open than measured means
+the jaw failed to open (settle should fix it); commanded more closed means it
+is against an object, which is the success condition for a grasp.
+
+Then `GRIPPER_READ_EVERY` was cut 10 -> 1, because contact detection is
+entirely `lag = commanded - measured` and a frozen `measured` makes lag grow
+purely because the target is moving away from it -- a FALSE contact at whatever
+value the reading is stuck on. Observed: contact declared at pos=0.0075 (about
+80% OPEN, against -0.225 in runs that gripped), with the identical 0.0075
+across four consecutive steps.
+
+**That change broke the gripper completely**, because the gate was
+`self._read_count % self.GRIPPER_READ_EVERY == 1` and `x % 1` is always 0 --
+at N == 1 the condition never fires and the gripper is NEVER read. Asking for
+"read it every time" did the exact opposite, pinning the gripper at the 0.0
+placeholder from `SharedState.__init__` for the life of the process: `pos=0.0`
+on every poll, `max movement 0.0000 rad`, error 0.6 on the first gripper goal.
+Fixed in `8247ea8` with `(count - 1) % N == 0`, correct for every N >= 1.
+
+### 5d. Speed: raising it alone does nothing
+
+`_FALLBACK_MAX_JOINT_SPEED` 0.5 -> 0.8 **with** `_MAX_JOINT_ACCEL` 1.0 -> 2.0.
+Reaching speed v under acceleration a costs `v^2/(2a)` of travel to ramp each
+way, so at v=0.8, a=1.0 a segment needs 0.64 rad to reach speed while typical
+segments are ~0.1 rad. Checked against real trajectory shapes: speed alone
+peaks at 0.673 rad/s, both together at 0.756, and a 19-waypoint move goes
+5.07s -> 3.37s. Left at 0.8 rather than joint_limits.yaml's 1.0 because faster
+motion loads the joints harder, worsening the droop and dead zone that were
+already failing goals.
+
+### 5e. Two process lessons
+
+**Stale logs cost two full analyses.** `src/swarm_pkg/src/logs/logs.txt` on
+mars is only as fresh as the last manual copy from the robot; twice it was a
+build from before the changes being debugged. Check the bridge's startup banner
+(`read timeout capped at...`, `gripper writes=...`, `writes=async, max command
+rate=...`) against the current commit BEFORE drawing any conclusion from a log.
+The robot's clock is also wrong, so timestamps are not a reliable staleness
+check -- banner content is.
+
+**Reasoning by analogy between the arm and the gripper is unreliable.** They
+share an API and a serial link but have opposite failure modes.
+
+### End state
+
+Full pick and place, clean, no step failures. Contact at -0.2325 with the jaw
+reading tracking every step. Command gaps: median 35ms, 86% under 45ms, 39 in
+the 101-300ms band (was 146). Reads: median 22ms, max 186ms, zero `-1`
+returns. `/joint_states` matched first try with no recreate.
