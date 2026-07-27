@@ -240,18 +240,25 @@ DEFAULT_MAX_COMMAND_RATE_HZ = 30.0
 #            then -- the arm stops, then lurches. Five per 5s move, matching
 #            the "4 or 5 jerks" reported from the hardware.
 #   1.5s  -- made the blackouts rarer while each one still cost ~530ms.
-#   0.05s -- CURRENT. DEFAULT_READ_TIMEOUT_SEC removed the reason for the
-#            throttle. Measured over 77 loop-rate samples after that cap:
-#            42x10ms, 10x11ms, 3x12ms, 11x21ms, 4x22ms, and only 2 of 77 above
-#            100ms (301 and 303ms, the 3-retry path). A read is now ~1-2% of a
-#            33ms command period instead of 15x one.
+#   0.05s -- REVERTED. Sized from the MEDIAN read cost (10-25ms) while ignoring
+#            the FAILURE RATE, which was the wrong statistic. Reads still fail
+#            during motion -- the firmware defers its reply while driving -- and
+#            each failure blocks writes for 100ms (one timeout) or 300ms (three).
+#            Going from 0.67 to 20 reads/sec multiplied those blackouts by 30x.
+#            Measured over 1150 command gaps: median 35ms but p90 182ms, with
+#            236 of 1150 (20%) over 100ms and 90 over 300ms. The arm went from
+#            "very smooth, one jerk" back to visibly jerky.
+#   0.5s  -- CURRENT. ~10x fewer reads than 0.05s, so ~2% of commands should be
+#            affected rather than 20%, while still giving 2Hz of feedback
+#            during motion instead of 0.67Hz.
 #
-# At 20Hz a read costs ~12ms x 20 = 24% of the serial link, leaving ample
-# headroom for 30Hz of ~0.2ms async writes plus the occasional 300ms outlier.
-# This restores real feedback during motion -- which matters beyond smoothness,
-# since any future outer-loop control needs a measurement rate well above its
-# own bandwidth, and 0.67Hz was not that.
-DEFAULT_MOTION_READ_INTERVAL_SEC = 0.05
+# THE REAL LESSON, worth keeping: on this hardware you cannot have both a high
+# feedback rate and smooth motion, because reads and writes share one
+# half-duplex link AND reads are unreliable exactly while the arm is moving.
+# Raising the rate does not buy more information, it buys more blackouts. Any
+# control loop that needs fast feedback during motion has to get it from
+# somewhere other than this serial link.
+DEFAULT_MOTION_READ_INTERVAL_SEC = 0.5
 
 # Cap on how long a single pymycobot read may block, in seconds.
 #
@@ -271,7 +278,13 @@ DEFAULT_MOTION_READ_INTERVAL_SEC = 0.05
 # the reported state staler. That is the right trade here: nothing closes a
 # loop on measured position during a trajectory, and _serial_read_once already
 # keeps the last known values when a read returns -1.
-DEFAULT_READ_TIMEOUT_SEC = 0.1
+# Lowered 0.1 -> 0.06 on 2026-07-27. _res() retries three times, so this bounds
+# the WORST-CASE command blackout a single read can cause at 3 x timeout: 0.1
+# gave 300ms (seen 90 times in one run), 0.06 gives ~180ms. Healthy reads
+# complete in 10-25ms, so 60ms is still ~2.5x the normal cost and does not
+# increase the failure rate meaningfully -- it just stops a failure from being
+# so expensive.
+DEFAULT_READ_TIMEOUT_SEC = 0.06
 
 # Position command must change by at least this much (radians) before the
 # background loop bothers re-sending it to the arm -- avoids spamming
@@ -449,11 +462,20 @@ class Bridge:
         last_read_ms = 0.0
         window_start = time.monotonic()
         while not self._stop.is_set():
+            # WRITE BEFORE READ. A read holds the serial link for its whole
+            # duration, so with the old read-then-write order a command that
+            # was already due waited behind it -- turning a slow read directly
+            # into a late command, which is what the arm feels as a jerk.
+            # Writing first means the command goes out on schedule and the read
+            # uses whatever time is left. It cannot prevent a read that is
+            # already in flight from delaying the NEXT command (nothing can, on
+            # one half-duplex link), but it removes the case where the command
+            # was ready and we chose to read instead.
+            self._serial_write_once_if_dirty()
             t0 = time.monotonic()
             did_read = self._serial_read_once_if_due()
             if did_read:
                 last_read_ms = 1000 * (time.monotonic() - t0)
-            self._serial_write_once_if_dirty()
             self._serial_settle_if_needed()
             iterations += 1
 
@@ -778,8 +800,31 @@ class Bridge:
             previous_error = self.state.settle_last_error
 
         arm_error = max(abs(c - p) for c, p in zip(command[:6], measured[:6]))
-        gripper_error = abs(command[6] - measured[6])
-        error = max(arm_error, gripper_error)
+
+        # DIRECTION-AWARE GRIPPER SETTLE. Settling the gripper is right when it
+        # is stuck part-open and wrong when it is holding a block, and the sign
+        # of the error tells them apart -- higher value is more open
+        # (GRIPPER_OPEN_RAD > GRIPPER_CLOSED_RAD).
+        #
+        #   commanded MORE OPEN than measured -> the jaw failed to open. The
+        #       2026-07-27 case: commanded 0.15, stuck at -0.435, never
+        #       corrected because JTC holds its target so the command stops
+        #       changing and the bridge stops writing. Settle fixes it.
+        #   commanded MORE CLOSED than measured -> the jaw is against an
+        #       object. That is the SUCCESS condition for a grasp, and
+        #       re-sending drives it harder. Observed for real: after contact
+        #       was detected at -0.2325 with -0.300 still commanded, settle
+        #       re-sent -0.300 at speed 50 four times, squeezing further each
+        #       time. That is the overgripping.
+        #
+        # The stall detector alone was not enough here: it stops after three
+        # attempts with no progress, but three extra full-speed squeezes on a
+        # gripped object is already too many.
+        gripper_error = command[6] - measured[6]
+        gripper_needs_settle = gripper_error > SETTLE_TOLERANCE_RAD
+        gripper_error = abs(gripper_error)
+
+        error = max(arm_error, gripper_error if gripper_needs_settle else 0.0)
         if error <= SETTLE_TOLERANCE_RAD:
             return
 
@@ -794,7 +839,7 @@ class Bridge:
         try:
             if arm_error > SETTLE_TOLERANCE_RAD:
                 self._send_angles(arm_degrees, self.speed)
-            if gripper_error > SETTLE_TOLERANCE_RAD:
+            if gripper_needs_settle:
                 self._set_gripper_value(gripper_rad_to_value(command[6]), self.speed)
         except Exception as exc:
             print(f"[mycobot_bridge] ERROR during settle re-send: {exc!r}")
@@ -812,8 +857,8 @@ class Bridge:
             which = []
             if arm_error > SETTLE_TOLERANCE_RAD:
                 which.append(f"arm {arm_error:.4f}")
-            if gripper_error > SETTLE_TOLERANCE_RAD:
-                which.append(f"gripper {gripper_error:.4f}")
+            if gripper_needs_settle:
+                which.append(f"gripper {gripper_error:.4f} (opening)")
             print(f"[mycobot_bridge] TIMING settle re-send {attempt}/"
                   f"{SETTLE_MAX_RESENDS}: still short by {', '.join(which)} rad "
                   f"(> {SETTLE_TOLERANCE_RAD}), re-commanding at speed {self.speed}")
