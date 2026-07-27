@@ -293,29 +293,34 @@ DEFAULT_READ_TIMEOUT_SEC = 0.06
 # the read() side of the loop.
 COMMAND_CHANGE_EPSILON_RAD = 0.001
 
-# Minimum seconds between gripper commands. The gripper is NOT the arm and
-# must not be streamed like it.
+# Minimum seconds between gripper commands. DISABLED (0.0) -- see below.
 #
-# set_gripper_value() is point-to-point: the firmware drives the jaw to the
-# requested value over several hundred ms, smoothly, and a new call ABORTS and
-# restarts it. joint_trajectory_controller interpolates the gripper setpoint
-# every control cycle exactly as it does for the arm, so the bridge was firing
-# one at the full 30Hz -- roughly thirty aborted moves per gripper goal, which
-# is the "slow and skippy" open/close. Unlike the arm, streaming buys nothing
-# here: there is one degree of freedom, no path to follow, and the firmware's
-# own motion is already smooth.
+# Set to 0.4s on 2026-07-27 on the theory that streaming a point-to-point API
+# is inherently bad, by analogy with the arm. THE ANALOGY WAS FALSE and the
+# change made the gripper visibly worse.
 #
-# 0.4s lets each command run a meaningful distance before the next supersedes
-# it, so a 1s gripper trajectory arrives as ~2-3 commands instead of ~30.
+# The arm's problem was too FEW commands: 11 per trajectory, with 31-degree
+# jumps between them. The gripper was already receiving ~30 per goal, each
+# moving the target only ~3% of the jaw's span, and the firmware at speed 50
+# roughly kept pace -- the aborts did not matter BECAUSE each new target was
+# already close to where the jaw was. That approximates continuous motion.
 #
-# Also note the gripper's output resolution: pymycobot's scale is 0-100 over
-# GRIPPER_CLOSED_RAD..GRIPPER_OPEN_RAD, i.e. 0.0075 rad per step. The old gate
-# was COMMAND_CHANGE_EPSILON_RAD (0.001), SEVEN TIMES FINER than one output
-# step, so most of those thirty commands quantised to a value identical to the
-# one already sent -- pure serial traffic whose only effect was to abort the
-# move in progress. The quantised comparison in _serial_write_once_if_dirty
-# now rejects those exactly, with no threshold to tune.
-GRIPPER_MIN_COMMAND_PERIOD_SEC = 0.4
+# Rate limiting to 0.4s produced exactly three commands per 1s goal (measured),
+# so the jaw darted to ~33% of span, ARRIVED AND STOPPED, waited, darted to
+# 66%, stopped, darted to 100%: three discrete steps with dead time between,
+# which is worse than the thing it was meant to fix.
+#
+# The quantised comparison in _serial_write_once_if_dirty is kept and is a
+# genuine improvement independent of this: pymycobot's gripper scale is 0-100
+# over GRIPPER_CLOSED_RAD..GRIPPER_OPEN_RAD, i.e. 0.0075 rad per step, while
+# the old gate was COMMAND_CHANGE_EPSILON_RAD (0.001) -- seven times finer than
+# one output step. Comparing the integers rejects commands that would re-send a
+# byte-identical value, whose only effect is to abort the move in progress.
+#
+# The gripper's REAL remaining problem is not in this file: pick_place.py's
+# gripper_close_until_contact() sends 17 separate action goals of 0.3s each,
+# which is a staircase by construction no matter how each one executes.
+GRIPPER_MIN_COMMAND_PERIOD_SEC = 0.0
 
 
 def gripper_rad_to_value(rad):
