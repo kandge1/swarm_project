@@ -49,6 +49,7 @@ clear space. Pick the joint and amplitude with --joint / --amplitude-deg.
 from __future__ import print_function
 
 import argparse
+import inspect
 import math
 import statistics
 import sys
@@ -57,12 +58,51 @@ import time
 DEFAULT_SERIAL_PORT = "/dev/ttyAMA0"
 DEFAULT_BAUD_RATE = 1000000
 
+# Same cap mycobot_bridge.py installs. pymycobot's common.py read() hardcodes
+# wait_time = 0.5 on Linux and _res() retries three times, so one unanswered
+# read can hold the serial link for 1.5s. Left uncapped, sampling during motion
+# becomes irregular half-second gaps, which is useless for a step response and
+# misleading for a settle measurement. 0.06 bounds a failed read at ~0.18s while
+# a healthy one takes 10-25ms.
+DEFAULT_READ_TIMEOUT_SEC = 0.06
 
-def connect(port, baud):
+
+def install_read_timeout(arm, timeout_sec):
+    """Wrap pymycobot's _read so every read carries an explicit timeout.
+
+    read() supports one (`if timeout is not None: wait_time = timeout`) but no
+    call path from get_angles() supplies it, so the hardcoded Linux default
+    always wins. Wrapping the bound method injects it without editing any
+    vendor file; if a future pymycobot drops the parameter this detects that
+    and leaves the default rather than raising."""
+    if not timeout_sec or timeout_sec <= 0:
+        print("[probe] read timeout: pymycobot default (0.5s x 3 attempts)")
+        return
+    original_read = arm._read
+    try:
+        parameters = inspect.signature(original_read).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    if "timeout" not in parameters:
+        print("[probe] WARNING: this pymycobot's _read takes no 'timeout' "
+              "argument -- leaving the default. Reads may block up to 1.5s, "
+              "which will distort these measurements.")
+        return
+
+    def read_with_timeout(genre, *args, **kwargs):
+        kwargs.setdefault("timeout", timeout_sec)
+        return original_read(genre, *args, **kwargs)
+
+    arm._read = read_with_timeout
+    print("[probe] read timeout capped at {}s per attempt".format(timeout_sec))
+
+
+def connect(port, baud, read_timeout=DEFAULT_READ_TIMEOUT_SEC):
     from pymycobot import MyCobot280
     print("[probe] connecting to {} @ {}...".format(port, baud))
     arm = MyCobot280(port, baud)
     print("[probe] connected.")
+    install_read_timeout(arm, read_timeout)
     return arm
 
 
@@ -93,6 +133,156 @@ def summarize(label, samples):
               statistics.median(ordered),
               ordered[int(0.9 * (len(ordered) - 1))],
               ordered[-1]))
+
+
+def settle(arm, args, timeout_sec=6.0, stable_reads=4, stable_deg=0.05):
+    """Poll until the arm stops moving, then return the settled angles.
+
+    "Stopped" means `stable_reads` consecutive readings within `stable_deg` of
+    each other, not a fixed sleep -- the point of this whole script is that
+    move durations here are not predictable."""
+    deadline = time.time() + timeout_sec
+    history = []
+    last_good = None
+    while time.time() < deadline:
+        angles = read_angles(arm)
+        if angles is not None:
+            last_good = angles
+            history.append(angles)
+            if len(history) > stable_reads:
+                history.pop(0)
+            if len(history) == stable_reads:
+                spread = max(
+                    max(abs(h[j] - history[0][j]) for h in history)
+                    for j in range(6))
+                if spread <= stable_deg:
+                    return last_good
+    return last_good
+
+
+def mode_deadzone(arm, args):
+    """TEST 1 -- does commanding PAST the target correct a residual error?
+
+    This is the go/no-go for outer-loop control, and it is the half of the
+    question the existing evidence does NOT answer. mycobot_bridge.py's settle
+    logic has re-sent the SAME target at full speed many times and watched the
+    error not move by a digit (residuals of 0.0315, 0.0331, 0.0348, 0.0387,
+    0.0504 rad observed across 2026-07-27/28). That proves re-commanding the
+    same value fails. It says nothing about commanding a DIFFERENT value.
+
+    So: move the joint, measure the residual e, then command target + k*e for
+    k = 1, 2, 3 and watch what the joint does.
+
+    The question is CORRECTABLE vs NOT, which matters more than naming the
+    mechanism -- simulating both candidate plants shows they are corrected the
+    same way:
+
+      compliance / gravity droop (steady state = gain * command)
+          -> |err|/|e| at k=1 was 0.10 in simulation
+      "stops short" dead band (inert within dz of the command, else lands
+          dz short -- this is the model that reproduces the observed
+          behaviour, where re-sending the SAME value never moves it)
+          -> |err|/|e| at k=1 was 0.00 in simulation
+
+    Both are fixed by biasing the command, so both mean the control project is
+    viable. What would NOT be correctable is a joint that ignores the bias
+    entirely, or whose residual changes unpredictably run to run (stiction,
+    backlash).
+
+    READ THE k=1 ROW. That is the whole answer. Rising |err|/|e| at k=2 and
+    k=3 is EXPECTED and is good news -- it means the joint tracks a biased
+    command proportionally, so it overshoots when over-biased. A flat column
+    that never moves at any k is the bad outcome.
+
+    Run this at several postures (arm folded, extended, mid) and on several
+    joints -- gravity load varies hugely with pose, and a result that holds
+    only in one posture is not a result."""
+    start = read_angles(arm)
+    if start is None:
+        print("[probe] ERROR: could not read a valid starting pose", file=sys.stderr)
+        return 1
+
+    j = args.joint
+    print("[probe] start pose (deg): {}".format([round(a, 2) for a in start]))
+    print("[probe] testing joint {} (0-based), moving {:+.1f} deg at speed {}"
+          .format(j, args.amplitude_deg, args.speed))
+    print()
+
+    target = list(start)
+    target[j] = start[j] + args.amplitude_deg
+
+    arm.send_angles(target, args.speed)
+    settled = settle(arm, args, timeout_sec=args.settle_timeout_sec)
+    if settled is None:
+        print("[probe] ERROR: no valid reading after the initial move", file=sys.stderr)
+        return 1
+
+    residual = target[j] - settled[j]
+    print("[probe] commanded {:.3f} deg, settled at {:.3f} deg"
+          .format(target[j], settled[j]))
+    print("[probe] residual e = {:+.4f} deg ({:+.5f} rad)"
+          .format(residual, math.radians(residual)))
+    print()
+
+    if abs(residual) < args.deadzone_min_deg:
+        print("[probe] residual is below --deadzone-min-deg ({} deg): this joint"
+              .format(args.deadzone_min_deg))
+        print("[probe] reached its target at this pose, so there is nothing to")
+        print("[probe] correct here. Retry at a pose with more gravity load")
+        print("[probe] (arm extended), or with a larger --amplitude-deg.")
+        settle_and_write(arm, args, start, [])
+        return 0
+
+    print("[probe] --- overshoot staircase: commanding target + k*e ---")
+    print("[probe] {:>3} {:>12} {:>12} {:>12} {:>10}"
+          .format("k", "commanded", "settled", "error", "|err|/|e|"))
+    rows = []
+    for k in range(1, args.deadzone_steps + 1):
+        biased = list(target)
+        biased[j] = target[j] + k * residual
+        arm.send_angles(biased, args.speed)
+        result = settle(arm, args, timeout_sec=args.settle_timeout_sec)
+        if result is None:
+            print("[probe] ERROR: lost readings at k={}".format(k), file=sys.stderr)
+            break
+        err = target[j] - result[j]
+        ratio = abs(err) / abs(residual) if residual else float("nan")
+        print("[probe] {:>3} {:>12.3f} {:>12.3f} {:>+12.4f} {:>10.2f}"
+              .format(k, biased[j], result[j], err, ratio))
+        rows.append((time.time(), biased[j], result[j]))
+
+    print()
+    if rows:
+        ratios = [abs(target[j] - r[2]) / abs(residual) for r in rows]
+        if ratios[0] < 0.5:
+            print("[probe] VERDICT: CORRECTABLE. Biasing the command by e cut the")
+            print("[probe]   error to {:.0f}% of its original size. The joint responds"
+                  .format(100 * ratios[0]))
+            print("[probe]   to a biased command, so an outer-loop integrator or")
+            print("[probe]   disturbance observer CAN close this out. GO for the")
+            print("[probe]   control project.")
+            if len(ratios) > 1 and ratios[-1] > ratios[0]:
+                print("[probe]   (The rise at higher k is expected and confirms it --")
+                print("[probe]   the joint tracks the bias proportionally, so it")
+                print("[probe]   overshoots when over-biased.)")
+        elif all(r > 0.8 for r in ratios):
+            print("[probe] VERDICT: NOT CORRECTABLE by biasing. The error did not")
+            print("[probe]   move at any k up to {}x. That is stiction or a dead"
+                  .format(args.deadzone_steps))
+            print("[probe]   band wider than the residual itself -- an integrator")
+            print("[probe]   would wind up and limit-cycle. Needs dither, dead-zone")
+            print("[probe]   inversion, or external metrology. NO-GO for a plain")
+            print("[probe]   outer-loop PID on this joint.")
+        else:
+            print("[probe] VERDICT: mixed -- the error only responds past some k.")
+            print("[probe]   The dead band lies between the last k that did nothing")
+            print("[probe]   and the first that moved; read the |err|/|e| column.")
+    print("[probe] ONE JOINT AT ONE POSE IS NOT A RESULT. Gravity load varies")
+    print("[probe] hugely with posture -- repeat folded, extended and mid, on")
+    print("[probe] joints 1, 2 and 3, before concluding anything.")
+
+    settle_and_write(arm, args, start, rows)
+    return 0
 
 
 def mode_probe(arm, args):
@@ -259,6 +449,12 @@ def main():
                       help="stream a ramp as discrete setpoints at --rate Hz")
     mode.add_argument("--point-to-point", action="store_true",
                       help="the same motion as one uninterrupted send_angles")
+    mode.add_argument("--deadzone", action="store_true",
+                      help="TEST 1: move the joint, measure the residual error, "
+                           "then command target + k*e to see whether biasing the "
+                           "command corrects it. Discriminates gravity droop "
+                           "(outer-loop control works) from a servo dead zone "
+                           "(it does not). This is the go/no-go.")
 
     parser.add_argument("--serial-port", default=DEFAULT_SERIAL_PORT)
     parser.add_argument("--baud-rate", type=int, default=DEFAULT_BAUD_RATE)
@@ -283,6 +479,21 @@ def main():
     parser.add_argument("--return-settle-sec", type=float, default=3.0,
                         help="seconds to wait for the return-to-start move "
                              "(default %(default)s)")
+    parser.add_argument("--read-timeout", type=float,
+                        default=DEFAULT_READ_TIMEOUT_SEC,
+                        help="cap on one pymycobot read, seconds (default %(default)s, "
+                             "0 keeps its hardcoded 0.5s x 3). Uncapped, sampling "
+                             "during motion becomes irregular half-second gaps.")
+    parser.add_argument("--settle-timeout-sec", type=float, default=6.0,
+                        help="--deadzone: max wait for the arm to stop moving "
+                             "(default %(default)s)")
+    parser.add_argument("--deadzone-steps", type=int, default=3,
+                        help="--deadzone: how many k values to try in the "
+                             "overshoot staircase (default %(default)s)")
+    parser.add_argument("--deadzone-min-deg", type=float, default=0.3,
+                        help="--deadzone: below this residual there is nothing to "
+                             "correct, so the test reports that and stops "
+                             "(default %(default)s)")
     parser.add_argument("--out", default=None,
                         help="CSV path for the commanded-vs-measured trace")
     args = parser.parse_args()
@@ -291,8 +502,10 @@ def main():
         parser.error("--joint must be 0-5 (arm joints only; this script "
                      "deliberately never touches the gripper)")
 
-    arm = connect(args.serial_port, args.baud_rate)
+    arm = connect(args.serial_port, args.baud_rate, args.read_timeout)
 
+    if args.deadzone:
+        return mode_deadzone(arm, args)
     if args.probe:
         return mode_probe(arm, args)
     if args.stream:
