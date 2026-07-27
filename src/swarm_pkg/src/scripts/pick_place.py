@@ -516,9 +516,12 @@ class RobotIOClient(Node):
         # Action clients whose DDS writer has already been given time to match
         # -- see _DDS_MATCH_SETTLE_SEC / _deliver_goal.
         self._warmed_clients = set()
+        self._last_joint_state_monotonic = 0.0
+        self._joint_state_recreates = 0
         self._create_joint_state_sub()
 
     def _on_joint_state(self, msg):
+        self._last_joint_state_monotonic = time.monotonic()
         for name, effort in zip(msg.name, msg.effort):
             self._joint_efforts[name] = effort
         for name, position in zip(msg.name, msg.position):
@@ -534,6 +537,36 @@ class RobotIOClient(Node):
         self._joint_state_sub = self.create_subscription(
             JointState, "/joint_states", self._on_joint_state, 10
         )
+
+    def recreate_joint_state_sub_if_stale(self, stale_after_sec=3.0):
+        """Rebuild the /joint_states subscription if it has gone quiet.
+
+        The startup recreate in wait_for_joint_states only covers a reader that
+        never matched. The same one-sided match failure can happen at ANY time
+        -- and mid-run it is worse, because every convergence check silently
+        stops updating while the goal quietly burns its full 60s timeout and is
+        then reported as a tracking failure the arm never had.
+
+        /joint_states publishes at 50Hz, so 3s of silence is ~150 missed
+        messages: unambiguous, and far longer than any read stall the bridge
+        can produce (its own worst case is ~0.3s)."""
+        if self._last_joint_state_monotonic <= 0.0:
+            return False  # nothing received yet -- wait_for_joint_states owns that
+        if time.monotonic() - self._last_joint_state_monotonic < stale_after_sec:
+            return False
+
+        self._joint_state_recreates += 1
+        print(f"[joint_states] STALE: no message for "
+              f"{time.monotonic() - self._last_joint_state_monotonic:.1f}s "
+              f"({self.count_publishers('/joint_states')} publisher(s) visible) "
+              f"-- recreating the subscription (recreate "
+              f"#{self._joint_state_recreates} this run)")
+        self.destroy_subscription(self._joint_state_sub)
+        self._create_joint_state_sub()
+        # Reset the clock so the next check gives the new reader time to match
+        # instead of firing again immediately.
+        self._last_joint_state_monotonic = time.monotonic()
+        return True
 
     def describe_joint_state_publishers(self):
         """QoS and identity of every discovered /joint_states publisher.
@@ -850,6 +883,10 @@ class RobotIOClient(Node):
         last_print = 0.0
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
+            # A reader that unmatches mid-goal freezes every check below, so
+            # the goal would otherwise burn its full timeout and be reported as
+            # a tracking failure that never happened.
+            self.recreate_joint_state_sub_if_stale()
             # The 1e-9 slack is not cosmetic. The gripper's position readback
             # is quantized to 0.0075 rad (pymycobot's 0-100 scale over the
             # 0.75 rad jaw span), so a commanded target and a readback landing
@@ -1228,15 +1265,39 @@ def make_joint_goal_constraints(joint_dict, tolerance=0.001):
 # stream (see _match_speed in mycobot_bridge.py for why that mismatch is the
 # real failure mode). Anything changed here changes the real arm's speed
 # directly -- it is not a safety net.
-_FALLBACK_MAX_JOINT_SPEED = 0.5  # rad/s
+# Raised 0.5 -> 0.8 rad/s on 2026-07-27, together with _MAX_JOINT_ACCEL.
+#
+# 0.5 was chosen while the command path was starved: the arm was receiving ~11
+# point-to-point commands per trajectory, so a higher speed only meant bigger
+# jumps between them. That constraint is gone -- commands now arrive at 30Hz
+# with sub-degree steps -- so speed is once again limited by the hardware
+# rather than by the pipeline. joint_limits.yaml declares 1.0 rad/s.
+#
+# RAISED IN STEPS ON PURPOSE. This is the one constant here that directly sets
+# how fast the real arm moves, and faster motion loads the joints harder, which
+# makes gravity droop and the servo dead zone worse -- the very errors that
+# were failing goals at 0.05 rad. Test 0.8 before trying 1.0.
+_FALLBACK_MAX_JOINT_SPEED = 0.8  # rad/s
 _FALLBACK_MIN_SEGMENT_SEC = 0.1  # floor per waypoint, avoids zero-length segments
 
 # Acceleration limit for the ramps, rad/s^2. UNVERIFIED against this arm --
 # joint_limits.yaml declares no acceleration limits, so this is chosen rather
-# than derived. At 1.0 the arm reaches _FALLBACK_MAX_JOINT_SPEED in 0.5s over
-# 0.125 rad, which is short relative to a typical 2-6s plan, so the ramps cost
-# little time. Lower it if starts and stops still look abrupt.
-_MAX_JOINT_ACCEL = 1.0
+# than derived.
+#
+# Raised 1.0 -> 2.0 on 2026-07-27, and it MUST be raised alongside
+# _FALLBACK_MAX_JOINT_SPEED or raising the speed does nothing. Reaching speed v
+# under acceleration a costs v^2/(2a) of travel to ramp up and the same to ramp
+# down, so a segment shorter than v^2/a never reaches v at all:
+#
+#   v=0.5, a=1.0  ->  needs 0.25 rad to reach speed
+#   v=0.8, a=1.0  ->  needs 0.64 rad   <- most segments are ~0.1 rad
+#   v=0.8, a=2.0  ->  needs 0.32 rad
+#
+# The forward/backward passes carry speed across waypoints, so a whole 2 rad
+# move can still reach the cap even when no single segment could -- but with
+# a=1.0 the profile would spend nearly all of a typical move ramping, and the
+# nominal speed increase would show up as almost no real speedup.
+_MAX_JOINT_ACCEL = 2.0
 
 # Floor on how much a sharp corner is allowed to slow the arm, as a fraction of
 # _FALLBACK_MAX_JOINT_SPEED. Without a floor a 90-degree turn in joint space

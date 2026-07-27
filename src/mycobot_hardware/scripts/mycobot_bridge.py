@@ -229,19 +229,29 @@ DEFAULT_MAX_COMMAND_RATE_HZ = 30.0
 # run at full rate (every loop iteration) whenever it is not. See
 # _serial_read_once_if_due() for the measurements behind this.
 #
-# Raised 0.5 -> 1.5 on 2026-07-27. At 0.5 the dt= column showed the cost
-# directly: a steady stream of dt=34-36ms commands interrupted every half
-# second by a single dt=551ms one, across which a joint target jumped 11
-# degrees and another 15.6. Nothing can be written while a read holds the
-# serial link, JTC's trajectory clock keeps running through the blackout, and
-# the next command to land is wherever the trajectory has got to by then -- so
-# the arm stops and then lurches. A 5s move at a 0.5s interval gives about
-# five of those, which is exactly the "4 or 5 jerks per move" reported from
-# the hardware.
+# History, because the right value moved twice as the read cost changed:
 #
-# This only makes the blackouts RARER. See DEFAULT_READ_TIMEOUT_SEC for the
-# other half, which makes each one shorter.
-DEFAULT_MOTION_READ_INTERVAL_SEC = 1.5
+#   0.5s  -- original. The dt= column showed the cost directly: a steady
+#            stream of dt=34-36ms commands interrupted every half second by a
+#            single dt=551ms one, across which a joint target jumped 11 degrees
+#            and another 15.6. Nothing can be written while a read holds the
+#            serial link, JTC's clock keeps running through the blackout, and
+#            the next command to land is wherever the trajectory reached by
+#            then -- the arm stops, then lurches. Five per 5s move, matching
+#            the "4 or 5 jerks" reported from the hardware.
+#   1.5s  -- made the blackouts rarer while each one still cost ~530ms.
+#   0.05s -- CURRENT. DEFAULT_READ_TIMEOUT_SEC removed the reason for the
+#            throttle. Measured over 77 loop-rate samples after that cap:
+#            42x10ms, 10x11ms, 3x12ms, 11x21ms, 4x22ms, and only 2 of 77 above
+#            100ms (301 and 303ms, the 3-retry path). A read is now ~1-2% of a
+#            33ms command period instead of 15x one.
+#
+# At 20Hz a read costs ~12ms x 20 = 24% of the serial link, leaving ample
+# headroom for 30Hz of ~0.2ms async writes plus the occasional 300ms outlier.
+# This restores real feedback during motion -- which matters beyond smoothness,
+# since any future outer-loop control needs a measurement rate well above its
+# own bandwidth, and 0.67Hz was not that.
+DEFAULT_MOTION_READ_INTERVAL_SEC = 0.05
 
 # Cap on how long a single pymycobot read may block, in seconds.
 #
@@ -269,6 +279,30 @@ DEFAULT_READ_TIMEOUT_SEC = 0.1
 # iteration, which just adds pointless serial traffic and further starves
 # the read() side of the loop.
 COMMAND_CHANGE_EPSILON_RAD = 0.001
+
+# Minimum seconds between gripper commands. The gripper is NOT the arm and
+# must not be streamed like it.
+#
+# set_gripper_value() is point-to-point: the firmware drives the jaw to the
+# requested value over several hundred ms, smoothly, and a new call ABORTS and
+# restarts it. joint_trajectory_controller interpolates the gripper setpoint
+# every control cycle exactly as it does for the arm, so the bridge was firing
+# one at the full 30Hz -- roughly thirty aborted moves per gripper goal, which
+# is the "slow and skippy" open/close. Unlike the arm, streaming buys nothing
+# here: there is one degree of freedom, no path to follow, and the firmware's
+# own motion is already smooth.
+#
+# 0.4s lets each command run a meaningful distance before the next supersedes
+# it, so a 1s gripper trajectory arrives as ~2-3 commands instead of ~30.
+#
+# Also note the gripper's output resolution: pymycobot's scale is 0-100 over
+# GRIPPER_CLOSED_RAD..GRIPPER_OPEN_RAD, i.e. 0.0075 rad per step. The old gate
+# was COMMAND_CHANGE_EPSILON_RAD (0.001), SEVEN TIMES FINER than one output
+# step, so most of those thirty commands quantised to a value identical to the
+# one already sent -- pure serial traffic whose only effect was to abort the
+# move in progress. The quantised comparison in _serial_write_once_if_dirty
+# now rejects those exactly, with no threshold to tune.
+GRIPPER_MIN_COMMAND_PERIOD_SEC = 0.4
 
 
 def gripper_rad_to_value(rad):
@@ -334,6 +368,10 @@ class Bridge:
                                    if max_command_rate_hz > 0 else 0.0)
         self.motion_read_interval = motion_read_interval
         self.min_speed = min_speed
+        # When set_gripper_value last went out, for the gripper's own rate
+        # limit. Bridge-local rather than SharedState: only the serial
+        # thread touches it.
+        self._last_gripper_sent_monotonic = 0.0
         print(f"[mycobot_bridge] connecting to {serial_port} @ {baud_rate}...")
         self.arm = MyCobot280(serial_port, baud_rate)
         print("[mycobot_bridge] connected.")
@@ -594,19 +632,32 @@ class Bridge:
             last_sent = self.state.last_sent
             last_sent_at = self.state.last_sent_monotonic
 
+        t_now = time.monotonic()
         arm_degrees = [math.degrees(p) for p in positions[:6]]
         gripper_value = gripper_rad_to_value(positions[6])
         speed = self._match_speed(positions, last_sent, last_sent_at)
 
-        # Only touch the gripper when the GRIPPER command actually changed.
-        # Previously set_gripper_value() was re-sent on every arm command
-        # change too, which during a multi-second arm trajectory means one
-        # redundant serial round trip per control cycle, all of it competing
-        # with the arm's own send_angles() on the same 1 Mbaud UART for no
-        # benefit -- the gripper target hadn't moved.
+        # Only touch the gripper when the QUANTISED gripper command changed and
+        # enough time has passed for the previous move to have got somewhere.
+        #
+        # Two gates, for two different reasons:
+        #  - quantised comparison: a change smaller than one 0.0075 rad output
+        #    step produces a byte-identical command whose only effect is to
+        #    abort the move in progress. Comparing the integers rejects those
+        #    exactly, with no threshold to tune.
+        #  - rate limit: set_gripper_value is point-to-point, so streaming it
+        #    at the arm's 30Hz means ~30 aborted moves per gripper goal. See
+        #    GRIPPER_MIN_COMMAND_PERIOD_SEC.
+        last_gripper_value = (None if last_sent is None
+                              else gripper_rad_to_value(last_sent[6]))
+        gripper_due = (
+            self._last_gripper_sent_monotonic <= 0.0
+            or t_now - self._last_gripper_sent_monotonic
+            >= GRIPPER_MIN_COMMAND_PERIOD_SEC
+        )
         gripper_changed = (
-            last_sent is None
-            or abs(positions[6] - last_sent[6]) > COMMAND_CHANGE_EPSILON_RAD
+            (last_gripper_value is None or gripper_value != last_gripper_value)
+            and gripper_due
         )
 
         t0 = time.monotonic()
@@ -617,6 +668,7 @@ class Bridge:
                 self._set_gripper_value(
                     gripper_value,
                     self._match_gripper_speed(positions, last_sent, last_sent_at))
+                self._last_gripper_sent_monotonic = t_now
             t_grip = time.monotonic()
         except Exception as exc:
             # Do NOT clear command_dirty here: leaving it set is what makes
