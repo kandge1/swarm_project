@@ -330,7 +330,36 @@
     <parent link="joint6_flange"/>
     <child link="camera_flange"/>
     <!-- <origin xyz= "0 0.0 0" rpy = "1.5708 1.5708 0"/>   -->
-    <origin xyz= "0 0 0.01" rpy = "1.579 0 1.5708"/>  
+    <!-- yaw 1.5708 becomes 0.7854 (2026-07-28): the model was 45 deg out of
+         roll about the tool axis against the physical mount.
+
+         MEASURED, not guessed. With all six joints at zero the real arm has
+         the camera lens facing +X (which the model already agreed with) and
+         the camera body sitting 135 deg from +Y and 45 deg from +Z in the Y-Z
+         plane, i.e. up and to the right at 45 deg, radial direction
+         (0, -0.707, +0.707). Sweeping candidate yaw values through forward
+         kinematics (swarm_pkg scripts/tool_frame_check.py) against that
+         observation gave:
+
+             yaw 1.5708 (was)   gives (0, -1.000,  0.000)    45.0 deg off
+             yaw 0.7854 (now)   gives (0, -0.707, +0.707)     0.5 deg off
+             yaw 2.3562         gives (0, -0.707, -0.707)    90.0 deg off
+             yaw 4.7124         gives (0, +1.000,  0.000)   135.0 deg off
+
+         The residual 0.5 deg is this file's own 1.579 roll term, not error.
+
+         This is the 45 deg that HOME_DEGREES joint6output = -45 has been
+         compensating for. That compensation STAYS: it is what brings the real
+         assembly from its 45 deg rest offset round to horizontal. With this
+         fix RViz finally shows what the arm is actually doing, at zero and at
+         home alike.
+
+         joint6_flange is the PARENT here and does not move, so IK, the grasp
+         quaternion and Cartesian planning are untouched. What changes is where
+         the model believes the camera and gripper are, which is the point, and
+         which means collision geometry and any camera frame work were
+         previously 45 deg wrong. -->
+    <origin xyz= "0 0 0.01" rpy = "1.579 0 0.7854"/>
   </joint>
 
   <!-- Adaptive gripper copied without changing any xyz or rpy values. -->
