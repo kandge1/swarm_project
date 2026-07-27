@@ -1112,3 +1112,292 @@ Session 3). The principled fix remains real time parameterization
 (the OMPL response-adapter gap) plus a `constraints:` block in
 ros2_controllers.yaml so the controller can report tracking failure itself
 instead of pick_place.py inferring it from /joint_states 60s later.
+
+## Session 4 (2026-07-27): the jerky-motion campaign, then IK
+
+Starting point: the full pick and place worked but the motion was visibly
+jerky, the gripper was slow and stepped, IK converged about half the time,
+and runs frequently printed `nan` for every joint and hung. By the end of the
+session a full sequence ran clean with no step failures.
+
+Commits, in order: `2f65c35` `0d45cab` `32086f2` `530ca00` `8b567bb`
+`45215e8` `1e859c5` `2b1f135` `ce76bb8` `0cf0020` `6d4c0b6` `844efcb`
+`7a69b2f`.
+
+### 4a. The jerk was command starvation, not waypoint count
+
+The user's hypothesis -- "the code taking those waypoints and going to them is
+too slow" -- was correct. Evidence from a single return-to-home:
+
+```
+joint1 targets reaching the arm:
+-74.53  -74.53  -74.83  -74.88  -75.19  -74.04  -58.57  -27.64  -27.06  -11.59  0.04
+                                                     |16deg| |31deg|      |15deg|
+```
+
+JTC generated ~250 setpoints for that 2.6s goal. **Eleven arrived.** One asked
+the base to jump 31 degrees in a single point-to-point move, which the next
+command aborted partway through. One visible jerk per command.
+
+`loop_rate` was 0.9-1.9Hz while moving and 82-89Hz idle.
+
+### 4b. Root cause: pymycobot's hardcoded 0.5s read timeout
+
+`send_angles` defaults to `has_reply=True`. In pymycobot 4.0.6:
+
+```python
+# common.py read()
+if platform.system() == "Windows": wait_time = 0.15
+else:                              wait_time = 0.5      # <-- Linux
+while True and time.time() - t < wait_time: ...
+
+# mycobot280.py _res() -- retries the whole exchange 3 times, then returns -1
+```
+
+Every number in the logs falls out of that: writes bimodal at 2-5ms (firmware
+replied) or 510-590ms (one timeout plus a retry that worked), one read at
+1506ms (three timeouts), and `get_angles() returned -1` in the same window.
+None of it was flaky hardware. It is also self-inflicted -- the firmware only
+defers its reply because it is busy with the move just sent.
+
+Fixes, each measured before the next:
+
+1. **`_async=True` writes** (`32086f2`). `_mesg`'s `_async` branch is a bare
+   `_write()`: no read, no timeout, no retry, ~0.2ms. Writes went 552ms -> 0-2ms
+   immediately. It did NOT fix the command rate.
+2. **The bottleneck moved to `get_angles`** (`8b567bb`). With the write free,
+   the read was the whole loop period; a 4.4s trajectory still reached the arm
+   as 11 commands, one of them a 58-degree jump. Reads were already 535-1506ms
+   during motion in the PRE-async logs, so async writes did not cause this.
+   Throttled reads to one per 1.5s while the setpoint is moving -- nothing
+   closes a loop on measured position mid-trajectory.
+3. **A 30Hz command-rate cap**, since the loop would otherwise fire at ~85Hz
+   and each command still aborts the move in progress.
+4. **Capped the read timeout at 0.1s** (`2b1f135`). `read()` honours a
+   `timeout` argument that overrides `wait_time`, but no path from
+   `get_angles()` passes one, so `_install_read_timeout` wraps the bound
+   `_read` to inject it -- checking the signature first so a future pymycobot
+   without the parameter degrades to a warning.
+
+The `dt=` column added in `45215e8` is what made step 4 diagnosable. Between
+blackouts the stream was already perfect; the jerks were the blackouts:
+
+```
+dt=35ms   target_deg=[ 4.36, -2.63, ..., -37.89]
+dt=551ms  target_deg=[15.32, -7.01, ..., -22.31]   <- 11 and 15.6 degrees in one command
+loop_rate=171.5Hz (last read 541ms)
+```
+
+A 5s move at a 0.5s read interval gives ~5 blackouts, matching the reported
+"4 or 5 jerks per move" exactly. Result: **"the arm motion is genuinely very
+smooth now, and jerks very little, i think i noticed only one."**
+
+### 4c. A wrong turn worth recording
+
+Between steps 3 and 4 the jerks were attributed to velocity discontinuities at
+OMPL path corners, and `_ensure_monotonic_timing` was rewritten as a proper
+trapezoidal, corner-aware profile with velocities (`1e859c5`). The reasoning
+was sound from the mars log alone -- joint-space plans reported
+`velocities=NO` and a flat 0.500 rad/s while Cartesian plans reported
+`velocities=yes` and looked smooth on the same hardware -- but the `dt` column
+then showed the blackout dominated. **The `dt` data had been requested a round
+earlier and the change was made without it.** Wait for the discriminating
+measurement.
+
+The trapezoidal work is kept and is not wasted: `velocities` present means JTC
+interpolates with a cubic spline rather than linearly, the ramps are real, and
+durations did not regress (18wp 4.82s vs 5.19s). Testing it against the
+trajectory shapes from the log before running it on hardware caught two bugs,
+one dangerous:
+
+- The average-of-endpoint-speeds shortcut for segment time is only valid while
+  speed changes monotonically. On a **two-waypoint** plan both ends are at
+  rest, the average is zero, the minimum-segment floor took over, and it
+  commanded **3.0 rad/s for a 0.3 rad move -- six times the limit**. "Final
+  return to home pose" plans exactly two waypoints. Replaced with an exact
+  accelerate/cruise/decelerate solve.
+- Penalising corners by `cos(theta)` sends a right angle to a dead stop and
+  made a wiggly path take 4x as long. Using `cos(theta/2)`.
+
+### 4d. `nan` joint positions: never the robot
+
+Runs printed `nan` for all six joints with `max movement so far 0.0000 rad`
+and hung until killed. Two rounds were spent looking at the robot. The cause
+was in pick_place.py:
+
+```python
+current = {n: round(self._joint_positions.get(n, float("nan")), 4) for n in target}
+```
+
+`float("nan")` is the **default for a joint absent from the dict**, and an
+empty dict means no `/joint_states` message has ever arrived -- so all six hit
+the default at once. Confirmed against the robot's own 3616-line log for the
+same period: zero occurrences of `nan`, zero non-finite read warnings, banner
+showing the expected build. The robot was publishing correctly throughout.
+
+The message actively sent debugging to the wrong machine. It now reports the
+truth plus `count_publishers`, distinguishes "no data at all" from "this joint
+absent", and refuses to start without `/joint_states` (`0cf0020`).
+
+That check then produced the decisive datum: **`1 publisher(s) visible`** with
+zero messages, while `ros2 control list_controllers` showed all three
+controllers active. The writer is discovered; the reader never matches. Same
+failure shape `_deliver_goal` already recovers from for action goals, and the
+same remedy -- `wait_for_joint_states` now destroys and recreates the
+subscription every 6s (`844efcb`). Observed working first try:
+
+```
+[joint_states] no data after 6s (1 publisher(s) visible) -- recreating the
+               subscription to force a fresh DDS match (attempt 1)
+[joint_states] recovered after 1 subscription recreate(s)
+```
+
+Not yet understood: WHY the match fails. The abort path now dumps each
+publisher's reliability/durability/depth so a QoS incompatibility (permanent,
+retrying cannot help) can be told from a failed match (recoverable).
+
+### 4e. IK: every seed had the base joint ~1.5 rad from the answer
+
+IK converged for the pick pose about half the time and for the place pose
+never. Not reachability -- seeding.
+
+| | joint1 (base) |
+|---|---|
+| pick solution | **+1.828** |
+| place solution | **-1.310** |
+| every seed in `IK_SEEDS` | 0.324, 0.035, 0.0, -0.035, -0.324 |
+
+All 13 seeds sit within +/-0.33 rad of zero. KDL is a **local** solver, so from
+1.5 rad away it only landed when its internal random restarts happened to
+wander across -- exactly the observed coin flip. The `-mirrored` seeds added in
+an earlier session do not help: -0.324 is no closer to -1.310 than +0.324 is.
+
+The base angle needs no numeric solve: to reach a point the base must face it.
+`_bearing_seeds` derives it as `atan2(y, x)`, plus a 0.257 rad offset applied
+both ways for the gripper's lateral fingertip offset (measured -- both real
+solutions sit 0.257 and 0.261 rad from their bearings). `joint6output` is set
+to match, since every converged solution counter-rotates the wrist by the base
+angle to hold the fixed grasp yaw (`6d4c0b6`).
+
+Best seed distance: pick 1.504 -> 0.000 rad, place 0.986 -> 0.004 rad. Seeds
+are added, not replaced, and least-travel selection is unchanged, so nothing
+that converged before can regress.
+
+### 4f. The place hover was outside the workspace
+
+With good seeds, the place pose still failed **all 19 seeds on every run** --
+including bearing seeds within 0.004 rad of the answer. A solver handed a seed
+on top of the answer that cannot converge is being asked for something that
+does not exist.
+
+`APPROACH_HEIGHT`'s own comment had already called it: reach_probe.py measured
+`0.215 is already outside the workspace at ANY orientation`, and the comment
+derives its value from a place flange target of **0.16**. That assumption
+expired when the grasp/place z offsets were re-measured for the flat mat --
+the place target is now **0.175**, putting the hover at exactly 0.215.
+
+`hover_z()` clamps to `MAX_HOVER_Z = 0.205` (`7a69b2f`). Pick unchanged at
+0.195; place 0.215 -> 0.205 with a 3cm descent.
+
+This also explains two long-standing complaints. The OMPL fallback satisfied
+its 4cm position sphere by parking the flange lower AND tilted, with
+constraint sampling returning a different branch every run -- which is both
+"the gripper points a little to the side" and "it never goes to the same place
+twice". After the clamp, `Retreat after release` plans at `fraction=1.00`
+where it had been stuck at 0.90/0.91.
+
+### 4g. 0.05 rad was tighter than the servo deadband
+
+A complete pick and place was aborted by `Retreat after release` missing
+tolerance by **0.0004 rad (0.02 degrees)**, after the block was already placed.
+The bridge's own log shows why:
+
+```
+settle re-send 1/20: still short by arm 0.0504 rad ... at speed 50
+settle re-send 2/20: still short by arm 0.0504 rad
+settle re-send 3/20: still short by arm 0.0504 rad
+settle re-send 4/20: still short by arm 0.0504 rad
+settle giving up: 0.0504 rad error stopped improving over 3 attempts
+```
+
+Four full-speed re-sends, the error never changing by a digit. Hard deadband.
+`ARM_SETTLE_TOLERANCE = 0.07` clears the worst residual observed (0.027,
+0.0315, 0.0330, 0.0334, 0.0341, 0.0504) with ~40% margin. Not raised further
+on purpose: ~4 degrees is already up to ~1cm at the fingertips, and a
+tolerance far past the deadband stops catching real tracking failures -- which
+is the check that caught several genuine bugs this session.
+
+### 4h. Settle rework, and a bug I introduced
+
+`_serial_settle_if_needed` (Session 3f) was firing MID-trajectory. Its only
+gate was "command is not dirty", which is equally true in the 500-580ms dead
+time between two setpoints -- so it corrected an arm still in transit,
+reported nonsense like `still 0.5129 rad short`, and re-commanded at **full
+speed** while the trajectory paced at speed 25. Roughly 7 spurious full-speed
+darts were injected into a single 2.6s homing move, making the jerk worse.
+
+Fixed by gating on the commanded position being UNCHANGED for
+`SETTLE_QUIET_PERIOD_SEC = 1.0` -- "time since the setpoint last moved" is the
+real end-of-trajectory signal; "time since last write" is not, since JTC calls
+write() every cycle regardless (`0d45cab`).
+
+Also: `SETTLE_TOLERANCE_RAD` 0.02 -> 0.03 and give up after 3 no-progress
+attempts. At 0.02 a run ended 0.0270 rad short and burned all 20 re-sends with
+the error unchanged -- 10s and a burst of serial traffic at the end of every
+move for nothing.
+
+The gripper was later ADDED to settle (`ce76bb8`). It had been excluded because
+a jaw holding a block cannot reach its command and settling would push
+"forever" -- but the stall detector removes the "forever", which makes it
+correct for holding a block and the fix for a jaw stuck part-open (observed:
+commanded 0.15, stopped at -0.435, never corrected because JTC held its target
+so the command stopped changing and the bridge stopped writing).
+
+### 4i. Gripper: still the open problem
+
+The gripper had neither of the arm's fixes. During a gripper goal JTC
+interpolates its setpoint every cycle, so the bridge fired `set_gripper_value`
+at the full 30Hz -- each a point-to-point move aborting the previous, at fixed
+speed 50, synchronously (`gripper=524ms` in the logs, blocking the arm's stream
+too).
+
+Speed matching and settle were added, but the startup probe reports:
+
+```
+[mycobot_bridge] gripper writes=sync (blocking) -- this pymycobot's
+                 set_gripper_value takes no _async argument
+```
+
+**pymycobot 4.0.6 has no `_async` for `set_gripper_value`.** So the gripper
+cannot get the fix that fixed the arm, and it remains slow and stepped. The
+probe reporting this rather than silently doing nothing is the useful part.
+
+Compounding it, `gripper_close_until_contact()` still sends **17 separate
+action goals** of 0.3s each -- a staircase by construction, independent of how
+each one executes. And `GRIPPER_READ_EVERY = 10` means the gripper position is
+stale, so the `lag=` value contact detection triggers on is partly read
+staleness rather than real jaw lag. It works, but the signal is weaker than it
+looks.
+
+### End state
+
+A full sequence, clean, no step failures. Pre-place IK: 12 of 19 seeds
+converged and all agreed on `[-1.313, -0.801, -0.394, -0.376, 0, -1.313]` --
+deterministic, no constraint sampling. Every Cartesian segment `fraction=1.00`.
+
+### Next session
+
+1. **Why does the `/joint_states` reader fail to match?** The recreate is a
+   workaround. Capture the abort output's QoS dump on a run where recreating
+   does not recover.
+2. **Gripper.** Rewrite `gripper_close_until_contact` as one continuous motion
+   cancelled on contact instead of 17 goals; lower `GRIPPER_READ_EVERY` so the
+   contact signal is real lag. Check whether a newer pymycobot adds `_async`
+   to `set_gripper_value`.
+3. Still open from Session 3e: the OMPL response-adapter gap per distro, a
+   `constraints:` block in ros2_controllers.yaml, calibrating
+   `SPEED_100_RAD_PER_SEC`, and telling MoveIt the block is in the gripper so
+   place-move collision checking accounts for it.
+4. `_FALLBACK_MAX_JOINT_SPEED` is still 0.5 rad/s against joint_limits.yaml's
+   1.0. Now that the command path is no longer starved, raising it is worth a
+   careful hardware test.
