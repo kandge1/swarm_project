@@ -461,9 +461,7 @@ class RobotIOClient(Node):
         # Action clients whose DDS writer has already been given time to match
         # -- see _DDS_MATCH_SETTLE_SEC / _deliver_goal.
         self._warmed_clients = set()
-        self._joint_state_sub = self.create_subscription(
-            JointState, "/joint_states", self._on_joint_state, 10
-        )
+        self._create_joint_state_sub()
 
     def _on_joint_state(self, msg):
         for name, effort in zip(msg.name, msg.effort):
@@ -477,17 +475,70 @@ class RobotIOClient(Node):
         configured for that joint)."""
         return self._joint_efforts.get(joint_name)
 
-    def wait_for_joint_states(self, timeout_sec=10.0):
+    def _create_joint_state_sub(self):
+        self._joint_state_sub = self.create_subscription(
+            JointState, "/joint_states", self._on_joint_state, 10
+        )
+
+    def describe_joint_state_publishers(self):
+        """QoS and identity of every discovered /joint_states publisher.
+
+        count_publishers() counts publishers on the TOPIC regardless of
+        whether their QoS is compatible with ours, so "1 publisher visible,
+        0 messages" is exactly what an unmatched endpoint looks like. This
+        prints enough to tell an incompatibility (a durability/reliability
+        mismatch, which would be permanent) apart from a failed match (which
+        recreating the subscription can recover)."""
+        try:
+            infos = self.get_publishers_info_by_topic("/joint_states")
+        except Exception as exc:
+            return f"    <could not query publisher info: {exc!r}>"
+        if not infos:
+            return "    <no publishers discovered at all>"
+        lines = []
+        for info in infos:
+            qos = info.qos_profile
+            lines.append(
+                f"    node={info.node_name} reliability={qos.reliability.name} "
+                f"durability={qos.durability.name} depth={qos.depth}")
+        return "\n".join(lines)
+
+    def wait_for_joint_states(self, timeout_sec=30.0, recreate_after_sec=6.0):
         """Block until the first /joint_states message arrives. True if one
         did.
 
         Separate from current_joint_positions so callers can distinguish "no
-        data yet" from "data, but this joint is absent" -- current_joint_positions
-        returns 0.0 for both, which is indistinguishable from a joint genuinely
-        at zero."""
+        data yet" from "data, but this joint is absent" --
+        current_joint_positions returns 0.0 for both, which is
+        indistinguishable from a joint genuinely at zero.
+
+        RECREATES THE SUBSCRIPTION while waiting. Observed 2026-07-27: runs
+        fail with `1 publisher(s) visible` and zero messages, while the robot
+        has all three controllers active and is publishing normally. So the
+        writer is discovered but the reader never matches it -- a one-sided
+        endpoint match on this unicast link. This is the same failure mode
+        _deliver_goal already recovers from for action goals, and by the same
+        means: tearing the endpoint down and rebuilding it forces a fresh
+        announcement instead of waiting on a handshake that has already been
+        missed. Waiting longer alone does not help, because nothing retries."""
         end_time = time.monotonic() + timeout_sec
+        next_recreate = time.monotonic() + recreate_after_sec
+        attempts = 0
         while not self._joint_positions and time.monotonic() < end_time:
             rclpy.spin_once(self, timeout_sec=0.1)
+            if not self._joint_positions and time.monotonic() >= next_recreate:
+                attempts += 1
+                print(f"[joint_states] no data after "
+                      f"{recreate_after_sec * attempts:.0f}s "
+                      f"({self.count_publishers('/joint_states')} publisher(s) "
+                      f"visible) -- recreating the subscription to force a "
+                      f"fresh DDS match (attempt {attempts})")
+                self.destroy_subscription(self._joint_state_sub)
+                self._create_joint_state_sub()
+                next_recreate = time.monotonic() + recreate_after_sec
+        if self._joint_positions and attempts:
+            print(f"[joint_states] recovered after {attempts} "
+                  f"subscription recreate(s)")
         return bool(self._joint_positions)
 
     def current_joint_positions(self, joint_names, timeout_sec=5.0):
@@ -1821,15 +1872,21 @@ def main():
     # motion failure for what is actually a discovery failure on THIS machine.
     # Observed 2026-07-27 across three consecutive runs, each of which sent
     # real goals the robot really executed while its own log stayed clean.
-    if not io_client.wait_for_joint_states(timeout_sec=10.0):
-        print("\nABORTING: no /joint_states received in 10s "
-              f"({io_client.count_publishers('/joint_states')} publisher(s) "
-              "visible).\n"
-              "  The robot is probably fine -- this is DDS discovery on this\n"
-              "  machine. Check that real_robot_hardware.launch.py is up, that\n"
-              "  joint_state_broadcaster started, and that CYCLONEDDS_URI is\n"
-              "  set here. `ros2 topic hz /joint_states` should show traffic\n"
-              "  before this script is worth running.")
+    if not io_client.wait_for_joint_states(timeout_sec=30.0):
+        print("\nABORTING: no /joint_states received in 30s, across several "
+              "subscription recreates.\n"
+              f"  {io_client.count_publishers('/joint_states')} publisher(s) "
+              "discovered:\n"
+              f"{io_client.describe_joint_state_publishers()}\n"
+              "  If a publisher IS listed above, the robot is publishing and\n"
+              "  this is an endpoint match failure on this machine -- compare\n"
+              "  the reliability/durability shown against this subscription's\n"
+              "  (RELIABLE/VOLATILE, depth 10); a mismatch there never\n"
+              "  delivers and no amount of retrying will help.\n"
+              "  If NO publisher is listed, it is plain discovery: check that\n"
+              "  real_robot_hardware.launch.py is up, that\n"
+              "  joint_state_broadcaster is active, and that CYCLONEDDS_URI is\n"
+              "  set in THIS shell.")
         io_client.destroy_node()
         rclpy.shutdown()
         return
