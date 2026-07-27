@@ -330,36 +330,48 @@
     <parent link="joint6_flange"/>
     <child link="camera_flange"/>
     <!-- <origin xyz= "0 0.0 0" rpy = "1.5708 1.5708 0"/>   -->
-    <!-- yaw 1.5708 becomes 0.7854 (2026-07-28): the model was 45 deg out of
+    <!-- yaw 1.5708 becomes 2.3562 (2026-07-28): the model was 45 deg out of
          roll about the tool axis against the physical mount.
 
-         MEASURED, not guessed. With all six joints at zero the real arm has
-         the camera lens facing +X (which the model already agreed with) and
-         the camera body sitting 135 deg from +Y and 45 deg from +Z in the Y-Z
-         plane, i.e. up and to the right at 45 deg, radial direction
-         (0, -0.707, +0.707). Sweeping candidate yaw values through forward
-         kinematics (swarm_pkg scripts/tool_frame_check.py) against that
-         observation gave:
+         VALIDATED AT TWO POSES against the real arm, using
+         wrist_camera_optical_frame, which is the frame this file itself
+         labels as the camera (ROS convention: +Z is the lens direction, +Y is
+         down, so camera UP is optical -Y):
 
-             yaw 1.5708 (was)   gives (0, -1.000,  0.000)    45.0 deg off
-             yaw 0.7854 (now)   gives (0, -0.707, +0.707)     0.5 deg off
-             yaw 2.3562         gives (0, -0.707, -0.707)    90.0 deg off
-             yaw 4.7124         gives (0, +1.000,  0.000)   135.0 deg off
+             joint6output    real arm                model, yaw=2.3562
+             0 deg           up and RIGHT at 45      (0, -0.71, +0.71)   0.0 deg
+             -45 deg         straight UP             (0,  0.00, +1.00)   0.0 deg
 
-         The residual 0.5 deg is this file's own 1.579 roll term, not error.
+         Candidates, error against the real arm at those two poses:
 
-         This is the 45 deg that HOME_DEGREES joint6output = -45 has been
-         compensating for. That compensation STAYS: it is what brings the real
-         assembly from its 45 deg rest offset round to horizontal. With this
-         fix RViz finally shows what the arm is actually doing, at zero and at
-         home alike.
+             yaw 1.5708 (orig)    45.0 deg / 45.0 deg
+             yaw 0.7854            90.0 deg / 90.0 deg
+             yaw 2.3562 (this)      0.0 deg /  0.0 deg
+             yaw 4.7124           135.0 deg / 135.0 deg
 
-         joint6_flange is the PARENT here and does not move, so IK, the grasp
-         quaternion and Cartesian planning are untouched. What changes is where
-         the model believes the camera and gripper are, which is the point, and
-         which means collision geometry and any camera frame work were
-         previously 45 deg wrong. -->
-    <origin xyz= "0 0 0.01" rpy = "1.579 0 0.7854"/>
+         A previous attempt set 0.7854, which is this correction with the SIGN
+         REVERSED. It came from anchoring on camera_flange's own Z axis, an
+         axis chosen by inspection rather than by any stated meaning, and it
+         happened to agree at one pose while being 90 deg wrong at both. Anchor
+         on the optical frame, and check more than one pose.
+
+         joint6_flange is the PARENT of this joint and does not move, so IK,
+         the grasp quaternion and Cartesian planning are untouched. What
+         changes is where the model believes the camera and gripper sit, so
+         collision geometry and any camera-frame work were previously 45 deg
+         wrong.
+
+         HOME_DEGREES joint6output = -45 stays: that compensation is what
+         swings the real assembly from its rest offset to vertical, and is
+         independent of the model knowing where the assembly is.
+
+         SEPARATE, NOT FIXED HERE: the camera_flange link's visual and
+         collision origins carry rpy "0 3.14159 0", a 180 deg flip relative to
+         the link frame. That is why the drawn mesh in RViz can appear opposite
+         to what the optical frame reports. Its xyz offset was tuned with that
+         flip in place, so removing it needs the offset re-derived, and the
+         appearance should be re-checked after this change before touching it. -->
+    <origin xyz= "0 0 0.01" rpy = "1.579 0 2.3562"/>
   </joint>
 
   <!-- Adaptive gripper copied without changing any xyz or rpy values. -->
