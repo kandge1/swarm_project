@@ -1986,11 +1986,33 @@ def parse_args():
                         help="cube side length, meters, used to turn --place-position's "
                         "surface Z into the block-center Z the flange must descend to "
                         f"when releasing (default: {DEFAULT_BLOCK_SIZE})")
+    parser.add_argument("--gripper-yaw-deg", type=float, default=GRIPPER_YAW_DEG,
+                        help="world-frame yaw (deg, about +Z) the jaws hold during "
+                        "every grasp, pick and place alike -- this is a MOUNT "
+                        "correction (the tool sits 45 deg askew, see GRIPPER_YAW_DEG's "
+                        "comment), not a per-block rotation. At the default the jaw "
+                        "axis lines up with world +X; add +/-90*n deg to line up with "
+                        "+Y instead, or anything in between for a mat that isn't "
+                        f"axis-aligned with world (default: {GRIPPER_YAW_DEG})")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    # --gripper-yaw-deg overrides the module-level default. Recompute the
+    # derived quaternion and seed offset from it now, before anything below
+    # reads them -- gripper_yaw_quat()/_bearing_seeds() re-read these globals
+    # on every call, so this is the only place a rebuild is needed.
+    global GRIPPER_YAW_DEG, GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, \
+        GRIPPER_LOCK_QW, _GRASP_YAW_JOINT_OFFSET
+    if args.gripper_yaw_deg != GRIPPER_YAW_DEG:
+        GRIPPER_YAW_DEG = args.gripper_yaw_deg
+        GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW = \
+            gripper_yaw_quat(GRIPPER_YAW_DEG)
+        _GRASP_YAW_JOINT_OFFSET = -math.radians(GRIPPER_YAW_DEG)
+        print(f"[pick_place] gripper yaw overridden to {GRIPPER_YAW_DEG} deg "
+              "(default corrects the 45 deg mount offset)")
 
     # use_sim_time:=true REMOVED (2026-07-26): this script targets real
     # hardware (split-compute, mars<->robot), never Gazebo -- there is no

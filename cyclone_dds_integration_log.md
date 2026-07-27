@@ -1517,3 +1517,110 @@ Full pick and place, clean, no step failures. Contact at -0.2325 with the jaw
 reading tracking every step. Command gaps: median 35ms, 86% under 45ms, 39 in
 the 101-300ms band (was 146). Reads: median 22ms, max 186ms, zero `-1`
 returns. `/joint_states` matched first try with no recreate.
+
+## Session 6 (2026-07-28): the URDF mismatch, in full, and the grasp yaw
+
+The camera/gripper mount disagreed with the URDF in three independent ways,
+found and fixed one at a time by measuring against the real robot in RViz
+rather than guessing from the mesh. All three were driven by
+`tool_frame_check.py` (new this session): pure-Python FK straight from the
+URDF's joint origins, no ROS, so a claimed fix could be checked against a
+number before touching hardware.
+
+### 6a. Orientation tolerance tightened, reverted
+
+Tried tightening `IK_ORI_XY_TOLERANCE` 0.10 -> 0.04 to fix a visible gripper
+tilt. Confirmed on hardware to change nothing -- identical chosen IK solution
+before and after, more seeds failing to converge, tilt unchanged. Reverted in
+`11f82c8`. Root cause: this constant only shapes the seed search for the
+*hover* joint state; the orientation actually held during a grasp is set by
+`make_orientation_constraint`'s tolerance args, which this constant never
+touches. Left for the characterization tests -- see the tilt is visible even
+at all-joints-zero, where no IK or planner tolerance is involved, so it is
+mechanical (sag, deadband, or the mount mismatch below), not a tuning knob.
+
+### 6b. Three stacked URDF bugs, not one
+
+The user's report -- "camera points up, model says down; fix that; now the
+gripper notch is wrong instead" -- looked like a single inconsistent error.
+It was three, on three different links, that happened to cancel into
+something that looked plausible at a glance:
+
+1. **Flange roll, misdiagnosed once before being fixed.** `c438633` first
+   read the flange as 45 deg out and corrected it to 0.7854 rad; that turned
+   out to still be 90 deg from the real mount. `ae25172` corrected the sign
+   properly to 2.3562 rad. Verified at two poses to 0.0 deg agreement after
+   the second fix.
+2. **Camera mesh 180 about its own lens axis** (`10eff97`). The visual/
+   collision origin on `camera_flange` had the lens direction flipped;
+   RViz's drawn camera pointed opposite the real one even with (1) fixed.
+3. **Gripper subtree 180 out from the camera** (`7f814ab`). Once (1) and (2)
+   made the camera agree with reality, the gripper notch was found sitting
+   on the SAME side as the camera lens instead of opposite it --
+   `camera_flange_to_gripper_base` needed its own 180 about the child's
+   approach axis (`gripper_base`'s own Y, not world or parent Y -- rotating
+   about the wrong axis moves the joint origin as well as the notch).
+   Verified 179.5 deg between camera-UP and notch-side at two poses.
+
+Each fix was checked numerically with `tool_frame_check.py` BEFORE asking for
+a visual confirmation, and each visual confirmation came from the user
+comparing the live RViz marker to the physical arm at the same joint values
+-- neither side alone would have caught bug 3, which is invisible if you
+only check the camera.
+
+First attempt at fix 3 broke the URDF outright: `--` inside an XML comment is
+illegal and silently failed the parser. Recovered with `git checkout --` on
+the uncommitted file and redid the edit with different wording.
+
+### 6c. The grasp yaw was 45 degrees off, and it was never the home pose
+
+With the mount geometry now correct, the user still had to rotate every
+target block 45 deg on the mat to grasp it square, and initially suspected
+`HOME_DEGREES`'s `joint6output = -45` compensation was the culprit -- it
+isn't. That value describes the mount's offset relative to the SERVO's own
+zero, in joint space, and both RViz and the servo read the same number, so
+changing it would only make the model lie everywhere else it's currently
+correct. Composing the two fixed transforms below the flange
+(`joint6output_to_camera_flange` then `camera_flange_to_gripper_base`)
+against `pick_place.py`'s downward grasp quaternion instead gives a WORLD
+number: the jaw's finger-opening axis sits at +45.00 deg from world +X, not
+0. That is the 45 deg the user had been cancelling by hand with the cube,
+and it is a property of the fixed mount geometry, unrelated to any joint
+value.
+
+Fixed with `GRIPPER_YAW_DEG = -45.0` in `pick_place.py` (`686d6e2`), which
+composes on top of the existing downward-grasp quaternion via
+`gripper_yaw_quat()` (already present, previously left at 0.0 "not yet
+confirmed"). Also added `--gripper-yaw-deg` as a CLI override, since the mat
+grid may not be exactly world-axis-aligned and the constant alone can't be
+retuned without an edit + rebuild.
+
+The IK seeds had to move with it: `joint6output` counter-rotates the flange
+about an axis pointing at world -Z under the downward grasp, so a world yaw
+lands on the joint negated. `_GRASP_YAW_JOINT_OFFSET` is now derived from
+`GRIPPER_YAW_DEG` rather than baked into the seed literals, so the two can't
+drift apart the way the flange-roll sign error did. Confirmed against the
+real converged solution logged 2026-07-27,
+`[1.828, -0.746, -0.605, -0.22, -0.0, 1.828]` (jaw at +45.00 deg before,
+0.00 deg after the offset is applied), and both the pick and place targets
+stay clear of `joint6output`'s limits after the shift.
+
+### 6d. Remounting the tool was ruled out
+
+Considered rotating the physical mount 45 deg to make `joint6output=0`
+genuinely mean "camera up" instead of carrying the -45 deg compensation
+forever. Ruled out: it requires opening the robot body, which the user does
+not want to do. `GRIPPER_YAW_DEG` and a possible future joint-space
+calibration offset (ROS angle = servo angle + 45 deg, applied both
+directions, with limits shifted to match) are the software-only paths;
+the joint-space offset is deliberately NOT done yet -- it touches the one
+layer just verified end-to-end, and should wait for a repeatability
+baseline from Test 1 / Test 6 so a regression there would actually be
+caught.
+
+### End state
+
+`pick_place.py` ran clean with the corrected URDF collision geometry, no
+seed convergence issues. Gripper notch and camera both confirmed matching
+the real robot in RViz at `[0,0,0,0,0,-45]`. Ready to start the
+characterization tests (see `TESTS.md`).
