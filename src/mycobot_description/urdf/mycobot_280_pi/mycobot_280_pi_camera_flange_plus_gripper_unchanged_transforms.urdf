@@ -413,7 +413,29 @@
     <parent link="camera_flange"/>
     <child link="gripper_base"/>
     <!-- <origin xyz= "0 0.0 0" rpy = "0 1.5708 1.5708"/>   -->
-    <origin xyz= "0 0.04 0" rpy = "0.0082 -1.5708 0"/>  
+    <!-- 2026-07-28: was rpy "0.0082 -1.5708 0". The gripper subtree sat 180
+         deg out about its own approach axis, putting the notch on the SAME
+         side as the camera when physically it is opposite.
+
+         Measured at joint6output of -45 deg, where the camera had already
+         been confirmed against the real arm:
+
+             camera UP        (optical -Y)   (+0.00, +0.00, +1.00)  UP
+             gripper_base +Z  (notch side)   (-0.01, +0.00, +1.00)  UP
+             angle between them: 0.5 deg, and it should be 180
+
+         gripper_base +Y is the approach axis (it reads FWD, same as the
+         lens), so post multiplying by Ry(pi) rotates about the CHILD's own Y.
+         The notch swaps sides, the approach direction is untouched, and the
+         joint origin does not move, so xyz stays as it was.
+
+         Note the whole subtree rotates, so the finger links swap sides with
+         it (gripper_left3 at minus x moves to plus x). For a symmetric two
+         finger jaw that is visually identical, but the modelled opening
+         direction reverses in world, which is worth a glance in RViz.
+         Nothing physical changes: the real jaw is driven through the
+         bridge's 0 to 100 scale, which never consults the URDF. -->
+    <origin xyz= "0 0.04 0" rpy = "-0.0082 1.5708 0"/>  
   </joint>
 
   <link name="gripper_base">
