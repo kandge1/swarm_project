@@ -551,7 +551,24 @@ class Bridge:
     # reported value (pymycobot exposes no gripper effort at all -- see the
     # module docstring), so a stale gripper reading costs nothing, whereas a
     # halved arm command rate costs real tracking accuracy.
-    GRIPPER_READ_EVERY = 10
+    # Lowered 10 -> 1 on 2026-07-28. The reasoning below was written when a
+    # serial read cost 500-1500ms, so sampling the gripper too doubled the loop
+    # period and halved the arm's command rate. DEFAULT_READ_TIMEOUT_SEC ended
+    # that: reads are now 10-25ms, so reading both costs ~20ms instead of ~2s.
+    #
+    # The cost of a stale gripper reading was never "nothing", either. Contact
+    # detection in pick_place.py is built entirely on
+    # lag = commanded - measured, so a frozen `measured` makes lag grow purely
+    # because the target is moving away from it -- a FALSE contact at whatever
+    # position the reading happens to be stuck at. Observed 2026-07-28: contact
+    # declared at pos=0.0075 (about 80% OPEN, against -0.225 in runs that
+    # actually gripped), with the identical 0.0075 reported across four
+    # consecutive close steps.
+    #
+    # This halves the idle loop rate (~87Hz -> ~45Hz), which costs nothing:
+    # commands are capped at 30Hz and reads during motion are throttled
+    # separately.
+    GRIPPER_READ_EVERY = 1
 
     def _serial_read_once(self):
         # pymycobot's get_* calls commonly return -1 (a truthy int, not
