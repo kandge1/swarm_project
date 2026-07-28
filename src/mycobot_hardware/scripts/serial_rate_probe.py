@@ -135,19 +135,62 @@ def summarize(label, samples):
               ordered[-1]))
 
 
-def settle(arm, args, timeout_sec=6.0, stable_reads=4, stable_deg=0.05):
+# One encoder count is 1.533e-3 rad = 0.0879 deg on this arm (measured from
+# the bridge's own logs). A stability threshold BELOW that is unsatisfiable:
+# a joint sitting perfectly still but dithering by a single count shows a
+# 0.0879 deg spread forever, so settle() can never converge and burns its
+# whole timeout before returning a possibly mid-motion reading. 0.12 deg is
+# ~1.4 counts -- above the quantisation floor, still well under the 0.3 deg
+# --deadzone-min-deg residual the test needs to resolve.
+SETTLE_STABLE_DEG = 0.12
+
+# How far a joint must move before a "stable" reading is believed to be the
+# END of a move rather than the moment before it started. Also ~1.4 counts.
+SETTLE_MIN_MOTION_DEG = 0.12
+
+
+def settle(arm, args, timeout_sec=6.0, stable_reads=4,
+           stable_deg=SETTLE_STABLE_DEG, reference=None,
+           min_motion_deg=SETTLE_MIN_MOTION_DEG, motion_grace_sec=2.0):
     """Poll until the arm stops moving, then return the settled angles.
 
     "Stopped" means `stable_reads` consecutive readings within `stable_deg` of
     each other, not a fixed sleep -- the point of this whole script is that
-    move durations here are not predictable."""
+    move durations here are not predictable.
+
+    PASS `reference` (the pose from before the command) WHENEVER ONE EXISTS.
+    send_angles() returns before the servos begin driving, and a read takes
+    ~20ms, so four consecutive reads span ~80ms -- comfortably inside the gap
+    between the command landing and the arm actually starting. Those four
+    reads are identical, the stability test passes, and settle() returns the
+    STARTING pose as though the move had completed. With `reference` given,
+    stability is ignored until the arm has actually moved `min_motion_deg`
+    away from it.
+
+    That failure is not hypothetical: the first --deadzone-sweep run on
+    hardware (2026-07-28) produced residuals of exactly +30.0000 deg -- the
+    commanded amplitude to four decimal places, i.e. settled == start -- on
+    4 of 9 trials, and the dead-zone staircase then extrapolated target + k*e
+    with e = 30 deg, walking joints 60 and 90 deg out until one hit its limit
+    and pymycobot raised. Racy by nature, which is why the other 5 trials
+    looked fine.
+
+    A move that never starts must still terminate, so after `motion_grace_sec`
+    a stable reading is accepted regardless. The caller is responsible for
+    noticing that nothing moved -- see run_deadzone_trial's failed-move guard,
+    which is the independent second defense against exactly this."""
     deadline = time.time() + timeout_sec
+    grace_until = time.time() + motion_grace_sec
     history = []
     last_good = None
+    moved = reference is None
     while time.time() < deadline:
         angles = read_angles(arm)
         if angles is not None:
             last_good = angles
+            if not moved and max(abs(angles[i] - reference[i])
+                                 for i in range(6)) >= min_motion_deg:
+                moved = True
             history.append(angles)
             if len(history) > stable_reads:
                 history.pop(0)
@@ -155,7 +198,7 @@ def settle(arm, args, timeout_sec=6.0, stable_reads=4, stable_deg=0.05):
                 spread = max(
                     max(abs(h[j] - history[0][j]) for h in history)
                     for j in range(6))
-                if spread <= stable_deg:
+                if spread <= stable_deg and (moved or time.time() >= grace_until):
                     return last_good
     return last_good
 
@@ -185,14 +228,49 @@ POSTURES = [
 ]
 
 
+# pymycobot enforces these itself and RAISES on violation, which aborts the
+# whole sweep mid-run. Checking first turns "the process died at trial 9 of 9"
+# into "that one staircase step was skipped and reported". Values are the
+# myCobot 280's own limits, confirmed against the exception pymycobot threw on
+# 2026-07-28: "error on index 2. Received 150.58 but angle should be -150 ~ 150".
+JOINT_LIMITS_DEG = [
+    (-168.0, 168.0),   # J1 base yaw
+    (-135.0, 135.0),   # J2 shoulder
+    (-150.0, 150.0),   # J3 elbow
+    (-145.0, 145.0),   # J4
+    (-165.0, 165.0),   # J5
+    (-175.0, 175.0),   # J6
+]
+JOINT_LIMIT_MARGIN_DEG = 2.0
+
+# A residual this close to the commanded amplitude means the joint did not
+# move at all -- settled == start -- so there is no "error" to correct and
+# k*e is not a small bias but a second full-sized move. Extrapolating from it
+# is what walked joints 60 and 90 deg out of position on the first hardware
+# run. Half the amplitude is far above any plausible real residual (those run
+# 0.2-1.5 deg against a 30 deg move, i.e. under 5%) and far below a no-op.
+FAILED_MOVE_FRACTION = 0.5
+
+
+def within_limits(angles):
+    """(ok, index, value, lo, hi) for the first joint outside its safe range."""
+    for i, value in enumerate(angles[:6]):
+        lo, hi = JOINT_LIMITS_DEG[i]
+        if not (lo + JOINT_LIMIT_MARGIN_DEG <= value <= hi - JOINT_LIMIT_MARGIN_DEG):
+            return False, i, value, lo, hi
+    return True, None, None, None, None
+
+
 def move_to_posture(arm, args, angles, label):
     """Send the whole arm to a posture and wait for it to stop.
 
     Uses a longer settle budget than a single-joint step: this is a six-joint
     move and several of them are large."""
     print("[probe] moving to posture '{}': {}".format(label, angles))
+    before = read_angles(arm)
     arm.send_angles(list(angles), args.sweep_speed)
-    settled = settle(arm, args, timeout_sec=args.posture_settle_sec)
+    settled = settle(arm, args, timeout_sec=args.posture_settle_sec,
+                     reference=before)
     if settled is None:
         print("[probe] ERROR: no valid reading after moving to '{}'".format(label),
               file=sys.stderr)
@@ -244,8 +322,15 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False):
     target = list(start)
     target[j] = start[j] + args.amplitude_deg
 
+    ok, bad_i, bad_v, lo, hi = within_limits(target)
+    if not ok:
+        print("[probe] SKIP: the initial move would put joint {} at {:.2f} deg, "
+              "outside its {:.0f}..{:.0f} limit".format(bad_i, bad_v, lo, hi))
+        return None
+
     arm.send_angles(target, args.speed)
-    settled = settle(arm, args, timeout_sec=args.settle_timeout_sec)
+    settled = settle(arm, args, timeout_sec=args.settle_timeout_sec,
+                     reference=start)
     if settled is None:
         print("[probe] ERROR: no valid reading after the initial move", file=sys.stderr)
         return None
@@ -259,7 +344,23 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False):
 
     result = {"joint": j, "start": start, "target": target[j],
               "settled": settled[j], "residual": residual,
-              "rows": [], "ratios": [], "steps": [], "below_min": False}
+              "rows": [], "ratios": [], "steps": [], "below_min": False,
+              "move_failed": False}
+
+    # The joint never moved. e is not an error to correct, it is the whole
+    # commanded motion, and target + k*e would be a fresh full-sized move --
+    # so refuse to run the staircase rather than walk the joint out of range.
+    if abs(residual) >= FAILED_MOVE_FRACTION * abs(args.amplitude_deg):
+        result["move_failed"] = True
+        moved = abs(settled[j] - start[j])
+        print("[probe] MOVE FAILED: joint {} was commanded {:+.1f} deg and moved "
+              "{:.2f} deg.".format(j, args.amplitude_deg, moved))
+        print("[probe]   residual ({:.2f} deg) is >= {:.0f}% of the amplitude, so "
+              "there is no residual to correct here -- the move itself did not "
+              "happen.".format(abs(residual), 100 * FAILED_MOVE_FRACTION))
+        print("[probe]   Staircase SKIPPED (extrapolating k*e from this would "
+              "command a second full-sized move).")
+        return result
 
     if abs(residual) < args.deadzone_min_deg:
         result["below_min"] = True
@@ -269,14 +370,23 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False):
         print("[probe] --- overshoot staircase: commanding target + k*e ---")
         print("[probe] {:>3} {:>12} {:>12} {:>12} {:>10}"
               .format("k", "commanded", "settled", "error", "|err|/|e|"))
+    previous = settled
     for k in range(1, args.deadzone_steps + 1):
         biased = list(target)
         biased[j] = target[j] + k * residual
+        ok, bad_i, bad_v, lo, hi = within_limits(biased)
+        if not ok:
+            print("[probe] stopping staircase at k={}: would command joint {} to "
+                  "{:.2f} deg, outside its {:.0f}..{:.0f} limit"
+                  .format(k, bad_i, bad_v, lo, hi))
+            break
         arm.send_angles(biased, args.speed)
-        measured = settle(arm, args, timeout_sec=args.settle_timeout_sec)
+        measured = settle(arm, args, timeout_sec=args.settle_timeout_sec,
+                          reference=previous)
         if measured is None:
             print("[probe] ERROR: lost readings at k={}".format(k), file=sys.stderr)
             break
+        previous = measured
         err = target[j] - measured[j]
         ratio = abs(err) / abs(residual) if residual else float("nan")
         if not quiet:
@@ -342,6 +452,13 @@ def mode_deadzone(arm, args):
     if result is None:
         return 1
     print()
+
+    if result.get("move_failed"):
+        print("[probe] No usable measurement: the commanded move did not execute,")
+        print("[probe] so there is no residual to characterise. Retry with a lower")
+        print("[probe] --speed or a longer --settle-timeout-sec.")
+        settle_and_write(arm, args, result["start"], [])
+        return 1
 
     if result["below_min"]:
         print("[probe] residual is below --deadzone-min-deg ({} deg): this joint"
@@ -449,7 +566,15 @@ def mode_deadzone_sweep(arm, args):
                 print()
                 print("[probe] --- posture '{}', joint {} (moment arm {:.4f} m) ---"
                       .format(name, j, arms_m[j] if j < len(arms_m) else float("nan")))
-                result = run_deadzone_trial(arm, args, j)
+                # One bad trial must not lose the eight good ones. pymycobot
+                # raises on out-of-range angles, and a serial hiccup can throw
+                # from anywhere in the vendor stack.
+                try:
+                    result = run_deadzone_trial(arm, args, j)
+                except Exception as exc:
+                    print("[probe] TRIAL FAILED (posture '{}', joint {}): {!r}"
+                          .format(name, j, exc), file=sys.stderr)
+                    result = None
                 if result is not None:
                     result["posture"] = name
                     result["moment_arm"] = (arms_m[j] if j < len(arms_m)
@@ -493,7 +618,9 @@ def report_sweep(args, results):
         ratios = r["ratios"]
         cells = ["{:>9.2f}".format(ratios[i]) if i < len(ratios) else "{:>9}".format("-")
                  for i in range(3)]
-        if r["below_min"]:
+        if r.get("move_failed"):
+            verdict = "MOVE DID NOT EXECUTE -- discard"
+        elif r["below_min"]:
             verdict = "no residual to correct"
         else:
             verdict, _ = deadzone_verdict(ratios, args.deadzone_steps)
@@ -502,10 +629,22 @@ def report_sweep(args, results):
                       cells[0], cells[1], cells[2], verdict))
 
     # Does the residual track gravity load? Compare each joint across postures.
+    failed = [r for r in results if r.get("move_failed")]
+    if failed:
+        print()
+        print("[probe] {} of {} trials NEVER MOVED and are excluded below."
+              .format(len(failed), len(results)))
+        print("[probe] A residual equal to the amplitude means settle() returned "
+              "the start pose. If this is more than an occasional straggler, the "
+              "readings are racing the motion -- raise --settle-timeout-sec or "
+              "lower --speed and rerun; do not interpret the surviving rows as a "
+              "result.")
+
     print()
     print("[probe] --- residual vs gravity moment arm, per joint ---")
-    for j in sorted({r["joint"] for r in results}):
-        per_joint = [r for r in results if r["joint"] == j]
+    usable = [r for r in results if not r.get("move_failed")]
+    for j in sorted({r["joint"] for r in usable}):
+        per_joint = [r for r in usable if r["joint"] == j]
         if len(per_joint) < 2:
             continue
         per_joint.sort(key=lambda r: r["moment_arm"])
@@ -517,6 +656,12 @@ def report_sweep(args, results):
         residuals = [abs(r["residual"]) for r in per_joint]
         spread_arm = max(arms_m) - min(arms_m)
         spread_res = max(residuals) - min(residuals)
+        # residuals is ordered by ASCENDING moment arm, so [0] is the lightest
+        # posture and [-1] the most loaded. Direction matters as much as
+        # magnitude: a residual that SHRINKS as load rises is not droop, and
+        # calling it droop would send the controller after a term that isn't
+        # there.
+        lightest, heaviest = residuals[0], residuals[-1]
         if spread_arm < 1e-4:
             print("[probe]   gravity-free joint (moment arm ~0 at every posture): "
                   "any residual here is dead zone, stiction or quantisation, "
@@ -524,14 +669,22 @@ def report_sweep(args, results):
         elif max(residuals) < args.deadzone_min_deg:
             print("[probe]   no meaningful residual at any posture.")
         elif spread_res < 0.25 * max(residuals):
-            print("[probe]   FLAT across a {:.3f}m load range -> NOT gravity "
-                  "droop. A dead band / stiction floor; a gravity feedforward "
-                  "term would not help.".format(spread_arm))
+            print("[probe]   FLAT across a {:.3f}m load range ({:.3f} -> {:.3f} "
+                  "deg) -> NOT gravity droop. A dead band / stiction floor; a "
+                  "gravity feedforward term would not help."
+                  .format(spread_arm, lightest, heaviest))
+        elif heaviest > lightest:
+            print("[probe]   residual GROWS with load ({:.3f} deg at {:.3f}m -> "
+                  "{:.3f} deg at {:.3f}m) -> gravity droop is a real component. "
+                  "A feedforward gravity term or an integrator should generalise."
+                  .format(lightest, arms_m[0], heaviest, arms_m[-1]))
         else:
-            print("[probe]   residual GROWS with load ({:.3f} -> {:.3f} deg over "
-                  "a {:.3f}m arm) -> gravity droop is a real component. A "
-                  "feedforward gravity term or an integrator should generalise."
-                  .format(residuals[0], residuals[-1], spread_arm))
+            print("[probe]   residual SHRINKS as load rises ({:.3f} deg at {:.3f}m "
+                  "-> {:.3f} deg at {:.3f}m). That is backwards for gravity "
+                  "droop, so the variation is being driven by something else "
+                  "(posture-dependent stiction, or too few samples). Rerun "
+                  "before modelling anything."
+                  .format(lightest, arms_m[0], heaviest, arms_m[-1]))
 
     print()
     print("[probe] Read the k=1 column for go/no-go, and the block above for "
