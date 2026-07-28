@@ -243,12 +243,43 @@ def settle(arm, args, timeout_sec=6.0, stable_reads=4,
 # residual it shows is dead zone, stiction or quantisation with the gravity
 # term provably absent. J5 and J6 are likewise ~zero and are not worth
 # sweeping, which is why the default joint set is 0, 1, 2.
+#   name        angles (deg)                  gravity arm (m)      inertia lever (m)   clearance
+#                                             J1      J2      J3     J1      J2      J3
 POSTURES = [
-    # name      angles (deg, 6 joints)        armJ1   armJ2   armJ3  min clearance
-    ("loaded", [0, -45, -30, 45, 0, -45], (0.0000, 0.2902, 0.2121), 0.0777),
-    ("mid",    [0, -15, -15, 45, 0, -45], (0.0000, 0.1500, 0.1214), 0.2166),
-    ("light",  [0,   0,  30,  0, 0, -45], (0.0000, 0.0018, 0.0018), 0.2342),
+    ("vertical", [0,   0,  30,   0, 0, -45], (0.0000, 0.0018, 0.0018), (0.0640, 0.3047, 0.1943), 0.249),
+    ("tucked",   [0, -15,  30, -60, 0, -45], (0.0000, 0.1231, 0.0945), (0.1231, 0.2210, 0.1218), 0.245),
+    ("folded",   [0, -90,  60,  90, 0, -45], (0.0000, 0.1428, 0.0324), (0.1428, 0.2478, 0.2051), 0.139),
+    ("reach",    [0, -30,   0,  45, 0, -45], (0.0000, 0.1766, 0.1214), (0.1766, 0.3261, 0.2159), 0.234),
+    ("compact",  [0, -60,  45, -60, 0, -45], (0.0000, 0.2159, 0.1203), (0.2159, 0.2284, 0.1218), 0.194),
+    ("extended", [0,  45,  15,  75, 0, -45], (0.0000, 0.2805, 0.2025), (0.2805, 0.3144, 0.2123), 0.213),
 ]
+
+# WHY SIX, AND WHY THESE SIX.
+#
+# The 2026-07-28 three-posture set could not answer its own question. Joint 0's
+# gravity moment arm is 0.0000 in every posture -- gravity CANNOT load it --
+# yet its residual varied systematically with posture, 0.847 / 0.767 / 0.550
+# deg, tracking the tool's distance from the rotation axis monotonically while
+# the within-posture repeat spread was only 0.00-0.08 deg. That is a real
+# posture-dependent effect with no gravity in it, worth ~0.30 deg, about 14% of
+# the gravity span being attributed to joints 1 and 2.
+#
+# It could not be subtracted out, because in those three postures the gravity
+# moment arm (a HORIZONTAL offset) and the inertia lever (perpendicular
+# distance to the axis) were nearly proportional -- correlation +0.6 to +1.0.
+# Two collinear regressors cannot be separated by any amount of data.
+#
+# These six were chosen by searching all 1472 postures that keep every link
+# distal to the elbow >=60mm above the base plane (including after the +/-30
+# deg perturbation on joints 0, 1 and 2) for a subset that spans the gravity
+# range AND decorrelates the two. An arm stretched vertically has a large
+# inertia lever and near-zero gravity arm, which is what breaks it:
+#
+#     corr(gravity arm, inertia lever)   J1: +0.033    J2: +0.005
+#
+# At that correlation a two-variable fit can attribute residual to gravity and
+# to inertia separately, which is the difference between "droop is 7.5 deg/m"
+# and "droop is 7.5 deg/m give or take an unknown confound".
 
 
 # pymycobot enforces these itself and RAISES on violation, which aborts the
@@ -356,7 +387,64 @@ def deadzone_verdict(ratios, steps):
         "last k that did nothing and the first that moved."]
 
 
-def run_deadzone_trial(arm, args, joint_idx, quiet=False):
+def run_backlash_trial(arm, args, joint_idx, quiet=False):
+    """Measure lost motion directly: command ONE target, reached from each side.
+
+    This is the classic hysteresis measurement and it exists because the
+    dead-zone staircase only stumbled onto backlash by accident -- it showed up
+    solely in the trials whose residual happened to come out negative, 4 of 27,
+    and every one of those stalled completely (|err|/|e| exactly 1.00 at k=1).
+    That is far too important to leave to chance: at 1-2 deg it is ~6.5mm at a
+    250mm reach, which dwarfs droop, the dead zone, and quantisation combined,
+    and unlike those it CANNOT be fixed by feedback -- the joint does not move,
+    so an integrator winds up against nothing.
+
+    Approach the same target from below and from above; the gap between where
+    the joint stops is the lost motion. Both approaches end with a move of the
+    same size, so servo dynamics cancel and what remains is the direction
+    dependence."""
+    start = read_angles(arm)
+    if start is None:
+        return None
+    j = joint_idx
+    swing = abs(args.amplitude_deg)
+    target = start[j]
+
+    settled = {}
+    for label, sign in (("from_below", -1.0), ("from_above", +1.0)):
+        away = list(start)
+        away[j] = target + sign * swing
+        approach = list(start)
+        approach[j] = target
+        for pose in (away, approach):
+            ok, bad_i, bad_v, lo, hi = within_limits(pose)
+            if not ok:
+                if not quiet:
+                    print("[probe] backlash SKIP: joint {} would reach {:.2f} deg, "
+                          "outside {:.0f}..{:.0f}".format(bad_i, bad_v, lo, hi))
+                return None
+        before = read_angles(arm)
+        arm.send_angles(away, args.speed)
+        settle(arm, args, timeout_sec=args.settle_timeout_sec, reference=before)
+        before = read_angles(arm)
+        arm.send_angles(approach, args.speed)
+        result = settle(arm, args, timeout_sec=args.settle_timeout_sec,
+                        reference=before)
+        if result is None:
+            return None
+        settled[label] = result[j]
+
+    lost = settled["from_below"] - settled["from_above"]
+    if not quiet:
+        print("[probe] backlash: target {:.3f} -> {:.3f} from below, {:.3f} from "
+              "above, lost motion {:+.3f} deg ({:.1f} counts)"
+              .format(target, settled["from_below"], settled["from_above"],
+                      lost, abs(lost) / ENCODER_COUNT_DEG))
+    return {"joint": j, "target": target, "from_below": settled["from_below"],
+            "from_above": settled["from_above"], "lost_motion": lost}
+
+
+def run_deadzone_trial(arm, args, joint_idx, quiet=False, amplitude=None):
     """One dead-zone measurement on one joint, from wherever the arm is now.
 
     Moves the joint by --amplitude-deg, measures the residual e, then commands
@@ -370,8 +458,10 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False):
         return None
 
     j = joint_idx
+    if amplitude is None:
+        amplitude = args.amplitude_deg
     target = list(start)
-    target[j] = start[j] + args.amplitude_deg
+    target[j] = start[j] + amplitude
 
     ok, bad_i, bad_v, lo, hi = within_limits(target)
     if not ok:
@@ -391,7 +481,7 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False):
             print("[probe] ERROR: no valid reading after the initial move",
                   file=sys.stderr)
             return None
-        if abs(target[j] - settled[j]) < FAILED_MOVE_FRACTION * abs(args.amplitude_deg):
+        if abs(target[j] - settled[j]) < FAILED_MOVE_FRACTION * abs(amplitude):
             break
         if attempt < MOVE_ATTEMPTS:
             print("[probe]   move did not execute (joint {} moved {:.2f} deg), "
@@ -399,7 +489,7 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False):
                                           attempt + 1, MOVE_ATTEMPTS))
             start = read_angles(arm) or start
             target = list(start)
-            target[j] = start[j] + args.amplitude_deg
+            target[j] = start[j] + amplitude
 
     residual = target[j] - settled[j]
     if not quiet:
@@ -411,16 +501,20 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False):
     result = {"joint": j, "start": start, "target": target[j],
               "settled": settled[j], "residual": residual,
               "rows": [], "ratios": [], "steps": [], "below_min": False,
-              "move_failed": False}
+              "move_failed": False, "amplitude": amplitude,
+              # A correction REVERSES when its sign opposes the approach. That
+              # single flag separated 17/18 responding from 0/4 stalling on
+              # 2026-07-28 and is the most actionable result in the test.
+              "reversal": (residual < 0) != (amplitude < 0)}
 
     # The joint never moved. e is not an error to correct, it is the whole
     # commanded motion, and target + k*e would be a fresh full-sized move --
     # so refuse to run the staircase rather than walk the joint out of range.
-    if abs(residual) >= FAILED_MOVE_FRACTION * abs(args.amplitude_deg):
+    if abs(residual) >= FAILED_MOVE_FRACTION * abs(amplitude):
         result["move_failed"] = True
         moved = abs(settled[j] - start[j])
         print("[probe] MOVE FAILED: joint {} was commanded {:+.1f} deg and moved "
-              "{:.2f} deg.".format(j, args.amplitude_deg, moved))
+              "{:.2f} deg.".format(j, amplitude, moved))
         print("[probe]   residual ({:.2f} deg) is >= {:.0f}% of the amplitude, so "
               "there is no residual to correct here -- the move itself did not "
               "happen.".format(abs(residual), 100 * FAILED_MOVE_FRACTION))
@@ -578,22 +672,35 @@ def mode_deadzone_sweep(arm, args):
         return 1
     joints = args.sweep_joints
 
-    trials = len(postures) * len(joints) * args.repeats
-    moves = trials * (1 + args.deadzone_steps) + len(postures) * (1 + len(joints))
+    amplitudes = ([args.amplitude_deg, -args.amplitude_deg]
+                  if args.directions == "both"
+                  else [args.amplitude_deg] if args.directions == "positive"
+                  else [-args.amplitude_deg])
+    trials = len(postures) * len(joints) * args.repeats * len(amplitudes)
+    backlash_trials = 0 if args.no_backlash else len(postures) * len(joints)
+    moves = (trials * (2 + args.deadzone_steps)
+             + backlash_trials * 5)
     print()
     print("[probe] === TEST 1 SWEEP PLAN ===")
     print("[probe] postures : {}".format(", ".join(p[0] for p in postures)))
     print("[probe] joints   : {} (0-based)".format(
         ", ".join(str(j) for j in joints)))
-    print("[probe] amplitude: {:+.1f} deg   staircase steps: {}"
-          .format(args.amplitude_deg, args.deadzone_steps))
+    print("[probe] amplitude: {} deg   staircase steps: {}   repeats: {}"
+          .format("/".join("{:+.0f}".format(a) for a in amplitudes),
+                  args.deadzone_steps, args.repeats))
+    print("[probe] backlash : {}".format(
+        "skipped" if args.no_backlash
+        else "{} trials (same target approached from both sides)"
+             .format(backlash_trials)))
     print("[probe] {} trials, ~{} settling moves, roughly {:.0f}-{:.0f} min"
           .format(trials, moves, moves * 1.0 / 60.0, moves * 2.5 / 60.0))
     print()
-    for name, angles, arms_m, clearance in postures:
-        print("[probe]   {:<7} {}  moment arms J1/J2/J3 = {}  min clearance {:.3f}m"
-              .format(name, angles,
-                      "/".join("{:.3f}".format(a) for a in arms_m), clearance))
+    for name, angles, grav, lever, clearance in postures:
+        print("[probe]   {:<9} {}".format(name, angles))
+        print("[probe]             gravity arm J1/J2/J3 = {}   inertia lever = {}"
+              "   clearance {:.3f}m"
+              .format("/".join("{:.3f}".format(a) for a in grav),
+                      "/".join("{:.3f}".format(a) for a in lever), clearance))
     print()
     print("[probe] THE ARM WILL MOVE THROUGH ALL OF THESE UNATTENDED. Clear the")
     print("[probe] workspace, remove any block or fixture, and make sure the")
@@ -619,46 +726,65 @@ def mode_deadzone_sweep(arm, args):
             return 1
 
     results = []
+    backlash = []
     try:
-        for name, angles, arms_m, _clearance in postures:
+        for name, angles, grav, lever, _clearance in postures:
             print()
             print("[probe] " + "=" * 62)
             print("[probe] POSTURE '{}'".format(name))
             print("[probe] " + "=" * 62)
             for j in joints:
                 for rep in range(args.repeats):
-                    print()
-                    # Establish the posture BEFORE each trial and verify it,
-                    # rather than restoring it afterwards and hoping. A trial
-                    # that starts somewhere else is not a measurement of this
-                    # load level.
-                    if move_to_posture(arm, args, angles, name) is None:
-                        print("[probe] SKIPPING posture '{}' joint {} repeat {}: "
-                              "could not reach the posture, so this trial would "
-                              "be credited with a moment arm it was never at."
-                              .format(name, j, rep + 1))
-                        continue
-                    print("[probe] --- posture '{}', joint {} (moment arm "
-                          "{:.4f} m){} ---"
-                          .format(name, j,
-                                  arms_m[j] if j < len(arms_m) else float("nan"),
-                                  "" if args.repeats == 1
-                                  else "  repeat {}/{}".format(rep + 1, args.repeats)))
-                    # One bad trial must not lose the eight good ones. pymycobot
-                    # raises on out-of-range angles, and a serial hiccup can throw
-                    # from anywhere in the vendor stack.
-                    try:
-                        result = run_deadzone_trial(arm, args, j)
-                    except Exception as exc:
-                        print("[probe] TRIAL FAILED (posture '{}', joint {}): {!r}"
-                              .format(name, j, exc), file=sys.stderr)
-                        result = None
-                    if result is not None:
-                        result["posture"] = name
-                        result["repeat"] = rep
-                        result["moment_arm"] = (arms_m[j] if j < len(arms_m)
-                                                else float("nan"))
-                        results.append(result)
+                    for amp in amplitudes:
+                        print()
+                        # Establish the posture BEFORE each trial and verify it,
+                        # rather than restoring it afterwards and hoping. A trial
+                        # that starts somewhere else is not a measurement of this
+                        # load level.
+                        if move_to_posture(arm, args, angles, name) is None:
+                            print("[probe] SKIPPING '{}' joint {} rep {} amp {:+.0f}: "
+                                  "could not reach the posture, so this trial would "
+                                  "be credited with a moment arm it was never at."
+                                  .format(name, j, rep + 1, amp))
+                            continue
+                        print("[probe] --- '{}' joint {} (gravity {:.4f}m, inertia "
+                              "{:.4f}m) amp {:+.0f} deg{} ---"
+                              .format(name, j, grav[j], lever[j], amp,
+                                      "" if args.repeats == 1
+                                      else "  rep {}/{}".format(rep + 1, args.repeats)))
+                        # One bad trial must not lose all the others. pymycobot
+                        # raises on out-of-range angles, and a serial hiccup can
+                        # throw from anywhere in the vendor stack.
+                        try:
+                            result = run_deadzone_trial(arm, args, j, amplitude=amp)
+                        except Exception as exc:
+                            print("[probe] TRIAL FAILED ('{}', joint {}, amp {:+.0f}): "
+                                  "{!r}".format(name, j, amp, exc), file=sys.stderr)
+                            result = None
+                        if result is not None:
+                            result["posture"] = name
+                            result["repeat"] = rep
+                            result["moment_arm"] = grav[j]
+                            result["inertia_lever"] = lever[j]
+                            results.append(result)
+
+                    if not args.no_backlash:
+                        print()
+                        if move_to_posture(arm, args, angles, name) is None:
+                            continue
+                        print("[probe] --- '{}' joint {} BACKLASH (same target from "
+                              "both sides) ---".format(name, j))
+                        try:
+                            b = run_backlash_trial(arm, args, j)
+                        except Exception as exc:
+                            print("[probe] BACKLASH FAILED ('{}', joint {}): {!r}"
+                                  .format(name, j, exc), file=sys.stderr)
+                            b = None
+                        if b is not None:
+                            b["posture"] = name
+                            b["moment_arm"] = grav[j]
+                            b["inertia_lever"] = lever[j]
+                            backlash.append(b)
     except KeyboardInterrupt:
         print("\n[probe] interrupted -- returning the arm and reporting what "
               "was collected so far.")
@@ -672,7 +798,7 @@ def mode_deadzone_sweep(arm, args):
             print("[probe] WARNING: return failed: {!r}".format(exc),
                   file=sys.stderr)
 
-    report_sweep(args, results)
+    report_sweep(args, results, backlash)
     return 0
 
 
@@ -692,160 +818,254 @@ def linear_fit(xs, ys):
     return slope, intercept, r2
 
 
-def report_sweep(args, results):
-    """Summary table, the cross-posture gravity check, and the CSV."""
+def multi_fit(rows, ys):
+    """Least squares for y = a + b*x1 + c*x2 via normal equations.
+
+    Two regressors, so a closed-form 3x3 solve is simpler and dependency-free
+    compared to pulling in numpy on the Pi. Returns (a, b, c, R^2) or None if
+    the design is rank-deficient -- which is exactly what happens when the two
+    regressors are collinear, the failure the six-posture set exists to avoid."""
+    n = len(rows)
+    if n < 4:
+        return None
+    x1 = [r[0] for r in rows]
+    x2 = [r[1] for r in rows]
+    cols = [[1.0] * n, x1, x2]
+    ata = [[sum(cols[i][k] * cols[j][k] for k in range(n)) for j in range(3)]
+           for i in range(3)]
+    atb = [sum(cols[i][k] * ys[k] for k in range(n)) for i in range(3)]
+    # Gaussian elimination with partial pivoting.
+    m = [ata[i][:] + [atb[i]] for i in range(3)]
+    for col in range(3):
+        pivot = max(range(col, 3), key=lambda r: abs(m[r][col]))
+        if abs(m[pivot][col]) < 1e-12:
+            return None
+        m[col], m[pivot] = m[pivot], m[col]
+        for r in range(3):
+            if r == col:
+                continue
+            f = m[r][col] / m[col][col]
+            for c in range(col, 4):
+                m[r][c] -= f * m[col][c]
+    coef = [m[i][3] / m[i][i] for i in range(3)]
+    mean_y = sum(ys) / n
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    ss_res = sum((ys[k] - (coef[0] + coef[1] * x1[k] + coef[2] * x2[k])) ** 2
+                 for k in range(n))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else float("nan")
+    return coef[0], coef[1], coef[2], r2
+
+
+def report_sweep(args, results, backlash=None):
+    """Summary table, the direction split, the gravity/inertia fit, and the CSV."""
+    backlash = backlash or []
     if not results:
         print("[probe] no trials completed.")
         return
 
-    print()
-    print("[probe] " + "=" * 74)
-    print("[probe] TEST 1 SUMMARY")
-    print("[probe] " + "=" * 74)
-    print("[probe] {:<8} {:>5} {:>10} {:>12} {:>9} {:>9} {:>9}  {}"
-          .format("posture", "joint", "arm(m)", "residual(deg)",
-                  "k=1", "k=2", "k=3", "verdict"))
-    for r in results:
-        ratios = r["ratios"]
-        cells = ["{:>9.2f}".format(ratios[i]) if i < len(ratios) else "{:>9}".format("-")
-                 for i in range(3)]
-        if r.get("move_failed"):
-            verdict = "MOVE DID NOT EXECUTE -- discard"
-        elif r["below_min"]:
-            verdict = "no residual to correct"
-        else:
-            verdict, _ = deadzone_verdict(ratios, args.deadzone_steps)
-        print("[probe] {:<8} {:>5} {:>10.4f} {:>+12.4f} {} {} {}  {}"
-              .format(r["posture"], r["joint"], r["moment_arm"], r["residual"],
-                      cells[0], cells[1], cells[2], verdict))
-
-    # Does the residual track gravity load? Compare each joint across postures.
-    failed = [r for r in results if r.get("move_failed")]
-    if failed:
-        print()
-        print("[probe] {} of {} trials NEVER MOVED and are excluded below."
-              .format(len(failed), len(results)))
-        print("[probe] A residual equal to the amplitude means settle() returned "
-              "the start pose. If this is more than an occasional straggler, the "
-              "readings are racing the motion -- raise --settle-timeout-sec or "
-              "lower --speed and rerun; do not interpret the surviving rows as a "
-              "result.")
-
-    print()
-    print("[probe] --- residual vs gravity moment arm, per joint ---")
     usable = [r for r in results if not r.get("move_failed")]
+    failed = [r for r in results if r.get("move_failed")]
 
-    # Group repeats of the same (posture, joint) so the fit sees one point per
-    # posture with a measured scatter, rather than treating repeats as extra
-    # independent load levels.
+    print()
+    print("[probe] " + "=" * 78)
+    print("[probe] TEST 1 SUMMARY -- {} trials, {} usable, {} never moved"
+          .format(len(results), len(usable), len(failed)))
+    print("[probe] " + "=" * 78)
+
+    # ---------------------------------------------------------------- 1. GO/NO-GO
+    # Split by whether the CORRECTION reverses the approach direction. On
+    # 2026-07-28 this split 17/18 responding against 0/4 stalling, and the old
+    # per-trial verdict column hid it completely by calling the stalled ones
+    # "MIXED" -- the single most actionable result in the test, reported as
+    # noise. It leads the summary now.
+    staircased = [r for r in usable if r["ratios"]]
+    fwd = [r for r in staircased if not r["reversal"]]
+    rev = [r for r in staircased if r["reversal"]]
+    print()
+    print("[probe] --- 1. GO/NO-GO: does a biased command move the joint? ---")
+    for label, group in (("SAME direction as the move", fwd),
+                         ("REVERSING the move", rev)):
+        if not group:
+            print("[probe]   {:<28} no trials".format(label))
+            continue
+        k1 = sorted(r["ratios"][0] for r in group)
+        responded = sum(1 for r in k1 if r < 0.8)
+        print("[probe]   {:<28} n={:<4} responded {}/{}  k=1 ratio "
+              "min {:.2f} / median {:.2f} / max {:.2f}"
+              .format(label, len(group), responded, len(group),
+                      k1[0], k1[len(k1) // 2], k1[-1]))
+    if fwd:
+        k1f = sorted(r["ratios"][0] for r in fwd)
+        med = k1f[len(k1f) // 2]
+        rate = sum(1 for r in k1f if r < 0.8) / float(len(k1f))
+        if rate >= 0.8 and med < 0.5:
+            print("[probe]   VERDICT: GO. A same-direction corrective command "
+                  "removes {:.0f}% of the error in one step, {:.0f}% of the time. "
+                  "An outer-loop integrator or disturbance observer can close "
+                  "this.".format(100 * (1 - med), 100 * rate))
+        else:
+            print("[probe]   VERDICT: NO-GO on plain outer-loop correction -- "
+                  "even same-direction commands do not reliably move the joint.")
+    if rev:
+        k1r = [r["ratios"][0] for r in rev]
+        stalled = sum(1 for r in k1r if r >= 0.8)
+        print("[probe]   CONDITION: {}/{} reversing corrections STALLED. Approach "
+              "every target from one side, or feed backlash forward -- an "
+              "integrator cannot fix this, the joint does not move at all."
+              .format(stalled, len(k1r)))
+
+    # ------------------------------------------------------------- 2. BACKLASH
+    if backlash:
+        print()
+        print("[probe] --- 2. BACKLASH (lost motion, same target from both sides) ---")
+        by_joint = {}
+        for b in backlash:
+            by_joint.setdefault(b["joint"], []).append(abs(b["lost_motion"]))
+        for j in sorted(by_joint):
+            v = sorted(by_joint[j])
+            med = v[len(v) // 2]
+            print("[probe]   joint {}: n={:<3} median {:.3f} deg ({:.1f} counts) "
+                  "= {:.2f} mm at 250mm reach   [range {:.3f}..{:.3f}]"
+                  .format(j, len(v), med, med / ENCODER_COUNT_DEG,
+                          math.radians(med) * 250.0, v[0], v[-1]))
+        allv = sorted(abs(b["lost_motion"]) for b in backlash)
+        med = allv[len(allv) // 2]
+        print("[probe]   Overall median {:.3f} deg = {:.2f} mm. This is NOT "
+              "correctable by feedback: on a reversal the joint does not move, "
+              "so the error carries no information the loop can act on."
+              .format(med, math.radians(med) * 250.0))
+
+    # ------------------------------------- 3. WHAT THE RESIDUAL DEPENDS ON
+    print()
+    print("[probe] --- 3. Residual vs gravity AND inertia (they are separated "
+          "here, not assumed) ---")
     groups = {}
     for r in usable:
-        groups.setdefault((r["posture"], r["joint"]), []).append(r)
+        groups.setdefault((r["posture"], r["joint"], r["amplitude"] > 0), []).append(r)
 
+    # FIT EACH DIRECTION SEPARATELY -- pooling them cancels the signal.
+    # Gravity torque is fixed in joint coordinates, so its contribution to the
+    # residual does NOT flip when the approach direction flips. Friction, dead
+    # zone and inertial overshoot all act along or against travel, so they DO
+    # flip. Pool the two and the direction-dependent terms cancel while the
+    # gravity term survives at half weight -- a synthetic dataset with a planted
+    # 7.50 deg/m droop fitted back as -0.04 deg/m, R^2 0.000, before this split
+    # was added.
+    #
+    # Fitting separately also gives a free consistency check: the gravity slope
+    # must agree between the two directions, while the intercept must flip sign.
+    # If it does not, the model is wrong, and that is worth knowing.
     for j in sorted({key[1] for key in groups}):
-        points = []
-        for (posture, joint), rows in groups.items():
-            if joint != j:
+        slopes = {}
+        for positive in (True, False):
+            rows, ys, detail = [], [], []
+            for (posture, joint, is_pos), items in sorted(groups.items()):
+                if joint != j or is_pos != positive:
+                    continue
+                res = [x["residual"] for x in items]
+                rows.append((items[0]["moment_arm"], items[0]["inertia_lever"]))
+                ys.append(sum(res) / len(res))
+                detail.append("{}:{:+.2f}".format(posture, ys[-1]))
+            if len(ys) < 2:
                 continue
-            res = [x["residual"] for x in rows]
-            points.append((rows[0]["moment_arm"], sum(res) / len(res),
-                           max(res) - min(res), len(res), posture))
-        if len(points) < 2:
-            continue
-        points.sort()
+            label = "approach {}".format("+" if positive else "-")
+            print()
+            print("[probe] JOINT {}  {}   ({} postures)".format(j, label, len(ys)))
+            print("[probe]   {}".format("  ".join(detail)))
 
-        detail = "  ".join(
-            "{}:{:+.3f}{}@{:.3f}m".format(
-                p[4], p[1], "" if p[3] == 1 else "+/-{:.2f}(n={})".format(p[2], p[3]),
-                p[0])
-            for p in points)
-        print("[probe] joint {}: {}".format(j, detail))
+            grav = [r[0] for r in rows]
+            lever = [r[1] for r in rows]
+            if max(grav) - min(grav) < 1e-4:
+                mean = sum(ys) / len(ys)
+                span = max(ys) - min(ys)
+                print("[probe]   Gravity arm is 0.0000 in every posture -- gravity "
+                      "CANNOT load this joint. Residual {:+.3f} deg mean, {:.3f} "
+                      "deg range = {:.1f} counts.".format(
+                          mean, span, span / ENCODER_COUNT_DEG))
+                fit1 = linear_fit(lever, ys)
+                if fit1 and abs(fit1[2]) > 0.5:
+                    print("[probe]   ...but it tracks the INERTIA lever "
+                          "({:+.2f} deg/m, R^2 {:.2f}). Posture moves the residual "
+                          "through a NON-gravity channel, and this is its size -- "
+                          "the confound the six-posture set exists to expose."
+                          .format(fit1[0], fit1[2]))
+                continue
 
-        arms_m = [p[0] for p in points]
-        # SIGNED, not absolute. Taking abs() here destroys the thing being
-        # measured: droop and dead zone superpose as
-        # residual = offset + slope * moment_arm, where offset is the
-        # load-independent dead-zone/hysteresis term and can easily push the
-        # lightly-loaded end NEGATIVE. abs() folds that negative end back up,
-        # which both hides a genuinely linear relationship and manufactures a
-        # fake "grows with load" out of a sign flip. The 2026-07-28 run hit
-        # exactly this: -0.93 / +0.04 / +1.17 deg is a clean straight line in
-        # load, and was reported as growth from 0.93 to 1.17.
-        residuals = [p[1] for p in points]
-        scatter = max((p[2] for p in points), default=0.0)
-        spread_arm = max(arms_m) - min(arms_m)
+            fit = multi_fit(rows, ys)
+            if fit is None:
+                print("[probe]   too few postures for a two-variable fit "
+                      "(need 4+).")
+                continue
+            a, b, c, r2 = fit
+            slopes[positive] = b
+            print("[probe]   residual = {:+.3f} {:+.2f}*gravity_arm "
+                  "{:+.2f}*inertia_lever    R^2 = {:.3f}".format(a, b, c, r2))
+            span_g = abs(b) * (max(grav) - min(grav))
+            span_i = abs(c) * (max(lever) - min(lever))
+            total = span_g + span_i + 1e-9
+            print("[probe]   across the tested range: {:.3f} deg from gravity, "
+                  "{:.3f} deg from inertia ({:.0f}% / {:.0f}%)"
+                  .format(span_g, span_i, 100 * span_g / total, 100 * span_i / total))
+            print("[probe]   -> gravity feedforward {:+.2f} deg/m of moment arm; "
+                  "dead-zone bias {:+.3f} deg".format(b, a))
+            if r2 < 0.8:
+                print("[probe]   WARNING: R^2 {:.2f} is weak -- these two terms do "
+                      "not explain the residual well.".format(r2))
 
-        if spread_arm < 1e-4:
-            mean = sum(residuals) / len(residuals)
-            spread = max(residuals) - min(residuals)
-            print("[probe]   gravity-free joint (moment arm ~0 at every posture). "
-                  "Residual {:+.3f} deg mean, {:.3f} deg spread over {} postures "
-                  "= {:.1f} encoder counts.".format(
-                      mean, spread, len(residuals), abs(mean) / ENCODER_COUNT_DEG))
-            print("[probe]   This is the dead-zone / stiction floor with gravity "
-                  "provably absent, and the noise floor every other number here "
-                  "has to clear.")
-            continue
+        if len(slopes) == 2:
+            up, down = slopes[True], slopes[False]
+            spread = abs(up - down)
+            mean = 0.5 * (abs(up) + abs(down))
+            print()
+            print("[probe]   CONSISTENCY: gravity slope {:+.2f} from + approach, "
+                  "{:+.2f} from -.".format(up, down))
+            if mean > 1e-6 and spread / mean < 0.3:
+                print("[probe]   They agree to {:.0f}%, which is what gravity must "
+                      "do -- it is fixed in joint coordinates and cannot care "
+                      "which way you drove in. The model holds."
+                      .format(100 * spread / mean))
+            else:
+                print("[probe]   They DISAGREE. Gravity cannot depend on approach "
+                      "direction, so something direction-dependent is being "
+                      "absorbed into the gravity term. Do not use this slope as "
+                      "a feedforward until that is understood.")
 
-        if max(abs(r) for r in residuals) < args.deadzone_min_deg:
-            print("[probe]   no meaningful residual at any posture.")
-            continue
-
-        fit = linear_fit(arms_m, residuals)
-        if fit is None:
-            print("[probe]   not enough spread in load to fit.")
-            continue
-        slope, intercept, r2 = fit
-        print("[probe]   least-squares fit: residual = {:+.3f} + {:+.2f} * "
-              "moment_arm   (deg, arm in m)   R^2 = {:.3f}, n = {}"
-              .format(intercept, slope, r2, len(points)))
-
-        model_range = abs(slope) * spread_arm
-        if len(points) < 3:
-            print("[probe]   ONLY {} LOAD LEVELS -- a line through {} points "
-                  "always fits. Not evidence; rerun so the discarded posture "
-                  "contributes.".format(len(points), len(points)))
-        elif model_range < max(scatter, ENCODER_COUNT_DEG * 2):
-            print("[probe]   The load term changes the residual by only {:.3f} deg "
-                  "across the whole {:.3f}m range, under the {:.3f} deg "
-                  "measurement scatter -> FLAT. Dead band / stiction floor; a "
-                  "gravity feedforward term would not help."
-                  .format(model_range, spread_arm,
-                          max(scatter, ENCODER_COUNT_DEG * 2)))
-        elif r2 >= 0.9:
-            print("[probe]   Residual is LINEAR in gravity load (R^2 {:.3f}). The "
-                  "{:+.3f} deg intercept is the load-independent dead-zone term; "
-                  "the {:+.2f} deg/m slope is droop. Both are directly usable: "
-                  "the slope as a gravity feedforward, the intercept as a "
-                  "dead-zone bias.".format(r2, intercept, slope))
-        else:
-            print("[probe]   Load dependence present but a poor straight line "
-                  "(R^2 {:.3f}). Real but not yet a model -- rerun with "
-                  "--repeats to see whether the scatter or the shape is the "
-                  "problem.".format(r2))
-
-    print()
-    print("[probe] Read the k=1 column for go/no-go, and the block above for "
-          "what the controller has to model.")
+    if failed:
+        print()
+        print("[probe] {} of {} trials never moved and were excluded. {} is "
+              "{:.0f}%, {}".format(
+                  len(failed), len(results), len(failed),
+                  100.0 * len(failed) / len(results),
+                  "acceptable" if len(failed) <= 0.05 * len(results)
+                  else "TOO HIGH -- lower --speed and rerun before trusting this"))
 
     if not args.out:
-        print("[probe] (pass --out FILE.csv to keep the raw staircase data)")
+        print()
+        print("[probe] (pass --out FILE.csv to keep the raw data)")
         return
     try:
         with open(args.out, "w") as handle:
-            handle.write("posture,joint,moment_arm_m,residual_deg,k,"
-                         "commanded_deg,settled_deg,err_deg,ratio\n")
+            handle.write("kind,posture,joint,amplitude_deg,gravity_arm_m,"
+                         "inertia_lever_m,reversal,residual_deg,k,commanded_deg,"
+                         "settled_deg,err_deg,ratio,lost_motion_deg\n")
             for r in results:
+                base = "deadzone,{},{},{:.1f},{:.4f},{:.4f},{},{:.4f}".format(
+                    r["posture"], r["joint"], r["amplitude"], r["moment_arm"],
+                    r.get("inertia_lever", float("nan")),
+                    int(bool(r.get("reversal"))), r["residual"])
                 if not r["steps"]:
-                    handle.write("{},{},{:.4f},{:.4f},,,,,\n".format(
-                        r["posture"], r["joint"], r["moment_arm"], r["residual"]))
-                for s in r["steps"]:
-                    handle.write("{},{},{:.4f},{:.4f},{},{:.4f},{:.4f},"
-                                 "{:.4f},{:.4f}\n".format(
-                                     r["posture"], r["joint"], r["moment_arm"],
-                                     r["residual"], s["k"], s["commanded"],
-                                     s["settled"], s["err"], s["ratio"]))
-        print("[probe] wrote {} trials to {}".format(len(results), args.out))
+                    handle.write(base + ",,,,,,\n")
+                for st in r["steps"]:
+                    handle.write(base + ",{},{:.4f},{:.4f},{:.4f},{:.4f},\n".format(
+                        st["k"], st["commanded"], st["settled"], st["err"],
+                        st["ratio"]))
+            for b in backlash:
+                handle.write("backlash,{},{},,{:.4f},{:.4f},,,,,,,,{:.4f}\n".format(
+                    b["posture"], b["joint"], b["moment_arm"],
+                    b.get("inertia_lever", float("nan")), b["lost_motion"]))
+        print()
+        print("[probe] wrote {} trials + {} backlash measurements to {}"
+              .format(len(results), len(backlash), args.out))
     except IOError as exc:
         print("[probe] WARNING: could not write {}: {!r}".format(args.out, exc),
               file=sys.stderr)
@@ -1090,6 +1310,19 @@ def main():
                              "0.5-1.2 deg -- so a single trial per cell barely "
                              "clears its own noise. 3 gives an error bar "
                              "(default %(default)s)")
+    parser.add_argument("--directions", choices=("both", "positive", "negative"),
+                        default="both",
+                        help="--deadzone-sweep: run each trial with +amplitude, "
+                             "-amplitude, or both. 'both' is strongly preferred: "
+                             "whether a correction REVERSES the approach is what "
+                             "decides if it works at all, and a single-direction "
+                             "sweep only samples reversals by accident "
+                             "(default %(default)s)")
+    parser.add_argument("--no-backlash", action="store_true",
+                        help="--deadzone-sweep: skip the backlash measurement "
+                             "(same target approached from both sides). It is the "
+                             "dominant error term, so only skip it for a quick "
+                             "partial run")
     parser.add_argument("--dry-run", action="store_true",
                         help="--deadzone-sweep: print the plan and exit without "
                              "moving the arm")
