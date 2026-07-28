@@ -142,6 +142,8 @@ def summarize(label, samples):
 # whole timeout before returning a possibly mid-motion reading. 0.12 deg is
 # ~1.4 counts -- above the quantisation floor, still well under the 0.3 deg
 # --deadzone-min-deg residual the test needs to resolve.
+ENCODER_COUNT_DEG = 0.0879
+
 SETTLE_STABLE_DEG = 0.12
 
 # How far a joint must move before a "stable" reading is believed to be the
@@ -512,7 +514,7 @@ def mode_deadzone_sweep(arm, args):
         return 1
     joints = args.sweep_joints
 
-    trials = len(postures) * len(joints)
+    trials = len(postures) * len(joints) * args.repeats
     moves = trials * (1 + args.deadzone_steps) + len(postures) * (1 + len(joints))
     print()
     print("[probe] === TEST 1 SWEEP PLAN ===")
@@ -563,27 +565,33 @@ def mode_deadzone_sweep(arm, args):
                 print("[probe] skipping posture '{}': no readings".format(name))
                 continue
             for j in joints:
-                print()
-                print("[probe] --- posture '{}', joint {} (moment arm {:.4f} m) ---"
-                      .format(name, j, arms_m[j] if j < len(arms_m) else float("nan")))
-                # One bad trial must not lose the eight good ones. pymycobot
-                # raises on out-of-range angles, and a serial hiccup can throw
-                # from anywhere in the vendor stack.
-                try:
-                    result = run_deadzone_trial(arm, args, j)
-                except Exception as exc:
-                    print("[probe] TRIAL FAILED (posture '{}', joint {}): {!r}"
-                          .format(name, j, exc), file=sys.stderr)
-                    result = None
-                if result is not None:
-                    result["posture"] = name
-                    result["moment_arm"] = (arms_m[j] if j < len(arms_m)
-                                            else float("nan"))
-                    results.append(result)
-                # Back to the posture before the next joint, so every trial
-                # starts from the same known configuration rather than from
-                # wherever the last staircase left the arm.
-                move_to_posture(arm, args, angles, name)
+                for rep in range(args.repeats):
+                    print()
+                    print("[probe] --- posture '{}', joint {} (moment arm "
+                          "{:.4f} m){} ---"
+                          .format(name, j,
+                                  arms_m[j] if j < len(arms_m) else float("nan"),
+                                  "" if args.repeats == 1
+                                  else "  repeat {}/{}".format(rep + 1, args.repeats)))
+                    # One bad trial must not lose the eight good ones. pymycobot
+                    # raises on out-of-range angles, and a serial hiccup can throw
+                    # from anywhere in the vendor stack.
+                    try:
+                        result = run_deadzone_trial(arm, args, j)
+                    except Exception as exc:
+                        print("[probe] TRIAL FAILED (posture '{}', joint {}): {!r}"
+                              .format(name, j, exc), file=sys.stderr)
+                        result = None
+                    if result is not None:
+                        result["posture"] = name
+                        result["repeat"] = rep
+                        result["moment_arm"] = (arms_m[j] if j < len(arms_m)
+                                                else float("nan"))
+                        results.append(result)
+                    # Back to the posture before the next trial, so every one
+                    # starts from the same known configuration rather than from
+                    # wherever the last staircase left the arm.
+                    move_to_posture(arm, args, angles, name)
     except KeyboardInterrupt:
         print("\n[probe] interrupted -- returning the arm and reporting what "
               "was collected so far.")
@@ -599,6 +607,22 @@ def mode_deadzone_sweep(arm, args):
 
     report_sweep(args, results)
     return 0
+
+
+def linear_fit(xs, ys):
+    """Least-squares (slope, intercept, R^2), or None if x has no spread."""
+    n = len(xs)
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    if sxx < 1e-12:
+        return None
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / sxx
+    intercept = mean_y - slope * mean_x
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else float("nan")
+    return slope, intercept, r2
 
 
 def report_sweep(args, results):
@@ -643,48 +667,95 @@ def report_sweep(args, results):
     print()
     print("[probe] --- residual vs gravity moment arm, per joint ---")
     usable = [r for r in results if not r.get("move_failed")]
-    for j in sorted({r["joint"] for r in usable}):
-        per_joint = [r for r in usable if r["joint"] == j]
-        if len(per_joint) < 2:
+
+    # Group repeats of the same (posture, joint) so the fit sees one point per
+    # posture with a measured scatter, rather than treating repeats as extra
+    # independent load levels.
+    groups = {}
+    for r in usable:
+        groups.setdefault((r["posture"], r["joint"]), []).append(r)
+
+    for j in sorted({key[1] for key in groups}):
+        points = []
+        for (posture, joint), rows in groups.items():
+            if joint != j:
+                continue
+            res = [x["residual"] for x in rows]
+            points.append((rows[0]["moment_arm"], sum(res) / len(res),
+                           max(res) - min(res), len(res), posture))
+        if len(points) < 2:
             continue
-        per_joint.sort(key=lambda r: r["moment_arm"])
-        detail = "  ".join("{}:{:+.3f}deg@{:.3f}m".format(
-            r["posture"], r["residual"], r["moment_arm"]) for r in per_joint)
+        points.sort()
+
+        detail = "  ".join(
+            "{}:{:+.3f}{}@{:.3f}m".format(
+                p[4], p[1], "" if p[3] == 1 else "+/-{:.2f}(n={})".format(p[2], p[3]),
+                p[0])
+            for p in points)
         print("[probe] joint {}: {}".format(j, detail))
 
-        arms_m = [r["moment_arm"] for r in per_joint]
-        residuals = [abs(r["residual"]) for r in per_joint]
+        arms_m = [p[0] for p in points]
+        # SIGNED, not absolute. Taking abs() here destroys the thing being
+        # measured: droop and dead zone superpose as
+        # residual = offset + slope * moment_arm, where offset is the
+        # load-independent dead-zone/hysteresis term and can easily push the
+        # lightly-loaded end NEGATIVE. abs() folds that negative end back up,
+        # which both hides a genuinely linear relationship and manufactures a
+        # fake "grows with load" out of a sign flip. The 2026-07-28 run hit
+        # exactly this: -0.93 / +0.04 / +1.17 deg is a clean straight line in
+        # load, and was reported as growth from 0.93 to 1.17.
+        residuals = [p[1] for p in points]
+        scatter = max((p[2] for p in points), default=0.0)
         spread_arm = max(arms_m) - min(arms_m)
-        spread_res = max(residuals) - min(residuals)
-        # residuals is ordered by ASCENDING moment arm, so [0] is the lightest
-        # posture and [-1] the most loaded. Direction matters as much as
-        # magnitude: a residual that SHRINKS as load rises is not droop, and
-        # calling it droop would send the controller after a term that isn't
-        # there.
-        lightest, heaviest = residuals[0], residuals[-1]
+
         if spread_arm < 1e-4:
-            print("[probe]   gravity-free joint (moment arm ~0 at every posture): "
-                  "any residual here is dead zone, stiction or quantisation, "
-                  "with the gravity term provably absent.")
-        elif max(residuals) < args.deadzone_min_deg:
+            mean = sum(residuals) / len(residuals)
+            spread = max(residuals) - min(residuals)
+            print("[probe]   gravity-free joint (moment arm ~0 at every posture). "
+                  "Residual {:+.3f} deg mean, {:.3f} deg spread over {} postures "
+                  "= {:.1f} encoder counts.".format(
+                      mean, spread, len(residuals), abs(mean) / ENCODER_COUNT_DEG))
+            print("[probe]   This is the dead-zone / stiction floor with gravity "
+                  "provably absent, and the noise floor every other number here "
+                  "has to clear.")
+            continue
+
+        if max(abs(r) for r in residuals) < args.deadzone_min_deg:
             print("[probe]   no meaningful residual at any posture.")
-        elif spread_res < 0.25 * max(residuals):
-            print("[probe]   FLAT across a {:.3f}m load range ({:.3f} -> {:.3f} "
-                  "deg) -> NOT gravity droop. A dead band / stiction floor; a "
+            continue
+
+        fit = linear_fit(arms_m, residuals)
+        if fit is None:
+            print("[probe]   not enough spread in load to fit.")
+            continue
+        slope, intercept, r2 = fit
+        print("[probe]   least-squares fit: residual = {:+.3f} + {:+.2f} * "
+              "moment_arm   (deg, arm in m)   R^2 = {:.3f}, n = {}"
+              .format(intercept, slope, r2, len(points)))
+
+        model_range = abs(slope) * spread_arm
+        if len(points) < 3:
+            print("[probe]   ONLY {} LOAD LEVELS -- a line through {} points "
+                  "always fits. Not evidence; rerun so the discarded posture "
+                  "contributes.".format(len(points), len(points)))
+        elif model_range < max(scatter, ENCODER_COUNT_DEG * 2):
+            print("[probe]   The load term changes the residual by only {:.3f} deg "
+                  "across the whole {:.3f}m range, under the {:.3f} deg "
+                  "measurement scatter -> FLAT. Dead band / stiction floor; a "
                   "gravity feedforward term would not help."
-                  .format(spread_arm, lightest, heaviest))
-        elif heaviest > lightest:
-            print("[probe]   residual GROWS with load ({:.3f} deg at {:.3f}m -> "
-                  "{:.3f} deg at {:.3f}m) -> gravity droop is a real component. "
-                  "A feedforward gravity term or an integrator should generalise."
-                  .format(lightest, arms_m[0], heaviest, arms_m[-1]))
+                  .format(model_range, spread_arm,
+                          max(scatter, ENCODER_COUNT_DEG * 2)))
+        elif r2 >= 0.9:
+            print("[probe]   Residual is LINEAR in gravity load (R^2 {:.3f}). The "
+                  "{:+.3f} deg intercept is the load-independent dead-zone term; "
+                  "the {:+.2f} deg/m slope is droop. Both are directly usable: "
+                  "the slope as a gravity feedforward, the intercept as a "
+                  "dead-zone bias.".format(r2, intercept, slope))
         else:
-            print("[probe]   residual SHRINKS as load rises ({:.3f} deg at {:.3f}m "
-                  "-> {:.3f} deg at {:.3f}m). That is backwards for gravity "
-                  "droop, so the variation is being driven by something else "
-                  "(posture-dependent stiction, or too few samples). Rerun "
-                  "before modelling anything."
-                  .format(lightest, arms_m[0], heaviest, arms_m[-1]))
+            print("[probe]   Load dependence present but a poor straight line "
+                  "(R^2 {:.3f}). Real but not yet a model -- rerun with "
+                  "--repeats to see whether the scatter or the shape is the "
+                  "problem.".format(r2))
 
     print()
     print("[probe] Read the k=1 column for go/no-go, and the block above for "
@@ -945,6 +1016,13 @@ def main():
     parser.add_argument("--posture-settle-sec", type=float, default=12.0,
                         help="--deadzone-sweep: settle budget for a whole-arm "
                              "posture move (default %(default)s)")
+    parser.add_argument("--repeats", type=int, default=1,
+                        help="--deadzone-sweep: trials per (posture, joint). The "
+                             "gravity-free joint's own scatter across postures was "
+                             "0.34 deg on the first good run, against residuals of "
+                             "0.5-1.2 deg -- so a single trial per cell barely "
+                             "clears its own noise. 3 gives an error bar "
+                             "(default %(default)s)")
     parser.add_argument("--dry-run", action="store_true",
                         help="--deadzone-sweep: print the plan and exit without "
                              "moving the arm")
