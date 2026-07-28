@@ -160,6 +160,136 @@ def settle(arm, args, timeout_sec=6.0, stable_reads=4, stable_deg=0.05):
     return last_good
 
 
+# Postures for --deadzone-sweep, and the gravity moment arm each one puts on
+# each joint. NOT hand-picked: computed from the URDF by searching every
+# (J2, J3, J4) combination on a 15-degree grid for the ones that (a) keep every
+# link distal to the elbow at least 60mm above the base plane, INCLUDING after
+# the +/-30 degree test perturbation, and (b) span the widest possible range of
+# gravity load. 391 postures passed the clearance test; these three are the
+# extremes and the midpoint of that set.
+#
+# "arm" below is the moment arm about that joint's own axis for a vertical load
+# at the tool: tau = axis . (r x -Z), in metres. It is the number the residual
+# should be proportional to IF the cause is gravity droop.
+#
+# J1's moment arm is 0.0000 in EVERY posture -- its axis is vertical, so
+# gravity cannot load it at all. That makes joint 0 the control: whatever
+# residual it shows is dead zone, stiction or quantisation with the gravity
+# term provably absent. J5 and J6 are likewise ~zero and are not worth
+# sweeping, which is why the default joint set is 0, 1, 2.
+POSTURES = [
+    # name      angles (deg, 6 joints)        armJ1   armJ2   armJ3  min clearance
+    ("loaded", [0, -45, -30, 45, 0, -45], (0.0000, 0.2902, 0.2121), 0.0777),
+    ("mid",    [0, -15, -15, 45, 0, -45], (0.0000, 0.1500, 0.1214), 0.2166),
+    ("light",  [0,   0,  30,  0, 0, -45], (0.0000, 0.0018, 0.0018), 0.2342),
+]
+
+
+def move_to_posture(arm, args, angles, label):
+    """Send the whole arm to a posture and wait for it to stop.
+
+    Uses a longer settle budget than a single-joint step: this is a six-joint
+    move and several of them are large."""
+    print("[probe] moving to posture '{}': {}".format(label, angles))
+    arm.send_angles(list(angles), args.sweep_speed)
+    settled = settle(arm, args, timeout_sec=args.posture_settle_sec)
+    if settled is None:
+        print("[probe] ERROR: no valid reading after moving to '{}'".format(label),
+              file=sys.stderr)
+    return settled
+
+
+def deadzone_verdict(ratios, steps):
+    """Classify one staircase. Returns (label, list_of_explanation_lines).
+
+    Shared by --deadzone and --deadzone-sweep so a single run and a matrix
+    cell are never judged by different rules."""
+    if not ratios:
+        return "NO DATA", ["no staircase steps completed"]
+    if ratios[0] < 0.5:
+        lines = ["Biasing the command by e cut the error to {:.0f}% of its "
+                 "original size.".format(100 * ratios[0]),
+                 "The joint responds to a biased command, so an outer-loop "
+                 "integrator or disturbance observer CAN close this out."]
+        if len(ratios) > 1 and ratios[-1] > ratios[0]:
+            lines.append("(The rise at higher k is expected and confirms it -- "
+                         "the joint tracks the bias proportionally, so it "
+                         "overshoots when over-biased.)")
+        return "CORRECTABLE", lines
+    if all(r > 0.8 for r in ratios):
+        return "NOT CORRECTABLE", [
+            "The error did not move at any k up to {}x. That is stiction or a "
+            "dead band wider than the residual itself -- an integrator would "
+            "wind up and limit-cycle.".format(steps),
+            "Needs dither, dead-zone inversion, or external metrology."]
+    return "MIXED", [
+        "The error only responds past some k. The dead band lies between the "
+        "last k that did nothing and the first that moved."]
+
+
+def run_deadzone_trial(arm, args, joint_idx, quiet=False):
+    """One dead-zone measurement on one joint, from wherever the arm is now.
+
+    Moves the joint by --amplitude-deg, measures the residual e, then commands
+    target + k*e for k = 1..--deadzone-steps. Returns a result dict, or None if
+    the arm could not be read. Does NOT restore the pose -- the caller decides,
+    because the sweep needs to return to a posture rather than to the previous
+    joint angle."""
+    start = read_angles(arm)
+    if start is None:
+        print("[probe] ERROR: could not read a valid starting pose", file=sys.stderr)
+        return None
+
+    j = joint_idx
+    target = list(start)
+    target[j] = start[j] + args.amplitude_deg
+
+    arm.send_angles(target, args.speed)
+    settled = settle(arm, args, timeout_sec=args.settle_timeout_sec)
+    if settled is None:
+        print("[probe] ERROR: no valid reading after the initial move", file=sys.stderr)
+        return None
+
+    residual = target[j] - settled[j]
+    if not quiet:
+        print("[probe] commanded {:.3f} deg, settled at {:.3f} deg"
+              .format(target[j], settled[j]))
+        print("[probe] residual e = {:+.4f} deg ({:+.5f} rad)"
+              .format(residual, math.radians(residual)))
+
+    result = {"joint": j, "start": start, "target": target[j],
+              "settled": settled[j], "residual": residual,
+              "rows": [], "ratios": [], "steps": [], "below_min": False}
+
+    if abs(residual) < args.deadzone_min_deg:
+        result["below_min"] = True
+        return result
+
+    if not quiet:
+        print("[probe] --- overshoot staircase: commanding target + k*e ---")
+        print("[probe] {:>3} {:>12} {:>12} {:>12} {:>10}"
+              .format("k", "commanded", "settled", "error", "|err|/|e|"))
+    for k in range(1, args.deadzone_steps + 1):
+        biased = list(target)
+        biased[j] = target[j] + k * residual
+        arm.send_angles(biased, args.speed)
+        measured = settle(arm, args, timeout_sec=args.settle_timeout_sec)
+        if measured is None:
+            print("[probe] ERROR: lost readings at k={}".format(k), file=sys.stderr)
+            break
+        err = target[j] - measured[j]
+        ratio = abs(err) / abs(residual) if residual else float("nan")
+        if not quiet:
+            print("[probe] {:>3} {:>12.3f} {:>12.3f} {:>+12.4f} {:>10.2f}"
+                  .format(k, biased[j], measured[j], err, ratio))
+        result["rows"].append((time.time(), biased[j], measured[j]))
+        result["steps"].append({"k": k, "commanded": biased[j],
+                                "settled": measured[j], "err": err,
+                                "ratio": ratio})
+        result["ratios"].append(ratio)
+    return result
+
+
 def mode_deadzone(arm, args):
     """TEST 1 -- does commanding PAST the target correct a residual error?
 
@@ -194,95 +324,240 @@ def mode_deadzone(arm, args):
     command proportionally, so it overshoots when over-biased. A flat column
     that never moves at any k is the bad outcome.
 
-    Run this at several postures (arm folded, extended, mid) and on several
-    joints -- gravity load varies hugely with pose, and a result that holds
-    only in one posture is not a result."""
+    ONE JOINT AT ONE POSE IS NOT A RESULT -- gravity load varies hugely with
+    posture. Prefer --deadzone-sweep, which runs the whole matrix unattended
+    and additionally checks whether the residual scales with the gravity
+    moment arm, which single runs cannot show."""
     start = read_angles(arm)
     if start is None:
         print("[probe] ERROR: could not read a valid starting pose", file=sys.stderr)
         return 1
 
-    j = args.joint
     print("[probe] start pose (deg): {}".format([round(a, 2) for a in start]))
     print("[probe] testing joint {} (0-based), moving {:+.1f} deg at speed {}"
-          .format(j, args.amplitude_deg, args.speed))
+          .format(args.joint, args.amplitude_deg, args.speed))
     print()
 
-    target = list(start)
-    target[j] = start[j] + args.amplitude_deg
-
-    arm.send_angles(target, args.speed)
-    settled = settle(arm, args, timeout_sec=args.settle_timeout_sec)
-    if settled is None:
-        print("[probe] ERROR: no valid reading after the initial move", file=sys.stderr)
+    result = run_deadzone_trial(arm, args, args.joint)
+    if result is None:
         return 1
-
-    residual = target[j] - settled[j]
-    print("[probe] commanded {:.3f} deg, settled at {:.3f} deg"
-          .format(target[j], settled[j]))
-    print("[probe] residual e = {:+.4f} deg ({:+.5f} rad)"
-          .format(residual, math.radians(residual)))
     print()
 
-    if abs(residual) < args.deadzone_min_deg:
+    if result["below_min"]:
         print("[probe] residual is below --deadzone-min-deg ({} deg): this joint"
               .format(args.deadzone_min_deg))
         print("[probe] reached its target at this pose, so there is nothing to")
         print("[probe] correct here. Retry at a pose with more gravity load")
         print("[probe] (arm extended), or with a larger --amplitude-deg.")
-        settle_and_write(arm, args, start, [])
+        settle_and_write(arm, args, result["start"], [])
         return 0
 
-    print("[probe] --- overshoot staircase: commanding target + k*e ---")
-    print("[probe] {:>3} {:>12} {:>12} {:>12} {:>10}"
-          .format("k", "commanded", "settled", "error", "|err|/|e|"))
-    rows = []
-    for k in range(1, args.deadzone_steps + 1):
-        biased = list(target)
-        biased[j] = target[j] + k * residual
-        arm.send_angles(biased, args.speed)
-        result = settle(arm, args, timeout_sec=args.settle_timeout_sec)
-        if result is None:
-            print("[probe] ERROR: lost readings at k={}".format(k), file=sys.stderr)
-            break
-        err = target[j] - result[j]
-        ratio = abs(err) / abs(residual) if residual else float("nan")
-        print("[probe] {:>3} {:>12.3f} {:>12.3f} {:>+12.4f} {:>10.2f}"
-              .format(k, biased[j], result[j], err, ratio))
-        rows.append((time.time(), biased[j], result[j]))
+    label, lines = deadzone_verdict(result["ratios"], args.deadzone_steps)
+    print("[probe] VERDICT: {}".format(label))
+    for line in lines:
+        print("[probe]   {}".format(line))
+    print("[probe] ONE JOINT AT ONE POSE IS NOT A RESULT. Use --deadzone-sweep")
+    print("[probe] to run every joint at every posture and test whether the")
+    print("[probe] residual tracks gravity load.")
+
+    settle_and_write(arm, args, result["start"], result["rows"])
+    return 0
+
+
+def mode_deadzone_sweep(arm, args):
+    """TEST 1, the whole matrix, unattended.
+
+    Runs the dead-zone trial for every requested joint at every posture in
+    POSTURES, moving the arm to each posture itself and restoring it between
+    trials. Replaces roughly 20-25 minutes of manual repositioning, rerunning
+    and transcribing with a single command.
+
+    It also answers a question no individual run can. Each posture has a known
+    gravity moment arm per joint (computed from the URDF, see POSTURES), and
+    the three span 0.29 / 0.15 / 0.00 m on joint 2. So:
+
+      residual scales with the moment arm  -> gravity droop dominates. A
+          feedforward gravity term or an integrator fixes it, and the fix
+          generalises across the workspace once identified.
+      residual is flat across postures     -> a dead band / stiction floor
+          that has nothing to do with load. Biasing still works if the
+          staircase says CORRECTABLE, but no gravity model will help.
+      joint 0 shows a residual at all      -> that is the gravity-free
+          control (its moment arm is 0.0000 everywhere), so whatever it
+          shows is the floor the other joints cannot beat.
+
+    The staircase verdict says whether closed-loop correction works at all;
+    this cross-posture comparison says what the controller has to model."""
+    postures = [p for p in POSTURES if p[0] in args.sweep_postures]
+    if not postures:
+        print("[probe] ERROR: no postures matched {}".format(args.sweep_postures),
+              file=sys.stderr)
+        return 1
+    joints = args.sweep_joints
+
+    trials = len(postures) * len(joints)
+    moves = trials * (1 + args.deadzone_steps) + len(postures) * (1 + len(joints))
+    print()
+    print("[probe] === TEST 1 SWEEP PLAN ===")
+    print("[probe] postures : {}".format(", ".join(p[0] for p in postures)))
+    print("[probe] joints   : {} (0-based)".format(
+        ", ".join(str(j) for j in joints)))
+    print("[probe] amplitude: {:+.1f} deg   staircase steps: {}"
+          .format(args.amplitude_deg, args.deadzone_steps))
+    print("[probe] {} trials, ~{} settling moves, roughly {:.0f}-{:.0f} min"
+          .format(trials, moves, moves * 2.5 / 60.0, moves * 5.0 / 60.0))
+    print()
+    for name, angles, arms_m, clearance in postures:
+        print("[probe]   {:<7} {}  moment arms J1/J2/J3 = {}  min clearance {:.3f}m"
+              .format(name, angles,
+                      "/".join("{:.3f}".format(a) for a in arms_m), clearance))
+    print()
+    print("[probe] THE ARM WILL MOVE THROUGH ALL OF THESE UNATTENDED. Clear the")
+    print("[probe] workspace, remove any block or fixture, and make sure the")
+    print("[probe] gripper is empty. Clearances above are from the URDF and do")
+    print("[probe] NOT model the table, cables, or anything you left nearby.")
+    print()
+
+    if args.dry_run:
+        print("[probe] --dry-run: nothing was moved, no serial port opened.")
+        return 0
+
+    origin = read_angles(arm)
+    if origin is None:
+        print("[probe] ERROR: could not read a valid starting pose", file=sys.stderr)
+        return 1
+
+    if not args.yes:
+        try:
+            if input("[probe] press Enter to start, Ctrl-C to abort: ").strip():
+                pass
+        except (EOFError, KeyboardInterrupt):
+            print("\n[probe] aborted.")
+            return 1
+
+    results = []
+    try:
+        for name, angles, arms_m, _clearance in postures:
+            print()
+            print("[probe] " + "=" * 62)
+            print("[probe] POSTURE '{}'".format(name))
+            print("[probe] " + "=" * 62)
+            if move_to_posture(arm, args, angles, name) is None:
+                print("[probe] skipping posture '{}': no readings".format(name))
+                continue
+            for j in joints:
+                print()
+                print("[probe] --- posture '{}', joint {} (moment arm {:.4f} m) ---"
+                      .format(name, j, arms_m[j] if j < len(arms_m) else float("nan")))
+                result = run_deadzone_trial(arm, args, j)
+                if result is not None:
+                    result["posture"] = name
+                    result["moment_arm"] = (arms_m[j] if j < len(arms_m)
+                                            else float("nan"))
+                    results.append(result)
+                # Back to the posture before the next joint, so every trial
+                # starts from the same known configuration rather than from
+                # wherever the last staircase left the arm.
+                move_to_posture(arm, args, angles, name)
+    except KeyboardInterrupt:
+        print("\n[probe] interrupted -- returning the arm and reporting what "
+              "was collected so far.")
+    finally:
+        print()
+        print("[probe] returning to the pose the sweep started from...")
+        try:
+            arm.send_angles(list(origin), args.sweep_speed)
+            settle(arm, args, timeout_sec=args.posture_settle_sec)
+        except Exception as exc:
+            print("[probe] WARNING: return failed: {!r}".format(exc),
+                  file=sys.stderr)
+
+    report_sweep(args, results)
+    return 0
+
+
+def report_sweep(args, results):
+    """Summary table, the cross-posture gravity check, and the CSV."""
+    if not results:
+        print("[probe] no trials completed.")
+        return
 
     print()
-    if rows:
-        ratios = [abs(target[j] - r[2]) / abs(residual) for r in rows]
-        if ratios[0] < 0.5:
-            print("[probe] VERDICT: CORRECTABLE. Biasing the command by e cut the")
-            print("[probe]   error to {:.0f}% of its original size. The joint responds"
-                  .format(100 * ratios[0]))
-            print("[probe]   to a biased command, so an outer-loop integrator or")
-            print("[probe]   disturbance observer CAN close this out. GO for the")
-            print("[probe]   control project.")
-            if len(ratios) > 1 and ratios[-1] > ratios[0]:
-                print("[probe]   (The rise at higher k is expected and confirms it --")
-                print("[probe]   the joint tracks the bias proportionally, so it")
-                print("[probe]   overshoots when over-biased.)")
-        elif all(r > 0.8 for r in ratios):
-            print("[probe] VERDICT: NOT CORRECTABLE by biasing. The error did not")
-            print("[probe]   move at any k up to {}x. That is stiction or a dead"
-                  .format(args.deadzone_steps))
-            print("[probe]   band wider than the residual itself -- an integrator")
-            print("[probe]   would wind up and limit-cycle. Needs dither, dead-zone")
-            print("[probe]   inversion, or external metrology. NO-GO for a plain")
-            print("[probe]   outer-loop PID on this joint.")
+    print("[probe] " + "=" * 74)
+    print("[probe] TEST 1 SUMMARY")
+    print("[probe] " + "=" * 74)
+    print("[probe] {:<8} {:>5} {:>10} {:>12} {:>9} {:>9} {:>9}  {}"
+          .format("posture", "joint", "arm(m)", "residual(deg)",
+                  "k=1", "k=2", "k=3", "verdict"))
+    for r in results:
+        ratios = r["ratios"]
+        cells = ["{:>9.2f}".format(ratios[i]) if i < len(ratios) else "{:>9}".format("-")
+                 for i in range(3)]
+        if r["below_min"]:
+            verdict = "no residual to correct"
         else:
-            print("[probe] VERDICT: mixed -- the error only responds past some k.")
-            print("[probe]   The dead band lies between the last k that did nothing")
-            print("[probe]   and the first that moved; read the |err|/|e| column.")
-    print("[probe] ONE JOINT AT ONE POSE IS NOT A RESULT. Gravity load varies")
-    print("[probe] hugely with posture -- repeat folded, extended and mid, on")
-    print("[probe] joints 1, 2 and 3, before concluding anything.")
+            verdict, _ = deadzone_verdict(ratios, args.deadzone_steps)
+        print("[probe] {:<8} {:>5} {:>10.4f} {:>+12.4f} {} {} {}  {}"
+              .format(r["posture"], r["joint"], r["moment_arm"], r["residual"],
+                      cells[0], cells[1], cells[2], verdict))
 
-    settle_and_write(arm, args, start, rows)
-    return 0
+    # Does the residual track gravity load? Compare each joint across postures.
+    print()
+    print("[probe] --- residual vs gravity moment arm, per joint ---")
+    for j in sorted({r["joint"] for r in results}):
+        per_joint = [r for r in results if r["joint"] == j]
+        if len(per_joint) < 2:
+            continue
+        per_joint.sort(key=lambda r: r["moment_arm"])
+        detail = "  ".join("{}:{:+.3f}deg@{:.3f}m".format(
+            r["posture"], r["residual"], r["moment_arm"]) for r in per_joint)
+        print("[probe] joint {}: {}".format(j, detail))
+
+        arms_m = [r["moment_arm"] for r in per_joint]
+        residuals = [abs(r["residual"]) for r in per_joint]
+        spread_arm = max(arms_m) - min(arms_m)
+        spread_res = max(residuals) - min(residuals)
+        if spread_arm < 1e-4:
+            print("[probe]   gravity-free joint (moment arm ~0 at every posture): "
+                  "any residual here is dead zone, stiction or quantisation, "
+                  "with the gravity term provably absent.")
+        elif max(residuals) < args.deadzone_min_deg:
+            print("[probe]   no meaningful residual at any posture.")
+        elif spread_res < 0.25 * max(residuals):
+            print("[probe]   FLAT across a {:.3f}m load range -> NOT gravity "
+                  "droop. A dead band / stiction floor; a gravity feedforward "
+                  "term would not help.".format(spread_arm))
+        else:
+            print("[probe]   residual GROWS with load ({:.3f} -> {:.3f} deg over "
+                  "a {:.3f}m arm) -> gravity droop is a real component. A "
+                  "feedforward gravity term or an integrator should generalise."
+                  .format(residuals[0], residuals[-1], spread_arm))
+
+    print()
+    print("[probe] Read the k=1 column for go/no-go, and the block above for "
+          "what the controller has to model.")
+
+    if not args.out:
+        print("[probe] (pass --out FILE.csv to keep the raw staircase data)")
+        return
+    try:
+        with open(args.out, "w") as handle:
+            handle.write("posture,joint,moment_arm_m,residual_deg,k,"
+                         "commanded_deg,settled_deg,err_deg,ratio\n")
+            for r in results:
+                if not r["steps"]:
+                    handle.write("{},{},{:.4f},{:.4f},,,,,\n".format(
+                        r["posture"], r["joint"], r["moment_arm"], r["residual"]))
+                for s in r["steps"]:
+                    handle.write("{},{},{:.4f},{:.4f},{},{:.4f},{:.4f},"
+                                 "{:.4f},{:.4f}\n".format(
+                                     r["posture"], r["joint"], r["moment_arm"],
+                                     r["residual"], s["k"], s["commanded"],
+                                     s["settled"], s["err"], s["ratio"]))
+        print("[probe] wrote {} trials to {}".format(len(results), args.out))
+    except IOError as exc:
+        print("[probe] WARNING: could not write {}: {!r}".format(args.out, exc),
+              file=sys.stderr)
 
 
 def mode_probe(arm, args):
@@ -450,11 +725,17 @@ def main():
     mode.add_argument("--point-to-point", action="store_true",
                       help="the same motion as one uninterrupted send_angles")
     mode.add_argument("--deadzone", action="store_true",
-                      help="TEST 1: move the joint, measure the residual error, "
-                           "then command target + k*e to see whether biasing the "
-                           "command corrects it. Discriminates gravity droop "
-                           "(outer-loop control works) from a servo dead zone "
-                           "(it does not). This is the go/no-go.")
+                      help="TEST 1, one joint at one pose: move the joint, measure "
+                           "the residual error, then command target + k*e to see "
+                           "whether biasing the command corrects it. Discriminates "
+                           "gravity droop (outer-loop control works) from a servo "
+                           "dead zone (it does not). This is the go/no-go.")
+    mode.add_argument("--deadzone-sweep", action="store_true",
+                      help="TEST 1, the whole matrix, unattended: every --sweep-joints "
+                           "at every --sweep-postures, moving the arm to each posture "
+                           "itself. Also reports whether the residual scales with the "
+                           "gravity moment arm, which a single run cannot show. "
+                           "Preferred over --deadzone.")
 
     parser.add_argument("--serial-port", default=DEFAULT_SERIAL_PORT)
     parser.add_argument("--baud-rate", type=int, default=DEFAULT_BAUD_RATE)
@@ -494,6 +775,28 @@ def main():
                         help="--deadzone: below this residual there is nothing to "
                              "correct, so the test reports that and stops "
                              "(default %(default)s)")
+    parser.add_argument("--sweep-joints", default="0,1,2",
+                        help="--deadzone-sweep: comma-separated 0-based joints "
+                             "(default %(default)s -- joint 0 is the gravity-free "
+                             "control, 1 and 2 are where the load actually varies; "
+                             "joints 4 and 5 have ~zero moment arm in every posture "
+                             "and are not worth sweeping)")
+    parser.add_argument("--sweep-postures",
+                        default=",".join(p[0] for p in POSTURES),
+                        help="--deadzone-sweep: comma-separated posture names from "
+                             "POSTURES (default %(default)s)")
+    parser.add_argument("--sweep-speed", type=int, default=25,
+                        help="--deadzone-sweep: speed for the posture-to-posture "
+                             "moves, which are large six-joint motions "
+                             "(default %(default)s)")
+    parser.add_argument("--posture-settle-sec", type=float, default=12.0,
+                        help="--deadzone-sweep: settle budget for a whole-arm "
+                             "posture move (default %(default)s)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="--deadzone-sweep: print the plan and exit without "
+                             "moving the arm")
+    parser.add_argument("--yes", action="store_true",
+                        help="--deadzone-sweep: skip the confirmation prompt")
     parser.add_argument("--out", default=None,
                         help="CSV path for the commanded-vs-measured trace")
     args = parser.parse_args()
@@ -502,8 +805,29 @@ def main():
         parser.error("--joint must be 0-5 (arm joints only; this script "
                      "deliberately never touches the gripper)")
 
+    args.sweep_postures = [s.strip() for s in args.sweep_postures.split(",")
+                           if s.strip()]
+    known = {p[0] for p in POSTURES}
+    unknown = [s for s in args.sweep_postures if s not in known]
+    if unknown:
+        parser.error("unknown posture(s) {}; known: {}".format(
+            ", ".join(unknown), ", ".join(sorted(known))))
+    try:
+        args.sweep_joints = [int(s) for s in args.sweep_joints.split(",") if s.strip()]
+    except ValueError:
+        parser.error("--sweep-joints must be comma-separated integers")
+    if any(not 0 <= j <= 5 for j in args.sweep_joints):
+        parser.error("--sweep-joints entries must be 0-5")
+
+    # --dry-run must not open the serial port: the whole point is that it can
+    # be run on mars, away from the robot, to check the plan.
+    if args.dry_run and args.deadzone_sweep:
+        return mode_deadzone_sweep(None, args)
+
     arm = connect(args.serial_port, args.baud_rate, args.read_timeout)
 
+    if args.deadzone_sweep:
+        return mode_deadzone_sweep(arm, args)
     if args.deadzone:
         return mode_deadzone(arm, args)
     if args.probe:
