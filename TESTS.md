@@ -19,16 +19,17 @@ reading itself, which is weaker evidence but still answers go/no-go.
 
 | # | Test | What it answers | Status |
 |---|------|------------------|--------|
-| 1 | Dead-zone / correctability | Does biasing a command past the target fix a residual, or is it stuck? | **Ready -- run today** |
+| 1 | Dead-zone / correctability | Does biasing a command past the target fix a residual, or is it stuck? And does the residual scale with gravity load? | **Ready -- fully automated, one command, ~5-10 min** |
 | 6 | Repeatability | Same commanded pose, N trials: how much does the settled reading scatter? | Not written -- needs a small wrapper loop around `settle()` |
 | — | Read failure rate under motion | What fraction of reads fail/time out while the arm is moving vs. parked? | Not written -- `--probe` mode's mid-move numbers are a partial answer already (see below) |
 | 4 | Servo register sweep | Is load current (or any register besides angle) available at all? | Blocked -- needs `get_servo_data`/`get_system_version`-style register access checked against the firmware first; unknown if it's exposed |
 | 3 | Step response (τ, dead time) | Time constant and delay of the position loop, for phase-margin math | Partially covered by `--probe` and `--stream`; not yet reduced to a clean τ/T_d number |
 
-Bottom line: **Test 1 is ready now.** The rest need either a short script
-(6, read-failure-rate) or a firmware capability check (4) before they can
-run. Recommend doing Test 1 today across postures/joints as planned, and
-writing Test 6 next since it reuses `settle()` almost directly.
+Bottom line: **Test 1 is ready and automated** -- one command, ~5-10 min
+unattended, no manual repositioning or transcription. The rest need either a
+short script (6, read-failure-rate) or a firmware capability check (4).
+Test 6 is the natural next one to write, since it reuses `settle()` and
+`move_to_posture()` almost directly.
 
 ---
 
@@ -65,58 +66,81 @@ Rising `|err|/|e|` at k=2, k=3 is EXPECTED and is a GOOD sign: it means the
 joint tracks a biased command proportionally and overshoots when
 over-biased. A column that stays flat at every k is the bad outcome.
 
-### Why several joints and postures
+### The second question, which one run cannot answer
 
-Gravity load varies hugely with arm posture. A result from one joint at one
-pose is not a result -- run folded, extended, and mid-reach, on at least
-joints 1, 2, and 3 (0-based: `--joint 0`, `--joint 1`, `--joint 2`).
+Gravity load varies hugely with posture, so a single joint at a single pose
+is not a result. But running the matrix buys more than confidence -- it
+separates two causes that look identical in one run:
+
+- **residual scales with the gravity moment arm** -> droop is a real
+  component. A feedforward gravity term or an integrator fixes it, and the
+  fix generalises across the workspace once identified.
+- **residual is flat across postures** -> a dead band / stiction floor with
+  nothing to do with load. Biasing still works if the staircase says
+  CORRECTABLE, but no gravity model will help.
+
+The three swept postures are computed from the URDF, not hand-picked: every
+(J2, J3, J4) on a 15-degree grid was checked for keeping all links distal to
+the elbow at least 60mm above the base plane *including* after the ±30°
+perturbation. 391 passed; the three kept are that set's extremes and
+midpoint, spanning **0.290 / 0.150 / 0.002 m** of moment arm on J2. Worst-case
+clearance is 78mm.
+
+**Joint 0 (base yaw) is the control.** Its axis is vertical, so its moment
+arm is 0.0000 in *every* posture -- gravity cannot load it at all. Any
+residual it shows is dead zone, stiction, or encoder quantisation with the
+gravity term provably absent, which is the floor the other joints can't
+beat. J5 and J6 are ~zero too, which is why the default sweep set is joints
+0, 1, 2 rather than "1, 2, 3".
 
 ### Commands
 
-From the robot (Pi), arm powered and clear to move ~30 deg on the tested
-joint without hitting anything:
+Run on the robot (Pi). **Stop the bridge first** -- `mycobot_bridge.py` holds
+the serial port exclusively and two processes on `/dev/ttyAMA0` produce
+garbage that looks like a hardware fault.
 
 ```bash
 cd ~/swarm_project
 source install/setup.bash
 
-# joint 1 (0-based index 0), default 30 deg amplitude, mid posture
-python3 src/mycobot_hardware/scripts/serial_rate_probe.py --deadzone \
-    --joint 0 --amplitude-deg 30 --out /tmp/deadzone_j0_mid.csv
+# check the plan first -- prints postures, clearances and runtime,
+# opens no serial port, moves nothing. Safe to run anywhere.
+python3 src/mycobot_hardware/scripts/serial_rate_probe.py --deadzone-sweep --dry-run
 
-# repeat varying posture: move the arm by hand or with joint_trajectory_test.py
-# to folded / extended first, then rerun with the same --joint.
-python3 src/mycobot_hardware/scripts/serial_rate_probe.py --deadzone \
-    --joint 1 --amplitude-deg 30 --out /tmp/deadzone_j1_mid.csv
-
-python3 src/mycobot_hardware/scripts/serial_rate_probe.py --deadzone \
-    --joint 2 --amplitude-deg 30 --out /tmp/deadzone_j2_mid.csv
+# the real thing: 9 trials (3 postures x 3 joints), ~5-10 min unattended
+python3 src/mycobot_hardware/scripts/serial_rate_probe.py --deadzone-sweep \
+    --out /tmp/deadzone_sweep.csv
 ```
+
+It prints the full plan and waits for Enter before moving (`--yes` skips the
+prompt). **Clear the workspace first** -- the clearances above come from the
+URDF and do not model the table, cables, or anything left nearby.
+
+Safety behaviour: the arm returns to its posture between joints so every
+trial starts from the same configuration, and returns to the pose the sweep
+started from via a `finally:` block, so Ctrl-C still puts it back and reports
+whatever was collected.
 
 Useful flags:
 
-- `--amplitude-deg` -- bigger moves load the joint harder and are easier to
-  read a residual off of; if a run reports the residual is below
-  `--deadzone-min-deg` (0.3 deg default) there's nothing to correct at that
-  pose/amplitude and it's worth trying a larger move or a more loaded
-  posture instead.
+- `--sweep-postures loaded,light` / `--sweep-joints 1` -- run a subset.
+- `--amplitude-deg` -- bigger moves load the joint harder. If a trial reports
+  a residual below `--deadzone-min-deg` (0.3 default) there was nothing to
+  correct at that pose; that's a valid result, not a failure.
 - `--deadzone-steps` -- how many k values the staircase tries (default 3).
-- `--speed` -- command speed (default 30); shouldn't matter much here since
-  the test cares about the SETTLED position, not the path.
-- `--out` -- CSV of the commanded/settled trace for each k, for later
-  plotting.
+- `--out` -- CSV of every staircase step, for plotting.
 
-The script always returns the joint to its starting angle when done (even on
-Ctrl-C), and prints a VERDICT line (CORRECTABLE / NOT CORRECTABLE / mixed)
-at the end of each run. Read the k=1 row first; the verdict line explains
-itself.
+`--deadzone` (singular) still exists for one joint at the current pose, and
+shares the same trial and verdict code, so a single run and a matrix cell
+can never be judged by different rules.
 
-### What to record per run
+### Reading the output
 
-Joint, posture (folded/mid/extended), amplitude, the printed residual `e`,
-and the `|err|/|e|` value at each k. Six data points (3 joints x 2 postures
-minimum) is enough to tell if the dead-zone behavior is consistent or
-posture-dependent, which itself matters for the controller design.
+A summary table (posture x joint, with moment arm, residual, and `|err|/|e|`
+at each k), then a per-joint "residual vs gravity moment arm" block that
+states which of the two causes above the data supports. Read the **k=1
+column** for go/no-go and the second block for what the controller has to
+model.
 
 ---
 
