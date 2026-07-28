@@ -151,9 +151,22 @@ SETTLE_STABLE_DEG = 0.12
 SETTLE_MIN_MOTION_DEG = 0.12
 
 
+# A stability window must span at least this much WALL TIME, not just
+# `stable_reads` readings. Four reads at ~20ms each is an 80ms window -- short
+# enough to fall entirely inside an acceleration ramp or a momentary pause, so
+# the arm looks stopped while it is still driving. The 2026-07-28 --repeats 3
+# run finished 120 settling moves in 69s (0.58s each) when a 30 deg move at
+# speed 25 physically takes 1-2s: settle was returning mid-move, and since
+# send_angles ABORTS the move in progress, each early return cancelled the
+# previous command. That is what produced both the 7 trials whose move never
+# happened and the 5 that began from the wrong posture.
+SETTLE_MIN_STABLE_SEC = 0.4
+
+
 def settle(arm, args, timeout_sec=6.0, stable_reads=4,
            stable_deg=SETTLE_STABLE_DEG, reference=None,
-           min_motion_deg=SETTLE_MIN_MOTION_DEG, motion_grace_sec=2.0):
+           min_motion_deg=SETTLE_MIN_MOTION_DEG, motion_grace_sec=2.0,
+           min_stable_sec=SETTLE_MIN_STABLE_SEC):
     """Poll until the arm stops moving, then return the settled angles.
 
     "Stopped" means `stable_reads` consecutive readings within `stable_deg` of
@@ -183,25 +196,33 @@ def settle(arm, args, timeout_sec=6.0, stable_reads=4,
     which is the independent second defense against exactly this."""
     deadline = time.time() + timeout_sec
     grace_until = time.time() + motion_grace_sec
-    history = []
     last_good = None
     moved = reference is None
+    window_ref = None
+    window_start = None
+    window_count = 0
     while time.time() < deadline:
         angles = read_angles(arm)
-        if angles is not None:
-            last_good = angles
-            if not moved and max(abs(angles[i] - reference[i])
-                                 for i in range(6)) >= min_motion_deg:
-                moved = True
-            history.append(angles)
-            if len(history) > stable_reads:
-                history.pop(0)
-            if len(history) == stable_reads:
-                spread = max(
-                    max(abs(h[j] - history[0][j]) for h in history)
-                    for j in range(6))
-                if spread <= stable_deg and (moved or time.time() >= grace_until):
-                    return last_good
+        if angles is None:
+            continue
+        last_good = angles
+        if not moved and max(abs(angles[i] - reference[i])
+                             for i in range(6)) >= min_motion_deg:
+            moved = True
+        now = time.time()
+        if (window_ref is None
+                or max(abs(angles[i] - window_ref[i]) for i in range(6))
+                > stable_deg):
+            # Moved: start a fresh stability window from here.
+            window_ref = angles
+            window_start = now
+            window_count = 1
+            continue
+        window_count += 1
+        if (window_count >= stable_reads
+                and now - window_start >= min_stable_sec
+                and (moved or now >= grace_until)):
+            return last_good
     return last_good
 
 
@@ -245,6 +266,17 @@ JOINT_LIMITS_DEG = [
 ]
 JOINT_LIMIT_MARGIN_DEG = 2.0
 
+# How close to the commanded posture counts as "arrived". Droop itself is
+# ~1.3 deg at the most loaded posture and is the thing being measured, so this
+# has to sit above that while still catching the ~29 deg misses seen when a
+# posture move gets cancelled.
+POSTURE_TOLERANCE_DEG = 3.0
+POSTURE_ATTEMPTS = 3
+
+# send_angles() silently does nothing often enough to matter -- 7 of 27 trial
+# moves on 2026-07-28. Retrying turns a 26% per-trial loss into ~2%.
+MOVE_ATTEMPTS = 3
+
 # A residual this close to the commanded amplitude means the joint did not
 # move at all -- settled == start -- so there is no "error" to correct and
 # k*e is not a small bias but a second full-sized move. Extrapolating from it
@@ -269,14 +301,31 @@ def move_to_posture(arm, args, angles, label):
     Uses a longer settle budget than a single-joint step: this is a six-joint
     move and several of them are large."""
     print("[probe] moving to posture '{}': {}".format(label, angles))
-    before = read_angles(arm)
-    arm.send_angles(list(angles), args.sweep_speed)
-    settled = settle(arm, args, timeout_sec=args.posture_settle_sec,
-                     reference=before)
-    if settled is None:
-        print("[probe] ERROR: no valid reading after moving to '{}'".format(label),
-              file=sys.stderr)
-    return settled
+    for attempt in range(1, POSTURE_ATTEMPTS + 1):
+        before = read_angles(arm)
+        arm.send_angles(list(angles), args.sweep_speed)
+        settled = settle(arm, args, timeout_sec=args.posture_settle_sec,
+                         reference=before)
+        if settled is None:
+            print("[probe]   attempt {}: no valid reading".format(attempt),
+                  file=sys.stderr)
+            continue
+        worst = max(abs(settled[i] - angles[i]) for i in range(6))
+        if worst <= POSTURE_TOLERANCE_DEG:
+            return settled
+        # VERIFY, don't assume. Silently accepting a posture the arm never
+        # reached is worse than failing: the trial still runs, and gets
+        # credited with a moment arm belonging to a configuration it was
+        # never in. Five of 27 trials on 2026-07-28 did exactly that, four of
+        # them ~29 deg out, and their residuals were averaged into the wrong
+        # load level.
+        off = max(range(6), key=lambda i: abs(settled[i] - angles[i]))
+        print("[probe]   attempt {}: did not arrive -- joint {} is {:.2f} deg "
+              "off ({:.2f} vs {:.2f}), retrying"
+              .format(attempt, off, worst, settled[off], angles[off]))
+    print("[probe] ERROR: could not reach posture '{}' in {} attempts"
+          .format(label, POSTURE_ATTEMPTS), file=sys.stderr)
+    return None
 
 
 def deadzone_verdict(ratios, steps):
@@ -330,12 +379,27 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False):
               "outside its {:.0f}..{:.0f} limit".format(bad_i, bad_v, lo, hi))
         return None
 
-    arm.send_angles(target, args.speed)
-    settled = settle(arm, args, timeout_sec=args.settle_timeout_sec,
-                     reference=start)
-    if settled is None:
-        print("[probe] ERROR: no valid reading after the initial move", file=sys.stderr)
-        return None
+    # Retry a move that simply did not happen. This is NOT retrying a bad
+    # measurement -- a move that never executed produces no measurement at
+    # all, and discarding it outright threw away 26% of trials.
+    settled = None
+    for attempt in range(1, MOVE_ATTEMPTS + 1):
+        arm.send_angles(target, args.speed)
+        settled = settle(arm, args, timeout_sec=args.settle_timeout_sec,
+                         reference=start)
+        if settled is None:
+            print("[probe] ERROR: no valid reading after the initial move",
+                  file=sys.stderr)
+            return None
+        if abs(target[j] - settled[j]) < FAILED_MOVE_FRACTION * abs(args.amplitude_deg):
+            break
+        if attempt < MOVE_ATTEMPTS:
+            print("[probe]   move did not execute (joint {} moved {:.2f} deg), "
+                  "retrying {}/{}".format(j, abs(settled[j] - start[j]),
+                                          attempt + 1, MOVE_ATTEMPTS))
+            start = read_angles(arm) or start
+            target = list(start)
+            target[j] = start[j] + args.amplitude_deg
 
     residual = target[j] - settled[j]
     if not quiet:
@@ -524,7 +588,7 @@ def mode_deadzone_sweep(arm, args):
     print("[probe] amplitude: {:+.1f} deg   staircase steps: {}"
           .format(args.amplitude_deg, args.deadzone_steps))
     print("[probe] {} trials, ~{} settling moves, roughly {:.0f}-{:.0f} min"
-          .format(trials, moves, moves * 2.5 / 60.0, moves * 5.0 / 60.0))
+          .format(trials, moves, moves * 1.0 / 60.0, moves * 2.5 / 60.0))
     print()
     for name, angles, arms_m, clearance in postures:
         print("[probe]   {:<7} {}  moment arms J1/J2/J3 = {}  min clearance {:.3f}m"
@@ -561,12 +625,19 @@ def mode_deadzone_sweep(arm, args):
             print("[probe] " + "=" * 62)
             print("[probe] POSTURE '{}'".format(name))
             print("[probe] " + "=" * 62)
-            if move_to_posture(arm, args, angles, name) is None:
-                print("[probe] skipping posture '{}': no readings".format(name))
-                continue
             for j in joints:
                 for rep in range(args.repeats):
                     print()
+                    # Establish the posture BEFORE each trial and verify it,
+                    # rather than restoring it afterwards and hoping. A trial
+                    # that starts somewhere else is not a measurement of this
+                    # load level.
+                    if move_to_posture(arm, args, angles, name) is None:
+                        print("[probe] SKIPPING posture '{}' joint {} repeat {}: "
+                              "could not reach the posture, so this trial would "
+                              "be credited with a moment arm it was never at."
+                              .format(name, j, rep + 1))
+                        continue
                     print("[probe] --- posture '{}', joint {} (moment arm "
                           "{:.4f} m){} ---"
                           .format(name, j,
@@ -588,10 +659,6 @@ def mode_deadzone_sweep(arm, args):
                         result["moment_arm"] = (arms_m[j] if j < len(arms_m)
                                                 else float("nan"))
                         results.append(result)
-                    # Back to the posture before the next trial, so every one
-                    # starts from the same known configuration rather than from
-                    # wherever the last staircase left the arm.
-                    move_to_posture(arm, args, angles, name)
     except KeyboardInterrupt:
         print("\n[probe] interrupted -- returning the arm and reporting what "
               "was collected so far.")
