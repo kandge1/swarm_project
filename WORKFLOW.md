@@ -2,6 +2,7 @@
 
 ## Setup (Do Once Per Terminal Session)
 
+### Build and source (on mars)
 ```bash
 cd ~/swarm/swarm_project
 source /opt/ros/jazzy/setup.bash
@@ -17,6 +18,35 @@ can only build on Galactic. Plain `colcon build` with no flags will now
 fail on this one package; that's expected on mars, not a regression. On the
 robot itself (Galactic), build it normally -- see "Real Hardware Workflow"
 below.
+
+### DDS Unicast Discovery (campus network setup)
+The campus network blocks UDP multicast, breaking ROS2's default discovery.
+Configure Cyclone DDS with static unicast peers instead.
+
+**On both mars and the robot (one-time setup):**
+```bash
+# Install Cyclone DDS RMW plugin
+# On mars (Jazzy):
+sudo apt install ros-jazzy-rmw-cyclonedds-cpp
+# On the robot (Galactic):
+sudo apt install ros-galactic-rmw-cyclonedds-cpp
+```
+
+**Add to your terminal session (both machines, each time you open a new terminal):**
+```bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+```
+
+Or add to your shell's `.bashrc` / `.zshrc` to persist across sessions:
+```bash
+echo 'export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp' >> ~/.bashrc
+echo 'export ROS_DOMAIN_ID=42' >> ~/.bashrc
+echo 'export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml' >> ~/.bashrc
+```
+
+Then reload: `source ~/.bashrc`
 
 ---
 
@@ -157,14 +187,24 @@ Galactic, `mycobot_bridge.py` connects to the arm at `/dev/ttyAMA0 @
 1000000` baud, and `move_group`/RViz/controllers all come up (see
 Troubleshooting below for the `libbackward.so` fix that was needed first).
 
-### Terminal 1: Build and launch (on the robot, Galactic)
+### Terminal 1: Setup DDS, build and launch (on the robot, Galactic)
 ```bash
 cd ~/swarm_project
 source /opt/ros/galactic/setup.bash
+
+# Set DDS environment (must be done before ros2_control starts)
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+
 colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
 source install/setup.bash
 ros2 launch mycobot_280pi_camera_moveit2 real_robot.launch.py
 ```
+
+**Note:** If you added the DDS exports to your shell's `.bashrc` / `.zshrc`, you
+don't need to run those `export` commands again -- just `source ~/.bashrc`
+at the start of your terminal session.
 
 This starts, in order: `mycobot_bridge.py` (opens the serial connection),
 `robot_state_publisher`, `ros2_control_node` (loads `MyCobotSystem`, which
@@ -182,6 +222,79 @@ python3 ~/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
 Same scripts as the RViz/Gazebo workflows -- they talk to `move_group` over
 the same services/actions regardless of which `hardware_mode` is actually
 moving the arm underneath.
+
+---
+
+## Split-Compute Real Hardware Workflow (planning on mars, execution on the robot)
+
+Same physical setup as the single-machine Real Hardware Workflow above, but
+`move_group` (IK, OMPL planning) and `rviz2` run on mars instead of the Pi --
+the Pi is CPU-constrained for planning, especially on failed/infeasible
+queries that burn the full planning timeout. Trajectory *execution* still
+happens entirely on the Pi via `ros2_control`: mars sends one complete
+planned trajectory per motion over a `FollowJointTrajectory` action goal,
+and the Pi's local controller interpolates and executes it in real time
+without needing the network mid-motion. `/joint_states` and action feedback
+stream back from the Pi to mars at ~50-100Hz for visualization/monitoring.
+
+This requires DDS unicast discovery working between mars and the robot --
+see "DDS Unicast Discovery" under Setup above and the `swarm_network`
+package. Both machines must have the DDS environment variables set
+(`RMW_IMPLEMENTATION`, `ROS_DOMAIN_ID`, `CYCLONEDDS_URI`) before launching
+either half below -- if they're in `.bashrc` already, a fresh terminal on
+each machine is enough.
+
+Two new launch files replace the monolithic `real_robot.launch.py` for this
+mode: `real_robot_hardware.launch.py` (robot side: bridge,
+`robot_state_publisher`, `ros2_control_node`, controller spawners -- no
+`move_group`, no `rviz`) and `real_robot_planning.launch.py` (workstation
+side: `move_group` and `rviz` only, built with `hardware_mode=real` so
+`robot_description` matches the robot even though mars can't build the
+Galactic-only `mycobot_hardware` plugin itself -- `move_group` never loads
+that plugin, only `ros2_control_node` does, and that stays on the robot).
+
+### Terminal 1: Hardware (on the robot, Galactic)
+```bash
+cd ~/swarm_project
+source /opt/ros/galactic/setup.bash
+# DDS env already in .bashrc -- skip these exports if so:
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+
+colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
+source install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 real_robot_hardware.launch.py
+```
+
+### Terminal 2: Planning + RViz (on mars, Jazzy)
+```bash
+cd ~/swarm/swarm_project
+source /opt/ros/jazzy/setup.bash
+# DDS env already in .bashrc -- skip these exports if so:
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+
+colcon build --packages-skip mycobot_hardware
+source install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 real_robot_planning.launch.py
+```
+
+### Terminal 3: Verify, then run pick_place.py / annulus_test.py (on mars)
+```bash
+source ~/swarm/swarm_project/install/setup.bash
+ros2 node list                    # /move_group must be present, plus the robot's nodes
+ros2 control list_controllers     # all three should show "active" (queried over DDS from the robot)
+ros2 topic hz /joint_states       # should show ~50-100Hz streaming from the Pi
+python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
+```
+
+If `/move_group` doesn't see the robot's controllers, or `ros2 node list`
+on mars is missing the robot's nodes (`/controller_manager`,
+`/robot_state_publisher`, etc.), re-run the DDS verification test under
+Troubleshooting before debugging further -- this almost always means
+discovery isn't working, not a MoveIt/controller problem.
 
 ---
 
@@ -238,13 +351,19 @@ moving the arm underneath.
 │   │   │   └── real_robot.launch.py   # hardware_mode=real
 │   │   └── worlds/
 │   │
-│   └── mycobot_hardware/        # ros2_control plugin for REAL hardware
-│       ├── package.xml          # Galactic-only -- see Setup note above
+│   ├── mycobot_hardware/        # ros2_control plugin for REAL hardware
+│   │   ├── package.xml          # Galactic-only -- see Setup note above
+│   │   ├── CMakeLists.txt
+│   │   ├── mycobot_hardware.xml # pluginlib description
+│   │   ├── include/mycobot_hardware/mycobot_system.hpp
+│   │   ├── src/mycobot_system.cpp
+│   │   └── scripts/mycobot_bridge.py  # pymycobot bridge daemon
+│   │
+│   └── swarm_network/           # DDS unicast discovery config
+│       ├── package.xml
 │       ├── CMakeLists.txt
-│       ├── mycobot_hardware.xml # pluginlib description
-│       ├── include/mycobot_hardware/mycobot_system.hpp
-│       ├── src/mycobot_system.cpp
-│       └── scripts/mycobot_bridge.py  # pymycobot bridge daemon
+│       └── config/
+│           └── cyclonedds.xml   # Cyclone DDS config (multicast disabled)
 │
 ├── pi_setup/                    # Robot-side install (Ubuntu 20.04/Galactic)
 │   ├── install_pi_galactic.sh
@@ -370,4 +489,48 @@ ros2 pkg list | grep mycobot_280pi_camera_moveit2
   no-op on Jazzy/Gazebo, where trajectories already come back properly
   timed. If this resurfaces, check whether `/plan_kinematic_path`'s
   response has all-zero `time_from_start` again.
+
+### DDS discovery verification (campus network)
+**Test that the workstation and robot can see each other over DDS:**
+
+On mars (workstation), in one terminal:
+```bash
+# Source setup and DDS environment
+source ~/swarm/swarm_project/install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+
+# Run a simple talker
+ros2 run demo_nodes_cpp talker
+```
+
+On the robot, in another terminal:
+```bash
+# Source setup and DDS environment (if not already in .bashrc)
+source ~/swarm_project/install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+
+# Echo the topic
+ros2 topic echo /chatter
+```
+
+**Expected:** The robot's terminal will show messages from the workstation's
+talker, like:
+```
+data: 'Hello World: 1'
+---
+data: 'Hello World: 2'
+---
+```
+
+If it doesn't work:
+- Verify both machines have sourced the DDS environment variables
+- Check that both machines can ping each other (not multicast, regular ICMP)
+- Confirm `ros-jazzy-rmw-cyclonedds-cpp` is installed on mars
+- Confirm `ros-galactic-rmw-cyclonedds-cpp` is installed on the robot
+- Check the IPs in `cyclonedds.xml` are correct (mars: 172.27.89.157,
+  robot: 172.30.6.165)
 

@@ -46,6 +46,27 @@ std::vector<double> extract_array(const std::string & json, const std::string & 
   }
   return values;
 }
+
+// Minimal parse of a bare `"key":N` integer field (not inside an array).
+// Returns -1 if not found -- fine here since request ids are assigned
+// starting at 0 and only ever compared for equality, never used as an
+// index, so -1 can never accidentally match a real id.
+int extract_int(const std::string & json, const std::string & key)
+{
+  auto key_pos = json.find("\"" + key + "\"");
+  if (key_pos == std::string::npos) {
+    return -1;
+  }
+  auto colon = json.find(':', key_pos);
+  if (colon == std::string::npos) {
+    return -1;
+  }
+  try {
+    return std::stoi(json.substr(colon + 1));
+  } catch (const std::exception &) {
+    return -1;
+  }
+}
 }  // namespace
 
 MyCobotSystem::CallbackReturn MyCobotSystem::on_init(const hardware_interface::HardwareInfo & info)
@@ -143,6 +164,7 @@ MyCobotSystem::CallbackReturn MyCobotSystem::on_deactivate(const rclcpp_lifecycl
 hardware_interface::return_type MyCobotSystem::read()
 {
   std::string reply = send_request(R"({"cmd":"read"})");
+
   if (reply.empty()) {
     // Bridge unreachable or timed out this cycle -- keep last-known state
     // rather than stall/crash the control loop. Persistent failures show up
@@ -222,36 +244,92 @@ void MyCobotSystem::disconnect_bridge()
     close(socket_fd_);
     socket_fd_ = -1;
   }
+  recv_buf_.clear();
 }
 
-std::string MyCobotSystem::send_request(const std::string & request, int timeout_ms)
+std::string MyCobotSystem::read_line(std::chrono::steady_clock::time_point deadline)
+{
+  while (true) {
+    auto nl = recv_buf_.find('\n');
+    if (nl != std::string::npos) {
+      std::string line = recv_buf_.substr(0, nl);
+      recv_buf_.erase(0, nl + 1);
+      return line;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+      return "";
+    }
+    int remaining_ms = static_cast<int>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count());
+
+    pollfd pfd{socket_fd_, POLLIN, 0};
+    int ready = poll(&pfd, 1, remaining_ms);
+    if (ready <= 0) {
+      return "";
+    }
+
+    char buf[4096];
+    ssize_t n = recv(socket_fd_, buf, sizeof(buf), 0);
+    if (n <= 0) {
+      return "";
+    }
+    recv_buf_.append(buf, static_cast<size_t>(n));
+  }
+}
+
+std::string MyCobotSystem::send_request(const std::string & request_body, int timeout_ms)
 {
   if (socket_fd_ < 0) {
     return "";
   }
 
-  std::string line = request + "\n";
+  // Splice `,"id":N` into the request just before its closing brace, e.g.
+  // `{"cmd":"read"}` -> `{"cmd":"read","id":7}`. request_body is always a
+  // hand-built single-line JSON object from a call site in this file, so
+  // this string surgery is safe (no nested braces at the top level, no
+  // trailing whitespace).
+  int id = next_request_id_++;
+  auto close_brace = request_body.rfind('}');
+  std::string tagged = request_body.substr(0, close_brace) +
+    R"(,"id":)" + std::to_string(id) + "}";
+
+  std::string line = tagged + "\n";
   if (::send(socket_fd_, line.c_str(), line.size(), 0) < 0) {
     RCLCPP_WARN_THROTTLE(logger(), clock_, 5000,
                          "send() to mycobot_bridge.py failed: %s", std::strerror(errno));
     return "";
   }
 
-  pollfd pfd{socket_fd_, POLLIN, 0};
-  int ready = poll(&pfd, 1, timeout_ms);
-  if (ready <= 0) {
-    RCLCPP_WARN_THROTTLE(logger(), clock_, 5000,
-                         "mycobot_bridge.py did not reply within %d ms", timeout_ms);
-    return "";
-  }
+  // Read replies until one matches the id just sent, discarding any stale
+  // replies left over from a previous call whose deadline expired before
+  // the bridge's answer actually arrived on the wire. Without this, the
+  // next call would consume that stale reply as if it were its own,
+  // silently mispairing every request/reply from that point on -- this is
+  // what caused position_states_/position_commands_ to reflect old,
+  // unrelated cycles instead of the current one (see commit message).
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  int discarded = 0;
+  while (true) {
+    std::string reply = read_line(deadline);
+    if (reply.empty()) {
+      if (discarded > 0) {
+        RCLCPP_WARN_THROTTLE(logger(), clock_, 5000,
+                             "mycobot_bridge.py: discarded %d stale repl%s waiting for id %d, "
+                             "then timed out", discarded, discarded == 1 ? "y" : "ies", id);
+      } else {
+        RCLCPP_WARN_THROTTLE(logger(), clock_, 5000,
+                             "mycobot_bridge.py did not reply within %d ms", timeout_ms);
+      }
+      return "";
+    }
 
-  char buf[4096];
-  ssize_t n = recv(socket_fd_, buf, sizeof(buf) - 1, 0);
-  if (n <= 0) {
-    return "";
+    if (extract_int(reply, "id") == id) {
+      return reply;
+    }
+    ++discarded;
   }
-  buf[n] = '\0';
-  return std::string(buf);
 }
 
 }  // namespace mycobot_hardware

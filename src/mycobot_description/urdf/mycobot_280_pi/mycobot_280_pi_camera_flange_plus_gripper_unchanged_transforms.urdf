@@ -218,13 +218,45 @@
       <geometry>
        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae"/>
       </geometry>
-    <origin xyz = "0.024 -0.008 0.0 " rpy = " 0 3.14159 0"/>
+    <!-- 2026-07-28: was xyz "0.024 -0.008 0.0" rpy "0 3.14159 0". That pitch
+         is a 180 deg rotation about the LENS AXIS: the lens direction
+         (optical +Z) expressed in camera_flange coordinates is exactly
+         (0, +1, 0), i.e. this link's own +Y. So the term drew the camera body
+         on the far side of the flange while leaving the lens pointing the
+         right way, which is why RViz showed the camera under the mount while
+         the real arm has it on top, with the lens correct in both.
+
+         Removing it, and mirroring the x offset with it, rotates the whole
+         visual 180 deg about the lens axis: the body moves to the correct
+         side and its orientation flips, while the lens direction is provably
+         untouched (the rotation fixes its own axis).
+
+         Kinematics were never involved. This is the visual and collision
+         geometry only; the link frame and every child frame were already
+         correct once the flange roll was fixed to yaw 2.3562. -->
+    <origin xyz = "-0.024 -0.008 0.0 " rpy = " 0 0 0"/>
     </visual>
     <collision>
       <geometry>
        <mesh filename="package://mycobot_description/urdf/mycobot_280_pi/camera_flange.dae"/>
       </geometry>
-    <origin xyz = "0.024 -0.008 0.0 " rpy = " 0 3.14159 0"/>
+    <!-- 2026-07-28: was xyz "0.024 -0.008 0.0" rpy "0 3.14159 0". That pitch
+         is a 180 deg rotation about the LENS AXIS: the lens direction
+         (optical +Z) expressed in camera_flange coordinates is exactly
+         (0, +1, 0), i.e. this link's own +Y. So the term drew the camera body
+         on the far side of the flange while leaving the lens pointing the
+         right way, which is why RViz showed the camera under the mount while
+         the real arm has it on top, with the lens correct in both.
+
+         Removing it, and mirroring the x offset with it, rotates the whole
+         visual 180 deg about the lens axis: the body moves to the correct
+         side and its orientation flips, while the lens direction is provably
+         untouched (the rotation fixes its own axis).
+
+         Kinematics were never involved. This is the visual and collision
+         geometry only; the link frame and every child frame were already
+         correct once the flange roll was fixed to yaw 2.3562. -->
+    <origin xyz = "-0.024 -0.008 0.0 " rpy = " 0 0 0"/>
     </collision>
   </link>
 
@@ -330,7 +362,48 @@
     <parent link="joint6_flange"/>
     <child link="camera_flange"/>
     <!-- <origin xyz= "0 0.0 0" rpy = "1.5708 1.5708 0"/>   -->
-    <origin xyz= "0 0 0.01" rpy = "1.579 0 1.5708"/>  
+    <!-- yaw 1.5708 becomes 2.3562 (2026-07-28): the model was 45 deg out of
+         roll about the tool axis against the physical mount.
+
+         VALIDATED AT TWO POSES against the real arm, using
+         wrist_camera_optical_frame, which is the frame this file itself
+         labels as the camera (ROS convention: +Z is the lens direction, +Y is
+         down, so camera UP is optical -Y):
+
+             joint6output    real arm                model, yaw=2.3562
+             0 deg           up and RIGHT at 45      (0, -0.71, +0.71)   0.0 deg
+             -45 deg         straight UP             (0,  0.00, +1.00)   0.0 deg
+
+         Candidates, error against the real arm at those two poses:
+
+             yaw 1.5708 (orig)    45.0 deg / 45.0 deg
+             yaw 0.7854            90.0 deg / 90.0 deg
+             yaw 2.3562 (this)      0.0 deg /  0.0 deg
+             yaw 4.7124           135.0 deg / 135.0 deg
+
+         A previous attempt set 0.7854, which is this correction with the SIGN
+         REVERSED. It came from anchoring on camera_flange's own Z axis, an
+         axis chosen by inspection rather than by any stated meaning, and it
+         happened to agree at one pose while being 90 deg wrong at both. Anchor
+         on the optical frame, and check more than one pose.
+
+         joint6_flange is the PARENT of this joint and does not move, so IK,
+         the grasp quaternion and Cartesian planning are untouched. What
+         changes is where the model believes the camera and gripper sit, so
+         collision geometry and any camera-frame work were previously 45 deg
+         wrong.
+
+         HOME_DEGREES joint6output = -45 stays: that compensation is what
+         swings the real assembly from its rest offset to vertical, and is
+         independent of the model knowing where the assembly is.
+
+         SEPARATE, NOT FIXED HERE: the camera_flange link's visual and
+         collision origins carry rpy "0 3.14159 0", a 180 deg flip relative to
+         the link frame. That is why the drawn mesh in RViz can appear opposite
+         to what the optical frame reports. Its xyz offset was tuned with that
+         flip in place, so removing it needs the offset re-derived, and the
+         appearance should be re-checked after this change before touching it. -->
+    <origin xyz= "0 0 0.01" rpy = "1.579 0 2.3562"/>
   </joint>
 
   <!-- Adaptive gripper copied without changing any xyz or rpy values. -->
@@ -340,7 +413,29 @@
     <parent link="camera_flange"/>
     <child link="gripper_base"/>
     <!-- <origin xyz= "0 0.0 0" rpy = "0 1.5708 1.5708"/>   -->
-    <origin xyz= "0 0.04 0" rpy = "0.0082 -1.5708 0"/>  
+    <!-- 2026-07-28: was rpy "0.0082 -1.5708 0". The gripper subtree sat 180
+         deg out about its own approach axis, putting the notch on the SAME
+         side as the camera when physically it is opposite.
+
+         Measured at joint6output of -45 deg, where the camera had already
+         been confirmed against the real arm:
+
+             camera UP        (optical -Y)   (+0.00, +0.00, +1.00)  UP
+             gripper_base +Z  (notch side)   (-0.01, +0.00, +1.00)  UP
+             angle between them: 0.5 deg, and it should be 180
+
+         gripper_base +Y is the approach axis (it reads FWD, same as the
+         lens), so post multiplying by Ry(pi) rotates about the CHILD's own Y.
+         The notch swaps sides, the approach direction is untouched, and the
+         joint origin does not move, so xyz stays as it was.
+
+         Note the whole subtree rotates, so the finger links swap sides with
+         it (gripper_left3 at minus x moves to plus x). For a symmetric two
+         finger jaw that is visually identical, but the modelled opening
+         direction reverses in world, which is worth a glance in RViz.
+         Nothing physical changes: the real jaw is driven through the
+         bridge's 0 to 100 scale, which never consults the URDF. -->
+    <origin xyz= "0 0.04 0" rpy = "-0.0082 1.5708 0"/>  
   </joint>
 
   <link name="gripper_base">
