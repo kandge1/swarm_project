@@ -308,6 +308,25 @@ POSTURE_ATTEMPTS = 3
 # moves on 2026-07-28. Retrying turns a 26% per-trial loss into ~2%.
 MOVE_ATTEMPTS = 3
 
+# No command may take a joint further than this from the posture it is being
+# tested at. The postures were validated for +/-35 deg excursions and several
+# clear the floor by only 75mm there, so a trial that starts from the wrong
+# place -- which happens whenever a move silently fails -- can drive straight
+# through that margin. Joint limits alone do not catch it: -62 deg on joint 1
+# is perfectly legal and still puts the arm on the table. This is the backstop
+# that makes a stranded joint abort the trial instead of jamming the arm.
+MAX_EXCURSION_DEG = 40.0
+
+
+def within_envelope(pose, posture):
+    """(ok, index, value, allowed) for the first joint too far from `posture`."""
+    if posture is None:
+        return True, None, None, None
+    for i in range(min(len(pose), len(posture))):
+        if abs(pose[i] - posture[i]) > MAX_EXCURSION_DEG:
+            return False, i, pose[i], posture[i]
+    return True, None, None, None
+
 # A residual this close to the commanded amplitude means the joint did not
 # move at all -- settled == start -- so there is no "error" to correct and
 # k*e is not a small bias but a second full-sized move. Extrapolating from it
@@ -387,7 +406,7 @@ def deadzone_verdict(ratios, steps):
         "last k that did nothing and the first that moved."]
 
 
-def run_backlash_trial(arm, args, joint_idx, quiet=False):
+def run_backlash_trial(arm, args, joint_idx, quiet=False, posture=None):
     """Measure lost motion directly: command ONE target, reached from each side.
 
     This is the classic hysteresis measurement and it exists because the
@@ -407,7 +426,14 @@ def run_backlash_trial(arm, args, joint_idx, quiet=False):
     if start is None:
         return None
     j = joint_idx
-    swing = abs(args.amplitude_deg)
+    # The swing only has to exceed the lost motion itself (~1-2 deg), so it is
+    # deliberately MUCH smaller than --amplitude-deg. It used to reuse the 30
+    # deg test amplitude, which is 15x more than the measurement needs and, when
+    # a leg silently failed, left the joint 30 deg from its posture -- the next
+    # excursion then ran +/-35 deg from a wrong start, through margins that are
+    # only 75mm at the folded/compact/extended postures. That is what jammed the
+    # arm on 2026-07-28.
+    swing = abs(args.backlash_swing_deg)
     target = start[j]
 
     settled = {}
@@ -423,18 +449,63 @@ def run_backlash_trial(arm, args, joint_idx, quiet=False):
                     print("[probe] backlash SKIP: joint {} would reach {:.2f} deg, "
                           "outside {:.0f}..{:.0f}".format(bad_i, bad_v, lo, hi))
                 return None
-        before = read_angles(arm)
-        arm.send_angles(away, args.speed)
-        settle(arm, args, timeout_sec=args.settle_timeout_sec, reference=before)
-        before = read_angles(arm)
-        arm.send_angles(approach, args.speed)
-        result = settle(arm, args, timeout_sec=args.settle_timeout_sec,
-                        reference=before)
-        if result is None:
+            ok, bad_i, bad_v, want = within_envelope(pose, posture)
+            if not ok:
+                if not quiet:
+                    print("[probe] backlash SKIP: joint {} would reach {:.2f} deg, "
+                          "more than {:.0f} deg from the posture's {:.2f}"
+                          .format(bad_i, bad_v, MAX_EXCURSION_DEG, want))
+                return None
+
+        # Leg 1: get clear of the target by `swing`, and VERIFY it happened.
+        # Without this the joint can sit still, the approach then measures
+        # nothing, and lost_motion comes out equal to the swing -- which is what
+        # produced the -30.5 deg / 347-count readings.
+        reached = False
+        for _ in range(MOVE_ATTEMPTS):
+            before = read_angles(arm)
+            arm.send_angles(away, args.speed)
+            got = settle(arm, args, timeout_sec=args.settle_timeout_sec,
+                         reference=before)
+            if got is not None and abs(got[j] - away[j]) < 0.5 * swing:
+                reached = True
+                break
+        if not reached:
+            if not quiet:
+                print("[probe] backlash SKIP: joint {} would not move clear of "
+                      "the target".format(j))
             return None
-        settled[label] = result[j]
+
+        # Leg 2: come back to the target. This one must NOT be required to
+        # arrive -- the shortfall IS the measurement -- only to have travelled
+        # most of the way, which distinguishes lost motion from a dead command.
+        moved = False
+        for _ in range(MOVE_ATTEMPTS):
+            before = read_angles(arm)
+            arm.send_angles(approach, args.speed)
+            got = settle(arm, args, timeout_sec=args.settle_timeout_sec,
+                         reference=before)
+            if got is None:
+                return None
+            if abs(got[j] - away[j]) > 0.5 * swing:
+                settled[label] = got[j]
+                moved = True
+                break
+        if not moved:
+            if not quiet:
+                print("[probe] backlash SKIP: joint {} did not return toward the "
+                      "target (command did not execute)".format(j))
+            return None
 
     lost = settled["from_below"] - settled["from_above"]
+    if abs(lost) > 0.5 * swing:
+        # Lost motion approaching the swing means a leg did not execute, not
+        # that the joint has half a swing of backlash.
+        if not quiet:
+            print("[probe] backlash DISCARDED: lost motion {:.2f} deg is >= half "
+                  "the {:.0f} deg swing, so a leg did not execute."
+                  .format(lost, swing))
+        return None
     if not quiet:
         print("[probe] backlash: target {:.3f} -> {:.3f} from below, {:.3f} from "
               "above, lost motion {:+.3f} deg ({:.1f} counts)"
@@ -444,7 +515,8 @@ def run_backlash_trial(arm, args, joint_idx, quiet=False):
             "from_above": settled["from_above"], "lost_motion": lost}
 
 
-def run_deadzone_trial(arm, args, joint_idx, quiet=False, amplitude=None):
+def run_deadzone_trial(arm, args, joint_idx, quiet=False, amplitude=None,
+                       posture=None):
     """One dead-zone measurement on one joint, from wherever the arm is now.
 
     Moves the joint by --amplitude-deg, measures the residual e, then commands
@@ -467,6 +539,12 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False, amplitude=None):
     if not ok:
         print("[probe] SKIP: the initial move would put joint {} at {:.2f} deg, "
               "outside its {:.0f}..{:.0f} limit".format(bad_i, bad_v, lo, hi))
+        return None
+    ok, bad_i, bad_v, want = within_envelope(target, posture)
+    if not ok:
+        print("[probe] SKIP: joint {} would go to {:.2f} deg, more than {:.0f} "
+              "deg from the posture's {:.2f} -- the arm is not where this trial "
+              "assumes.".format(bad_i, bad_v, MAX_EXCURSION_DEG, want))
         return None
 
     # Retry a move that simply did not happen. This is NOT retrying a bad
@@ -539,6 +617,12 @@ def run_deadzone_trial(arm, args, joint_idx, quiet=False, amplitude=None):
             print("[probe] stopping staircase at k={}: would command joint {} to "
                   "{:.2f} deg, outside its {:.0f}..{:.0f} limit"
                   .format(k, bad_i, bad_v, lo, hi))
+            break
+        ok, bad_i, bad_v, want = within_envelope(biased, posture)
+        if not ok:
+            print("[probe] stopping staircase at k={}: joint {} would reach "
+                  "{:.2f} deg, more than {:.0f} deg from the posture's {:.2f}"
+                  .format(k, bad_i, bad_v, MAX_EXCURSION_DEG, want))
             break
         arm.send_angles(biased, args.speed)
         measured = settle(arm, args, timeout_sec=args.settle_timeout_sec,
@@ -756,7 +840,8 @@ def mode_deadzone_sweep(arm, args):
                         # raises on out-of-range angles, and a serial hiccup can
                         # throw from anywhere in the vendor stack.
                         try:
-                            result = run_deadzone_trial(arm, args, j, amplitude=amp)
+                            result = run_deadzone_trial(arm, args, j, amplitude=amp,
+                                                        posture=angles)
                         except Exception as exc:
                             print("[probe] TRIAL FAILED ('{}', joint {}, amp {:+.0f}): "
                                   "{!r}".format(name, j, amp, exc), file=sys.stderr)
@@ -775,7 +860,7 @@ def mode_deadzone_sweep(arm, args):
                         print("[probe] --- '{}' joint {} BACKLASH (same target from "
                               "both sides) ---".format(name, j))
                         try:
-                            b = run_backlash_trial(arm, args, j)
+                            b = run_backlash_trial(arm, args, j, posture=angles)
                         except Exception as exc:
                             print("[probe] BACKLASH FAILED ('{}', joint {}): {!r}"
                                   .format(name, j, exc), file=sys.stderr)
@@ -1317,6 +1402,13 @@ def main():
                              "whether a correction REVERSES the approach is what "
                              "decides if it works at all, and a single-direction "
                              "sweep only samples reversals by accident "
+                             "(default %(default)s)")
+    parser.add_argument("--backlash-swing-deg", type=float, default=10.0,
+                        help="--deadzone-sweep: how far to move off the target "
+                             "before approaching it, for the backlash "
+                             "measurement. Only needs to exceed the lost motion "
+                             "itself (~1-2 deg); large values strand the joint "
+                             "far from its posture if a leg fails "
                              "(default %(default)s)")
     parser.add_argument("--no-backlash", action="store_true",
                         help="--deadzone-sweep: skip the backlash measurement "
