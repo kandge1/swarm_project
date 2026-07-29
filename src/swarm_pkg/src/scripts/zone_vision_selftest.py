@@ -31,7 +31,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import zone_vision as zv  # noqa: E402
 
 RENDER_SCALE = 4000.0     # px per metre in the synthetic top-down render
-CANVAS = 800              # px
+# Must clear the zone (tag-to-tag) plus perspective jitter with margin, or tags
+# and blocks near a corner clip against the canvas edge -- a rendering artifact
+# that looks exactly like a real detection bug (partial tags, split contours).
+# Sized for zv.DEFAULT_ZONE_SIZE at import time below; if that grows again,
+# this must grow with it.
+CANVAS = 1100             # px
 MAT_GREY = 210
 BLOCK_GREY = 60
 

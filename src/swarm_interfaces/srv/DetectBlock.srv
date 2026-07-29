@@ -17,7 +17,9 @@ float64 zone_z              # world m, the plane the blocks sit on
 float64 zone_yaw            # world rad, rotation of the tag square about +Z
 
 # Side length of the square joining the four TAG CENTRES (not the tag size, and
-# not the printed zone outline). 4 in = 0.1016 m.
+# not the ~4in working area printed inside it). 6 in = 0.1524 m -- see
+# zone_vision.DEFAULT_ZONE_SIZE and APRIL_TAGS.md "Usable area" for why the tag
+# square is bigger than the area a block actually gets to occupy.
 float64 zone_size
 
 # Hint, m. 0 means "unknown, report whatever you find". Stage 3 leaves this at 0

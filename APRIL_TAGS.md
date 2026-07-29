@@ -18,16 +18,15 @@ Today `pick_place.py` runs a fixed sequence against hardcoded `PICK_XYZ` / `PLAC
 one fixed grasp orientation (`GRIPPER_YAW_DEG = -45.0`). Every block has to be set down by
 hand at the exact spot the constants describe, rotated to match the jaws.
 
-The goal is to remove that. A block placed **anywhere, at any rotation** inside a 4in x 4in
+The goal is to remove that. A block placed **anywhere, at any rotation** inside a ~4in x 4in
 "pickup zone" should be located, identified, approached at the correct yaw, grasped by a
 face the gripper can actually span, and placed in a "place zone".
 
-Zones are marked by four 1in AprilTags (36h11) whose **centres** sit on the vertices of the
-4in square.
-
-> See [Usable area](#usable-area-the-tag-square-is-not-the-working-square) before printing
-> the mat — with tags centred on a 4in square's vertices, the area a 1.18in block can
-> actually occupy is only 1.82in across.
+Zones are marked by four 1in AprilTags (36h11) whose **centres** sit on the vertices of a
+**6in** square — bigger than the ~4in working area itself. See
+[Usable area](#usable-area-the-tag-square-is-not-the-working-square) for why: a tag centred
+on a 4in square's own vertices would eat into the corners of the working area it's meant to
+mark. Decided 2026-07-29.
 
 ---
 
@@ -35,16 +34,18 @@ Zones are marked by four 1in AprilTags (36h11) whose **centres** sit on the vert
 
 | Stage | What it adds | Status |
 |---|---|---|
-| 0a | Characterization: dead-zone floor + repeatability scatter | **Blocked on hardware** — Test 1 is ready to run, Test 6 not yet written |
+| — | Mat layout: 6in tag square around a ~4in working area | **Decided 2026-07-29** |
+| 0a | Characterization: dead-zone floor + repeatability scatter | **Test 1 running on hardware now** (2026-07-29); Test 6 not yet written |
 | 0b | Calibration: tag lib, FOV, jaw mm/rad, camera framing offset | Camera offset **done** (from URDF); the other three need the robot |
 | 1 | Pickup zone hardcoded, square blocks, random position + rotation | **Code complete, unverified on hardware** |
 | 2 | Place zone also tag-located | Not started |
 | 3 | 24-block database: shape/size ID, per-block grasp orientation | Not started |
 | 4 | Place anywhere in the place zone (beside / on top) | Not started |
 
-**Nothing here has run on the robot yet.** Everything below the synthetic tests is
-unverified against real optics, real lighting and real arm behaviour. The two correction
-thresholds in `tag_pick_place.py` are explicitly marked placeholders in the source.
+**Nothing in Stage 1's code has run on the robot yet.** Everything below the synthetic tests
+is unverified against real optics, real lighting and real arm behaviour. The two correction
+thresholds in `tag_pick_place.py` are explicitly marked placeholders in the source until
+Test 1's results are in.
 
 Measured constants land in [Measurements](#measurements) below as each is taken. Until a
 row there has a number, treat the corresponding code constant as a guess.
@@ -114,8 +115,10 @@ centres on a **6in** square around a 4in working area gives:
 i.e. essentially the whole intended 4in working area, at the cost of a slightly larger
 printed mat and a slightly wider field of view (see the FOV go/no-go in Stage 0b).
 
-**Decision pending** — until it is made, `DEFAULT_ZONE_SIZE` stays at 4in and Stage 1 must
-keep the block within ±23 mm of the zone centre.
+**Decided 2026-07-29: 6in.** `zone_vision.DEFAULT_ZONE_SIZE = 0.1524` (was 0.1016). Print the
+tag square at 6in on a side; the ~4in "working area" the user places blocks in is now a
+nominal region well inside it, not the tag square itself. The ±23 mm limit above no longer
+applies — the new usable half-extent is ±48.5 mm, i.e. essentially the whole 4in area.
 
 Related: an occluded tag is survivable. The homography is fitted from all four corners of
 every visible tag, so three tags give 12 correspondences and still over-determine it. Two
@@ -226,12 +229,16 @@ number.
    `pupil-apriltags` to `pi_setup/requirements.txt`; both code paths sit behind one function
    in `zone_vision.py`. Settle this before writing detection code.
 
-2. **Field of view — a genuine go/no-go.** `hover_z()` clamps to `MAX_HOVER_Z = 0.205`
-   (`pick_place.py:118,142`), so hover height is *not* a free variable. At ~0.20 m the
-   camera must see a ~5in span (the 4in square plus the 1in tags straddling its vertices)
-   for all four tags to be in frame. Park at hover, capture a still, count tags.
-   Fallback if four do not fit: accept **three** — a homography needs four point pairs, but
-   three tag centres plus the known square geometry determine the fourth.
+2. **Field of view — a genuine go/no-go, and a stricter one now.** `hover_z()` clamps to
+   `MAX_HOVER_Z = 0.205` (`pick_place.py:118,142`), so hover height is *not* a free
+   variable. At ~0.20 m the camera must see a ~7in span (the 6in tag square plus the 1in
+   tags straddling its vertices) for all four tags to be in frame — up from ~5in before the
+   6in decision, precisely because that decision trades FOV margin for usable working area.
+   Park at hover, capture a still, count tags. If four do not fit at `MAX_HOVER_Z`, this is
+   the moment to know it, not a moment to guess through: fallback options in order of
+   preference are (a) accept **three** tags — a homography needs four point pairs, but three
+   tag centres plus the known square geometry determine the fourth — or (b) a wider-FOV lens
+   on the wrist camera, since hover height itself is not adjustable.
 
 3. **Gripper jaw opening in millimetres.** `GRIPPER_OPEN = 0.15`, `GRIPPER_CLOSED = -0.60`,
    jaw span 0.75 rad (`pick_place.py:167,211`) — but **nothing currently maps radians to
@@ -260,8 +267,8 @@ Square blocks, 1.18in (30.0 mm) thick. Zone world pose hardcoded.
 1. `go_home`, open gripper.
 2. Hover over the zone centre (flange target offset by the camera offset from 0b.4).
 3. `DetectBlock("pickup")`. On the Pi: grab one fresh frame (discard stale ones — the arm
-   was just moving), detect the four tags, build the homography from the known 4in square,
-   reject on high `homography_rms`, mask to the zone interior, find the largest non-tag
+   was just moving), detect the four tags, build the homography from the known 6in tag
+   square, reject on high `homography_rms`, mask to the zone interior, find the largest non-tag
    contour, `cv2.minAreaRect` → centre + angle + side lengths, map back through the
    homography into world metres.
 4. Reduce yaw by the block's symmetry. A square is 4-fold, so `yaw mod 90 deg`; pick the

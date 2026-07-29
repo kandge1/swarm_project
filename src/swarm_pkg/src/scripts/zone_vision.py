@@ -72,8 +72,19 @@ import numpy as np
 # Zone geometry
 # ---------------------------------------------------------------------------
 # Side of the square joining the four TAG CENTRES. Not the tag size, and not
-# whatever outline is printed on the mat. 4 in.
-DEFAULT_ZONE_SIZE = 0.1016      # m
+# the ~4in working area a block actually gets to sit in.
+#
+# 6 in, not 4 in. Originally this was 4in with the tags AT the vertices of the
+# nominal 4in working square -- but a tag centred on a vertex reaches tag_size/2
+# INWARD from it, so a block near a corner sat on top of the tag. Usable area is
+#     zone_size/2 - tag_size/2 - block_size/2
+# which at 4in zone / 1in tag / 1.18in block was only +-23mm (1.82in) -- less
+# than half the intended working square, and a 3in Stage 3 block did not fit at
+# all. Moving the tags out to a 6in square around the same ~4in working area
+# gives +-48.5mm (3.8in), essentially the whole intended area. Decided
+# 2026-07-29; see APRIL_TAGS.md "Usable area" for the derivation and the
+# synthetic test that found it.
+DEFAULT_ZONE_SIZE = 0.1524      # m
 # Printed side length of one AprilTag's black border. 1 in.
 DEFAULT_TAG_SIZE = 0.0254       # m
 
@@ -111,7 +122,10 @@ MAX_HOMOGRAPHY_RMS_PX = 6.0
 
 # Ignore contours smaller than this fraction of the zone area -- specks, mat
 # texture, printed markings.
-MIN_BLOCK_AREA_FRAC = 0.004     # ~0.4% of a 4in square = a 6mm speck
+MIN_BLOCK_AREA_FRAC = 0.0018    # ~0.18% of a 6in zone square = a 6mm speck
+                                 # (kept the same ABSOLUTE speck size as the old
+                                 # 4in zone's 0.4% -- the fraction changed, the
+                                 # thing it's meant to filter did not)
 # ...and larger than this, which means the segmentation leaked out of the zone
 # and grabbed the mat itself rather than a block on it.
 MAX_BLOCK_AREA_FRAC = 0.60

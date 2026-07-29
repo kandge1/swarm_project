@@ -132,7 +132,8 @@ def main():
                         help="segmentation method (default: canny)")
     parser.add_argument("--zone-size", type=float, default=zv.DEFAULT_ZONE_SIZE,
                         help="side of the square joining the TAG CENTRES, metres "
-                             "(default: %(default)s = 4 in)")
+                             "(default: %(default)s = 6 in, around a ~4 in "
+                             "working area -- see APRIL_TAGS.md 'Usable area')")
     parser.add_argument("--tag-size", type=float, default=zv.DEFAULT_TAG_SIZE,
                         help="printed tag side, metres (default: %(default)s = 1 in)")
     parser.add_argument("--max-rms", type=float, default=zv.MAX_HOMOGRAPHY_RMS_PX,
