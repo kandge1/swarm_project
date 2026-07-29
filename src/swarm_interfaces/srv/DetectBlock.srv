@@ -1,0 +1,73 @@
+# Take ONE still from the wrist camera and locate whatever is sitting inside a
+# tag-marked zone. Runs entirely on the Pi -- images never cross the DDS link,
+# which silently drops anything over ~1400 bytes (PROJECT_CONTEXT.md, MTU
+# fragmentation). This reply is a few hundred bytes.
+#
+# Call this only while the arm is PARKED at a hover. The serial link is
+# half-duplex and the Pi is also running the 100 Hz control loop.
+
+string zone                 # "pickup" | "place" -- label only, for logging
+
+# Where the caller BELIEVES the zone is. Used to aim nothing and to sanity-check
+# the result: the measured pose is reported back separately below, and it is the
+# measured one that should be trusted.
+float64 zone_x              # world m, zone centre
+float64 zone_y              # world m
+float64 zone_z              # world m, the plane the blocks sit on
+float64 zone_yaw            # world rad, rotation of the tag square about +Z
+
+# Side length of the square joining the four TAG CENTRES (not the tag size, and
+# not the printed zone outline). 4 in = 0.1016 m.
+float64 zone_size
+
+# Hint, m. 0 means "unknown, report whatever you find". Stage 3 leaves this at 0
+# and matches against blocks.yaml instead.
+float64 expected_size
+
+bool save_debug_image       # write an annotated frame on the Pi (slow, ~50 ms)
+string debug_image_path     # where to write it; ignored if save_debug_image is false
+---
+bool success
+string message              # human-readable reason when success is false
+
+# --- detection health -------------------------------------------------------
+# tags_seen < 4 means the homography used the three-tag fallback (three tags
+# plus the known square geometry determine the fourth corner). < 3 is a hard
+# failure. tag_ids says WHICH zone was actually seen -- the one real guard
+# against hovering over the wrong zone and confidently measuring it.
+uint8 tags_seen
+uint16[] tag_ids
+
+# RMS reprojection residual through the fitted homography, in pixels.
+# THIS IS THE NUMBER THAT SAYS WHETHER TO TRUST THE RESULT -- a bad homography
+# otherwise fails silently and produces a confident wrong answer.
+#
+# The fit uses all FOUR CORNERS of every tag (16 correspondences for 4 tags),
+# not the four centres. With only 4 points a homography is exact and the
+# residual is identically zero, which would make this field useless. Over-
+# determining it is the whole reason the residual carries information.
+float64 homography_rms
+
+# Image scale at the zone centre, px per metre. Not used in the calculation --
+# the homography handles scale -- but it is the fastest sanity check on whether
+# the hover height was anywhere near what was intended.
+float64 scale_px_per_m
+
+# --- where the CAMERA is ----------------------------------------------------
+# Zone-local metres under the centre of the image: an external measurement of
+# where the arm actually put the camera, owing nothing to its encoders.
+#
+# This, not the block position, is what closes the loop on a correction move.
+# Re-detecting the BLOCK verifies nothing about the arm -- the block's
+# zone-local position comes from the tags and is the same no matter where the
+# arm is standing. The camera's is not. See zone_vision.camera_in_zone() for
+# the two systematic caveats (assumed principal point, assumed perpendicular
+# optical axis); both are constant offsets, so differences are trustworthy even
+# though the absolute value is uncalibrated.
+float64 camera_zx
+float64 camera_zy
+
+# --- what was found ---------------------------------------------------------
+# Sorted largest-footprint first. Empty on an empty zone, which is a SUCCESS,
+# not a failure -- Stage 2 asks exactly this question before releasing.
+BlockDetection[] blocks

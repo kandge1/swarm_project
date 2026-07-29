@@ -477,7 +477,43 @@ _IK_BEARING_OFFSET = 0.257
 _GRASP_YAW_JOINT_OFFSET = -math.radians(GRIPPER_YAW_DEG)
 
 
-def _bearing_seeds(x, y):
+# ---------------------------------------------------------------------------
+# PER-BLOCK GRASP YAW (added 2026-07-28 for the AprilTag feature)
+# ---------------------------------------------------------------------------
+# Everything above holds the gripper at ONE fixed world yaw for every grasp,
+# which is right when the block is placed by hand to match the jaws. Once a
+# camera reports where the block is AND how it is rotated, the jaws have to
+# turn to meet it, and the yaw becomes per-move rather than per-run.
+#
+# block_yaw_deg is that per-move rotation, in the WORLD frame, and it composes
+# ON TOP of GRIPPER_YAW_DEG. The two are different things and must not be
+# collapsed into one constant:
+#
+#   GRIPPER_YAW_DEG   the tool sits 45 deg askew on its mount. A property of
+#                     the hardware. Fixed forever, same for every grasp.
+#   block_yaw_deg     how far this particular block is rotated on the table.
+#                     Different for every grasp, and 0.0 for every caller that
+#                     predates this feature.
+#
+# Every function below takes block_yaw_deg=0.0 as a default, which reproduces
+# the previous fixed-yaw behaviour EXACTLY -- gripper_yaw_quat(GRIPPER_YAW_DEG
+# + 0.0) is the same quaternion as the GRIPPER_LOCK_Q* globals. That matters:
+# reset_arm.py, annulus_test.py, collision_contacts.py and this script's own
+# main() all keep working unchanged, and the TESTS.md characterization baseline
+# does not move.
+def grasp_quat_for(block_yaw_deg=0.0):
+    """The grasp quaternion for a block rotated block_yaw_deg about world +Z.
+
+    Reads GRIPPER_YAW_DEG at CALL time, not at import time, so --gripper-yaw-deg
+    still takes effect (gripper_yaw_quat's own default argument is bound at def
+    time and would not).
+    """
+    if not block_yaw_deg:
+        return (GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
+    return gripper_yaw_quat(GRIPPER_YAW_DEG + block_yaw_deg)
+
+
+def _bearing_seeds(x, y, block_yaw_deg=0.0):
     """Seeds whose base rotation actually points at the target.
 
     THIS IS THE FIX for IK converging only about half the time (2026-07-27).
@@ -521,12 +557,20 @@ def _bearing_seeds(x, y):
                       "joint5_to_joint4": -0.869, "joint6_to_joint5": 0.0}),
     ]
 
+    # The wrist offset must track the yaw the gripper is actually being asked to
+    # hold, not just the mount correction. Seeding joint6output for a straight-
+    # on grasp while solving for a block rotated 40 deg puts KDL 0.7 rad from
+    # the answer -- the same local-solver miss described above, reintroduced by
+    # the back door. Recomputed here rather than read from the module-level
+    # _GRASP_YAW_JOINT_OFFSET so a per-move yaw moves the seeds with it.
+    yaw_joint_offset = -math.radians(GRIPPER_YAW_DEG + block_yaw_deg)
+
     seeds = []
     for base_label, base in candidates:
         for shape_label, shape in shapes:
             seed = dict(shape)
             seed["joint2_to_joint1"] = base
-            seed["joint6output_to_joint6"] = base + _GRASP_YAW_JOINT_OFFSET
+            seed["joint6output_to_joint6"] = base + yaw_joint_offset
             seeds.append((f"{base_label}/{shape_label}", seed))
     return seeds
 
@@ -1613,16 +1657,15 @@ def make_orientation_constraint(link_name, frame_id, qx, qy, qz, qw,
     return constraint
 
 
-def make_grasp_pose(x, y, z):
-    """Pose for Cartesian waypoints: position + the fixed downward, fixed-yaw grasp orientation."""
+def make_grasp_pose(x, y, z, block_yaw_deg=0.0):
+    """Pose for Cartesian waypoints: position + the downward grasp orientation,
+    yawed to meet a block rotated block_yaw_deg (0.0 = the fixed grasp yaw)."""
     pose = Pose()
     pose.position.x = x
     pose.position.y = y
     pose.position.z = z
-    pose.orientation.x = GRIPPER_LOCK_QX
-    pose.orientation.y = GRIPPER_LOCK_QY
-    pose.orientation.z = GRIPPER_LOCK_QZ
-    pose.orientation.w = GRIPPER_LOCK_QW
+    (pose.orientation.x, pose.orientation.y,
+     pose.orientation.z, pose.orientation.w) = grasp_quat_for(block_yaw_deg)
     return pose
 
 
@@ -1649,7 +1692,7 @@ def _is_near_joint_limit(state, margin=0.15):
     return False, None, None, None, None
 
 
-def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
+def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw, block_yaw_deg=0.0):
     """Deterministic, downward-orientation IK for an OMPL goal state, using
     constraint-based IK (a small position sphere + orientation window) seeded
     from the robot's current state and then each IK_SEEDS entry in order.
@@ -1676,8 +1719,10 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
     current_state = io_client.current_joint_positions(joint_names)
     # Bearing seeds first: they are the only ones whose base rotation is
     # anywhere near the answer. See _bearing_seeds for the measurements.
+    # block_yaw_deg only shapes the SEEDS here; the orientation actually solved
+    # for is the qx..qw the caller passed, which already carries the yaw.
     seeds = ([("current-state", current_state)]
-             + _bearing_seeds(x, y)
+             + _bearing_seeds(x, y, block_yaw_deg)
              + IK_SEEDS)
 
     # Evaluate EVERY seed and keep the solution closest to where the arm is
@@ -1881,13 +1926,19 @@ def go_home(io_client):
     return io_client.arm_execute(joint_trajectory)
 
 
-def move_arm_to(io_client, x, y, z, lock_orientation=True):
+def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0):
     """Joint-space plan to a target position. Uses deterministic seeded IK
-    when possible; falls back to OMPL constraint sampling if all seeds fail."""
+    when possible; falls back to OMPL constraint sampling if all seeds fail.
+
+    block_yaw_deg rotates the jaws about world +Z to meet a block that is not
+    square to the world. 0.0 is the fixed grasp yaw every caller used before
+    the AprilTag feature -- see grasp_quat_for()."""
+    qx, qy, qz, qw = grasp_quat_for(block_yaw_deg)
+
     ik_state = None
     if lock_orientation:
-        ik_state = solve_ik_state(io_client, x, y, z,
-                                   GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
+        ik_state = solve_ik_state(io_client, x, y, z, qx, qy, qz, qw,
+                                  block_yaw_deg=block_yaw_deg)
 
     if ik_state is not None:
         goal_constraints = [make_joint_goal_constraints(ik_state)]
@@ -1903,8 +1954,7 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True):
             # OMPL pick any wrist twist -- see GRIPPER_YAW_DEG above.
             constraints.orientation_constraints.append(
                 make_orientation_constraint(
-                    POSE_LINK, PLANNING_FRAME,
-                    GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW,
+                    POSE_LINK, PLANNING_FRAME, qx, qy, qz, qw,
                     z_tolerance=0.15)
             )
         goal_constraints = [constraints]
@@ -1918,7 +1968,8 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True):
     return io_client.arm_execute(joint_trajectory)
 
 
-def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=False):
+def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=False,
+                      block_yaw_deg=0.0):
     """Straight-line Cartesian move from the current pose to (x, y, z),
     holding the fixed downward grasp orientation throughout.
 
@@ -1933,13 +1984,16 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
     joint_values = io_client.current_joint_positions(list(HOME_RADIANS.keys()))
     print(f"[cartesian] joints at start: {[round(v, 4) for v in joint_values.values()]}")
 
-    target = make_grasp_pose(x, y, z)
+    target = make_grasp_pose(x, y, z, block_yaw_deg)
 
+    # The PATH constraint must carry the same yaw as the target pose. Leave it
+    # at the fixed grasp yaw while descending onto a rotated block and the two
+    # disagree by exactly block_yaw_deg, which shows up as a Cartesian solve
+    # that falls short of min_fraction for no visible reason.
     path_constraints = Constraints()
     path_constraints.orientation_constraints.append(
         make_orientation_constraint(
-            POSE_LINK, PLANNING_FRAME,
-            GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW,
+            POSE_LINK, PLANNING_FRAME, *grasp_quat_for(block_yaw_deg),
             z_tolerance=0.15)
     )
 
@@ -1961,7 +2015,7 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
         if not allow_fallback:
             return False
         print(f"[cartesian] falling back to joint-space move_arm_to for ({x}, {y}, {z})")
-        return move_arm_to(io_client, x, y, z)
+        return move_arm_to(io_client, x, y, z, block_yaw_deg=block_yaw_deg)
 
     print(f"Executing Cartesian move to ({x}, {y}, {z}) (fraction={fraction:.2f})...")
 

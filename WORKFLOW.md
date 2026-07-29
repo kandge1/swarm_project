@@ -298,6 +298,70 @@ discovery isn't working, not a MoveIt/controller problem.
 
 ---
 
+## AprilTag Workflow (vision-guided pick and place)
+
+Full design, staging and measured numbers: **`APRIL_TAGS.md`**.
+
+Same split-compute layout as above, plus two things on the robot. All vision
+runs on the Pi -- no image ever crosses the DDS link, which silently drops
+anything over ~1400 bytes.
+
+### Terminal 4: Camera + detector (on the robot, Galactic)
+```bash
+source ~/swarm_project/install/setup.bash
+ros2 launch mycobot_280pi_camera_moveit2 camera.launch.py
+```
+```bash
+# another terminal on the robot
+source ~/swarm_project/install/setup.bash
+python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py
+```
+
+### Terminal 5: Detection and picking (on mars, Jazzy)
+```bash
+source ~/swarm/swarm_project/install/setup.bash
+cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+
+# 1. does the service answer at all? (arm parked at a hover, zone in view)
+#    NOTE: `ros2 node list` does NOT show the robot's nodes from mars even when
+#    they are up -- use the service list, not the node list.
+ros2 service list | grep detect_block
+ros2 service call /detect_block swarm_interfaces/srv/DetectBlock \
+  "{zone: 'pickup', zone_x: 0.0, zone_y: 0.25, zone_z: 0.0, zone_yaw: 0.0}"
+
+# 2. detect and print the grasp pose, execute no descent
+python3 tag_pick_place.py --zone-origin 0.0 0.25 0.0 --dry-run \
+    --debug-image /tmp/zone.png --log /tmp/corrections.csv
+
+# 3. the real thing
+python3 tag_pick_place.py --zone-origin 0.0 0.25 0.0 --log /tmp/corrections.csv
+```
+
+`--zone-origin` is the **surveyed** world pose of the zone centre. Nothing
+measures it, and every world coordinate reported is only as good as that
+number -- the vision measures the block RELATIVE to the zone.
+
+### No robot needed
+```bash
+# geometry regression test: catches corner-order, homography and
+# classification bugs against synthetic ground truth, in about a second
+python3 zone_vision_selftest.py
+
+# look at what the detector sees in saved stills, and tune thresholds
+python3 zone_view.py frames/*.png --show
+python3 zone_view.py /tmp/zone.png --method otsu --write /tmp/annotated.png
+```
+
+### Gotchas
+- `swarm_interfaces` must be built on **both** machines from identical `.srv`
+  source, or the service type will not match across the link.
+- Call `/detect_block` only while the arm is **stationary**. The serial link is
+  half-duplex, and the Pi is also running the 100 Hz control loop.
+- A block can only sit within ~±23 mm of the zone centre before it starts
+  covering a tag -- see "Usable area" in `APRIL_TAGS.md`.
+
+---
+
 ## Project Structure
 
 ```
@@ -322,7 +386,15 @@ discovery isn't working, not a MoveIt/controller problem.
 │   │           ├── reset_arm.py
 │   │           ├── collision_contacts.py
 │   │           ├── gripper_offset_probe.py
-│   │           └── spawn_world.py
+│   │           ├── tool_frame_check.py
+│   │           ├── spawn_world.py
+│   │           │
+│   │           │   # AprilTag feature -- see APRIL_TAGS.md
+│   │           ├── zone_vision.py           # pure OpenCV, no ROS: tags -> block pose
+│   │           ├── zone_vision_selftest.py  # synthetic geometry test, no hardware
+│   │           ├── zone_view.py             # overlay viewer / threshold tuning
+│   │           ├── block_detector_node.py   # ON THE PI: /detect_block service
+│   │           └── tag_pick_place.py        # ON MARS: Stage 1 orchestrator
 │   │
 │   ├── mycobot_description/     # Robot meshes & URDFs
 │   │   ├── package.xml
@@ -359,11 +431,17 @@ discovery isn't working, not a MoveIt/controller problem.
 │   │   ├── src/mycobot_system.cpp
 │   │   └── scripts/mycobot_bridge.py  # pymycobot bridge daemon
 │   │
-│   └── swarm_network/           # DDS unicast discovery config
-│       ├── package.xml
+│   ├── swarm_network/           # DDS unicast discovery config
+│   │   ├── package.xml
+│   │   ├── CMakeLists.txt
+│   │   └── config/
+│   │       └── cyclonedds.xml   # Cyclone DDS config (multicast disabled)
+│   │
+│   └── swarm_interfaces/        # Service defs shared Pi <-> mars
+│       ├── package.xml          # MUST be built on BOTH machines
 │       ├── CMakeLists.txt
-│       └── config/
-│           └── cyclonedds.xml   # Cyclone DDS config (multicast disabled)
+│       ├── msg/BlockDetection.msg
+│       └── srv/DetectBlock.srv
 │
 ├── pi_setup/                    # Robot-side install (Ubuntu 20.04/Galactic)
 │   ├── install_pi_galactic.sh
@@ -374,6 +452,9 @@ discovery isn't working, not a MoveIt/controller problem.
 ├── install/                     # Installed packages (source this)
 ├── log/                         # Build logs (auto-generated)
 ├── WORKFLOW.md                  # This file
+├── PROJECT_CONTEXT.md           # What the system is, and why
+├── TESTS.md                     # Hardware characterization
+├── APRIL_TAGS.md                # Vision-guided pick and place
 └── .git/
 ```
 
