@@ -35,7 +35,7 @@ mark. Decided 2026-07-29.
 | Stage | What it adds | Status |
 |---|---|---|
 | — | Mat layout: 6in tag square around a ~4in working area | **Decided 2026-07-29** |
-| 0a | Characterization: dead-zone floor + repeatability scatter | **Test 1 running on hardware now** (2026-07-29); Test 6 not yet written |
+| 0a | Characterization: dead-zone floor + repeatability scatter | **DONE 2026-07-29** — Test 1 passed (GO); Test 6 now largely redundant, repeatability fell out of Test 1 |
 | 0b | Calibration: tag lib, FOV, jaw mm/rad, camera framing offset | Camera offset **done** (from URDF); the other three need the robot |
 | 1 | Pickup zone hardcoded, square blocks, random position + rotation | **Code complete, unverified on hardware** |
 | 2 | Place zone also tag-located | Not started |
@@ -196,6 +196,68 @@ metrology**". The AprilTag zone *is* external metrology. Vision measures the
 gripper-to-block error directly in world space, so gravity droop, joint dead-zone and
 kinematic error do not have to be modelled — only out-measured. Even a bad Test 1 result is
 survivable here in a way it would not be for a joint-space controller.
+
+---
+
+## Test 1 results (2026-07-29) — GO, with one caveat
+
+108 trials, 6 decorrelated postures, joints 0/1/2, both directions, 3 repeats, ±35 deg.
+Raw data: `src/swarm_pkg/testing/test1_full.csv`.
+
+**The decorrelation worked.** `corr(gravity_arm, inertia_lever)` came out **+0.03 and +0.00**,
+against +0.6 to +1.0 for the old three-posture set. The two regressors are finally separable,
+which was the entire reason for rebuilding the posture set.
+
+**The residual is not gravity droop.** Joint 0's gravity moment arm is 0.0000 in every
+posture — gravity cannot load it — and its residual is **flat at 0.98 deg across a 4.4×
+span of inertia lever** (fit slope −0.13 deg/m, total span 0.13 deg). A constant offset with
+the gravity term provably absent. It is also *directional*: J0 undershoots by +0.93 deg going
+positive and −1.10 deg going negative — undershoot in the direction of travel, both ways.
+That is Coulomb friction, and a feedforward of `sign(Δθ) × 1.0 deg` would cancel most of it.
+Handing that to the controller branch.
+
+J1 and J2 do show gravity terms, but with *opposite* signs (corr −0.79 and +0.85) and J1
+overshoots where J0/J2 undershoot. Not over-reading that yet: `|residual|` conflates over-
+and undershoot, and each per-joint fit has only 6 points.
+
+**Correctability — the k=1 column:**
+
+| joint | median k=1 ratio | stuck at k=1 | at k=2 | at k=3 |
+|---|---|---|---|---|
+| **0** | **0.07** | 3/21 (14%) | 0/21 | 0/21 |
+| 1 | 1.00 | 10/19 (53%) | 2/19 (11%) | 1/18 (6%) |
+| 2 | 1.00 | 7/12 (58%) | 5/12 (42%) | 3/12 (25%) |
+
+J0 is excellent — biasing by `e` cuts the error to 7% of itself. J1/J2 ignore a 1× bias about
+half the time but respond at 2×. Only 4 of 52 staircases never moved at all. A ratio of
+exactly 1.00 means the joint settled at the **bit-identical** encoder value: the bias did
+nothing. That is the dead band, and it is what sets `CORRECTION_DEADZONE_M`.
+
+**Repeatable but inaccurate.** Same-direction repeatability is 0.045 deg — *below* the
+0.088 deg readback quantum, with 36% of cells returning bit-identical residuals across all
+three repeats. Those two facts are not in tension: the arm lands in the same place every
+time, and that place is the wrong one by ~1 deg. It also means Test 6 is now largely
+redundant — this run already measured repeatability as a by-product.
+
+**The caveat: J0 backlash, 1.83 deg = 8.0 mm at r = 0.25 m.** Larger than the dead zone
+itself, and J0 is the joint that swings the gripper laterally across the zone. Any correction
+that reverses direction spends its first 8 mm taking up slack and does nothing visible.
+
+### What this changed
+
+`CORRECTION_CONVERGED_M` 3 mm → **2 mm**, `CORRECTION_DEADZONE_M` 1 mm → **5 mm**. Both
+placeholders were wrong in the same direction: 3 mm sits *below* the dead band, so the loop
+would have commanded corrections the arm physically cannot execute, burned both retries and
+aborted — precisely the failure Test 1 exists to predict.
+
+### Open, from this
+
+- **Unidirectional final approach** to defeat J0 backlash. Deliberately not implemented yet:
+  it changes how every hover is planned and deserves a measured before/after on real frames.
+- **Is 5 mm good enough to grasp?** Vision knows the block to well under a millimetre; the
+  arm gets there to ~5 mm. Whether that grasps depends on jaw clearance around a 30 mm block,
+  which is Stage 0b.3 and still unmeasured. **That measurement is now the deciding one for
+  Stage 1.**
 
 ---
 
@@ -396,8 +458,12 @@ guess.
 | Synthetic camera-position accuracy | **0.13 mm** | `zone_vision_selftest.py` | 2026-07-28 |
 | Flange → lens offset (from URDF) | **40.0 mm** lateral, 18.5 mm axial | `tool_frame_check.flange_to_camera()` | 2026-07-28 |
 | Camera optical axis vs vertical at grasp pose (URDF) | **0.5 deg** | `tool_frame_check.flange_to_camera()` | 2026-07-28 |
-| Dead-zone floor (min correction that moves a joint) | — | `--deadzone-sweep`, k=1 column | — |
-| Repeatability scatter (1σ, settled reading) | — | `--repeatability`, N=20 | — |
+| **Dead band, J0 / J1 / J2** (median bias before a joint moves) | **0.99 / 1.36 / 1.08 deg** = 4.3 / 5.9 / 4.7 mm @ r=0.25 m | Test 1 `--deadzone-sweep`, 108 trials | 2026-07-29 |
+| Dead band, worst case seen | **2.78 deg** = 12.1 mm | Test 1 | 2026-07-29 |
+| **Repeatability, same direction** | **0.045 deg** = 0.20 mm (below the 0.088 deg quantum) | Test 1, spread across 3 repeats | 2026-07-29 |
+| **Backlash J0** (lost motion on reversal) | **1.83 deg** median, 2.01 max = 8.0 mm @ r=0.25 m | Test 1 backlash trials | 2026-07-29 |
+| Backlash J1 / J2 | 0.53 / 0.80 deg | Test 1 | 2026-07-29 |
+| J0 residual across 4.4x lever span (gravity-free control) | **flat, 0.98 deg**, span 0.13 | Test 1 | 2026-07-29 |
 | Jaw gap at `GRIPPER_OPEN = 0.15` rad | — | calipers | — |
 | Jaw gap at `GRIPPER_CLOSED = -0.60` rad | — | calipers | — |
 | `JAW_RAD_TO_M` slope | — | linear fit, 3 points | — |

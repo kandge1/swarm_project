@@ -324,6 +324,36 @@ def detect_tags(gray, zone):
     return found
 
 
+def detect_all_tags(gray):
+    """{tag_id: 4x2 px corners} for EVERY tag in the frame, any zone or none.
+
+    detect_tags() filters to one ZoneSpec's ids because analyze() only ever
+    wants to know about the zone it was asked about. Tooling that wants to
+    show everything the camera can see -- a live diagnostic viewer, say --
+    wants the unfiltered set instead.
+    """
+    return dict(_aruco_detect(gray))
+
+
+def _build_tag_zone_lookup():
+    lookup = {}
+    for ids, zone_name in ((PICKUP_TAG_IDS, "pickup"), (PLACE_TAG_IDS, "place")):
+        for tag_id, signs in zip(ids, ZONE_CORNER_SIGNS):
+            lookup[tag_id] = (zone_name, signs)
+    return lookup
+
+
+_TAG_ZONE_LOOKUP = _build_tag_zone_lookup()
+
+
+def describe_tag_id(tag_id):
+    """(zone_name, (sx, sy)) for a tag id that belongs to a configured zone,
+    or None if it doesn't. (sx, sy) are the ZONE_CORNER_SIGNS entry -- e.g.
+    (-1, -1) is the -X,-Y vertex, matching the +X/+Y legend printed on the
+    zone sheets by print_zone_tags.py."""
+    return _TAG_ZONE_LOOKUP.get(tag_id)
+
+
 # ---------------------------------------------------------------------------
 # Homography
 # ---------------------------------------------------------------------------

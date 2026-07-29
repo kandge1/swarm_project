@@ -73,22 +73,48 @@ from swarm_interfaces.srv import DetectBlock  # noqa: E402
 # Stage 1 block: 1.18 in square, the thickness quoted in APRIL_TAGS.md.
 DEFAULT_BLOCK_THICKNESS = 0.030      # m
 
-# ---- THE TWO NUMBERS THAT ARE STILL GUESSES -------------------------------
-# Both come from TESTS.md and BOTH ARE CURRENTLY UNMEASURED. They are the
-# correction loop's stopping conditions, so until Stage 0a has been run the
-# loop's behaviour is not characterised -- it will still work, but "converged"
-# and "cannot be corrected" are being decided by placeholders.
+# ---- MEASURED from TESTS.md Test 1, 2026-07-29 ----------------------------
+# 108 trials, 6 decorrelated postures, joints 0/1/2, both directions, 3 repeats.
+# Raw data: src/swarm_pkg/testing/test1_full.csv. Full reduction in APRIL_TAGS.md.
 #
-# CONVERGED: the arm's own repeatability scatter (TESTS.md Test 6, not yet
-# written). A threshold BELOW the arm's scatter gives a loop that can never
-# terminate, because the thing it is waiting for is noise.
-CORRECTION_CONVERGED_M = 0.003       # GUESS -- replace with Test 6's 1-sigma
+# Converted to metres at the r = 0.25 m pick/place radius, since that is where
+# these corrections actually happen.
 #
-# DEADZONE: the smallest commanded change that actually moves a joint
-# (TESTS.md Test 1, automated and ready to run). Below this the arm physically
-# will not respond, so retrying is guaranteed to do nothing and the right move
-# is to descend anyway and log it.
-CORRECTION_DEADZONE_M = 0.001        # GUESS -- replace with Test 1's k=1 result
+# CONVERGED -- "close enough, stop correcting."
+# The arm's same-direction repeatability is 0.045 deg = 0.20 mm, which is BELOW
+# its own 0.088 deg readback quantum (36% of cells returned bit-identical
+# residuals across all three repeats). So repeatability is emphatically not the
+# binding constraint and a threshold set from it would be absurdly tight: this
+# arm lands in the same place every time, that place is just the wrong one.
+# 2 mm is comfortably above the noise floor and below the dead band, so
+# reaching it means the correction genuinely worked rather than got lucky.
+CORRECTION_CONVERGED_M = 0.002       # MEASURED basis: 0.20 mm repeatability
+#
+# DEADZONE -- "the arm physically cannot fix an error this small, stop trying."
+# Bias required before a joint moves at all: J0 0.99 deg, J1 1.36 deg, J2
+# 1.08 deg (medians), worst case seen 2.78 deg. At r = 0.25 m that is 4.3 /
+# 5.9 / 4.7 mm typical. Below this a correction command produces literally zero
+# motion -- the joint settles at the bit-identical encoder count -- so retrying
+# is guaranteed to do nothing and the right move is to descend and log it.
+#
+# Set to 5 mm, the typical dead band rather than the 12 mm worst case: too high
+# and the loop gives up while it could still have helped.
+CORRECTION_DEADZONE_M = 0.005        # MEASURED: 0.99-1.36 deg dead band
+#
+# BACKLASH -- measured, NOT yet compensated. See APRIL_TAGS.md "Open".
+# Joint 0 loses 1.83 deg (median, max 2.01) of lost motion on a direction
+# reversal = 8.0 mm at r = 0.25 m, LARGER than the dead zone itself. J0 is the
+# joint that swings the gripper laterally across the zone, so a correction that
+# reverses direction spends its first 8 mm taking up slack and does nothing
+# visible. J1 (0.53 deg) and J2 (0.80 deg) are far better behaved.
+#
+# The standard fix is a unidirectional final approach -- always arrive at a
+# hover from the same side, so the slack is already taken up. Deliberately NOT
+# implemented yet: it changes how every hover move is planned, and it should be
+# added against a measured before/after on real frames rather than on the
+# strength of this number alone. Until then, expect a correction that reverses
+# direction to under-deliver by roughly this much.
+BACKLASH_J0_DEG = 1.83               # MEASURED, for logging and for that fix
 # ---------------------------------------------------------------------------
 
 MAX_CORRECTIONS = 2                  # then abort rather than descend blind
