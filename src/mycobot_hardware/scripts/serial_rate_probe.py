@@ -297,11 +297,23 @@ JOINT_LIMITS_DEG = [
 ]
 JOINT_LIMIT_MARGIN_DEG = 2.0
 
-# How close to the commanded posture counts as "arrived". Droop itself is
-# ~1.3 deg at the most loaded posture and is the thing being measured, so this
-# has to sit above that while still catching the ~29 deg misses seen when a
-# posture move gets cancelled.
-POSTURE_TOLERANCE_DEG = 3.0
+# How close to the commanded posture counts as "arrived". Droop itself is the
+# thing being measured, so this has to sit above it while still catching the
+# ~29 deg misses seen when a posture move gets cancelled.
+#
+# Raised 3.0 -> 5.0 on 2026-07-29. At 3.0 the 'extended' posture failed all 3
+# attempts on every single trial, and always by the same amount: J1 commanded
+# 45.00, settled 48.07, i.e. 3.07 deg -- missing the gate by 0.07 deg. That is
+# not a failed move. 'extended' has the largest J1 gravity moment arm of any
+# posture in the set (0.2805 m, vs 0.0018 for 'vertical'), so it droops the
+# most, and the droop is exactly the signal Test 1 exists to measure. A gate
+# sized off the OLD three-posture set's worst droop (~1.3 deg) was silently
+# excluding the highest-load posture -- and with it the top of the gravity
+# range the six-posture set was constructed to span.
+#
+# 5.0 still rejects the failure this check was added for by a wide margin: the
+# real misses were ~29 deg, from a posture move being cancelled mid-flight.
+POSTURE_TOLERANCE_DEG = 5.0
 POSTURE_ATTEMPTS = 3
 
 # send_angles() silently does nothing often enough to matter -- 7 of 27 trial
@@ -361,7 +373,7 @@ def move_to_posture(arm, args, angles, label):
                   file=sys.stderr)
             continue
         worst = max(abs(settled[i] - angles[i]) for i in range(6))
-        if worst <= POSTURE_TOLERANCE_DEG:
+        if worst <= getattr(args, "posture_tolerance_deg", POSTURE_TOLERANCE_DEG):
             return settled
         # VERIFY, don't assume. Silently accepting a posture the arm never
         # reached is worse than failing: the trial still runs, and gets
@@ -1388,6 +1400,14 @@ def main():
     parser.add_argument("--posture-settle-sec", type=float, default=12.0,
                         help="--deadzone-sweep: settle budget for a whole-arm "
                              "posture move (default %(default)s)")
+    parser.add_argument("--posture-tolerance-deg", type=float,
+                        default=POSTURE_TOLERANCE_DEG,
+                        help="--deadzone-sweep: how far a joint may sit from the "
+                             "commanded posture and still count as arrived. Must "
+                             "exceed the DROOP at the most loaded posture, which "
+                             "is the signal being measured, not an error -- too "
+                             "tight and the highest-gravity postures fail every "
+                             "attempt and get skipped (default: %(default)s)")
     parser.add_argument("--repeats", type=int, default=1,
                         help="--deadzone-sweep: trials per (posture, joint). The "
                              "gravity-free joint's own scatter across postures was "
