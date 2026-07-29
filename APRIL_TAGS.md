@@ -63,7 +63,7 @@ in shot) but not the answer.
 
 This matters because of a constraint documented at length in `PROJECT_CONTEXT.md`: the
 arm's absolute positioning is not trustworthy. `IK_POS_TOLERANCE = 0.02`, the residual
-grasp tilt is mechanical and provably not fixable by tuning, and `_send_goal_and_wait`
+grasp tilt was **wrongly believed** mechanical (see [the tilt](#the-grasp-tilt-solved-2026-07-29)), and `_send_goal_and_wait`
 infers success from `/joint_states` because `arm_group_controller` has no `constraints:`
 block to report tracking failure itself. Any design that computes block position from
 *where the arm thinks it is* inherits every bit of that error.
@@ -258,6 +258,103 @@ aborted — precisely the failure Test 1 exists to predict.
   arm gets there to ~5 mm. Whether that grasps depends on jaw clearance around a 30 mm block,
   which is Stage 0b.3 and still unmeasured. **That measurement is now the deciding one for
   Stage 1.**
+
+---
+
+## The grasp tilt, solved (2026-07-29)
+
+The long-standing "the gripper is always visibly tilted when it grasps" complaint.
+Previously concluded to be **mechanical and unfixable** — sag under the camera+gripper mass,
+or a URDF/mount mismatch — on the reasoning that it was visible even at all-joints-zero and
+that tightening `IK_ORI_XY_TOLERANCE` (0.10 → 0.04) changed nothing. **That conclusion was
+wrong**, and Test 1's data plus a URDF FK check is what overturned it.
+
+### Evidence
+
+A grasp was stopped mid-run and `/joint_states` captured. Feeding those exact values through
+the URDF forward kinematics:
+
+- flange Z axis = `(+0.0002, −0.0646, −0.9979)` → **3.70° off straight down**, tilted almost
+  purely toward −Y (leaning back toward the base)
+- flange position 10.2 mm **below** the commanded z
+
+An exact straight-down solution *does* exist at that position — solved numerically to a
+residual of 1.7×10⁻¹¹. So it is neither a singularity nor kinematically forced. Comparing
+that exact solution against what the arm actually did:
+
+| joint | commanded | achieved | error | tilts? |
+|---|---|---|---|---|
+| joint2_to_joint1 | +104.743° | +103.790° | −0.953° | no (vertical axis) |
+| joint3_to_joint2 | −42.486° | −44.120° | **−1.634°** | **yes, 1:1** |
+| joint4_to_joint3 | −59.157° | −59.670° | **−0.513°** | **yes, 1:1** |
+| joint5_to_joint4 | +11.643° | +10.190° | **−1.453°** | **yes, 1:1** |
+| joint6_to_joint5 | −0.000° | +0.870° | **+0.870°** | **yes, 1:1** |
+| joint6output_to_joint6 | +149.743° | +147.300° | −2.443° | no (vertical axis) |
+
+RMS joint error **1.45°** — exactly the ~1° per-joint residual Test 1 measured.
+
+`joint3_to_joint2`, `joint4_to_joint3`, `joint5_to_joint4` and `joint6_to_joint5` all have
+**horizontal** axes under the downward grasp, so each contributes **exactly 1.000° of tilt
+per 1° of joint error** (verified by perturbation). The other two are vertical and contribute
+**exactly 0.000°**. So the four pitch errors *add*, and:
+
+```
+tilt from ONLY the four pitch errors : 3.704 deg
+tilt from ONLY the vertical-axis errors: 0.000 deg
+tilt actually observed               : 3.704 deg
+```
+
+Matching to three decimals. **The tilt is four undershooting joints stacking up.** Not
+mechanical, not the URDF, not an IK tolerance.
+
+This also explains why the earlier investigation went astray: tightening
+`IK_ORI_XY_TOLERANCE` correctly changed nothing, because the IK solution was never the
+problem — the solver asked for straight down and the servos didn't deliver it. And the error
+is consistent run to run precisely because Test 1 measured repeatability at 0.045°: a
+deterministic undershoot produces a deterministic tilt, which is exactly why it "never goes
+away and is always the same angle."
+
+### Fixes applied
+
+1. **`GRASP_QX/QY` were rounded to 4 decimals.** `0.7071 ≠ 1/√2`, and the resulting
+   quaternion asked the flange for a pose **0.5019° off vertical**. Half a degree of the tilt
+   was baked into the target before any solver or servo was involved. Now `±math.sqrt(0.5)`
+   exactly → target tilt 0.0000°. Free.
+2. **The settle re-send is now biased** (`SETTLE_BIAS_*` in `mycobot_bridge.py`). It used to
+   re-send the *identical* command, which Test 1 proved can never work. It now aims at
+   `command + gain·residual`, gain escalating 1.0 → 1.5 → 2.0 per attempt, capped at 4° and
+   clamped to joint limits.
+3. **A per-joint bias threshold** (`SETTLE_BIAS_MIN_RAD = 0.004`), *not* `SETTLE_TOLERANCE_RAD`.
+   This distinction is the fix. The tolerance is 0.03 rad = 1.72°, larger than the individual
+   errors causing the tilt — gating on it would have biased only `joint6output` (0.0426 rad,
+   and vertical, so zero tilt) while skipping all four pitch joints. The correction would have
+   looked active and fixed nothing. Caught in simulation before hardware time.
+4. **`settle_pause()` after each descent.** The descent was declared converged at 0.0426 rad
+   (inside `ARM_SETTLE_TOLERANCE` = 0.07), pick_place slept 0.5 s, the gripper close changed
+   the command, and the bridge's 1.0 s quiet-period timer reset — so **the arm's settle never
+   ran once before the grasp**. A correction mechanism that was enabled and never got a turn.
+
+Simulated end to end against the measured residuals: one biased attempt takes tilt
+3.704° → 0.000° and z 0.1448 → 0.1550 m, then stops.
+
+### Not yet verified on hardware
+
+That simulation assumes each servo undershoots its *new* target by the same signed residual —
+the ideal Coulomb-friction model. Test 1 supports it for J0 (median `|err|/|e|` = 0.07 at
+k=1) but the pitch joints had median 1.00 at k=1 and mostly moved only by k=2, which is
+exactly why the gain escalates. **Expect the real improvement to be partial on the first
+attempt.** What to check on the next run:
+
+- `[mycobot_bridge] TIMING settle re-send ... bias[...]` lines appear, naming the pitch joints
+  (needs `--log-timing`). If they say `(no bias)`, the residuals were under
+  `SETTLE_BIAS_MIN_RAD` and nothing needed doing.
+- Stop the arm in the grasp pose again, capture `/joint_states`, re-run the FK check. The
+  number to beat is 3.70°.
+- If the tilt persists, the next lever is `SETTLE_TOLERANCE_RAD` (0.03 → ~0.015). Its current
+  value was chosen on the basis that small errors were uncorrectable, which was true for
+  *unbiased* re-sends and is no longer the governing assumption. Left alone for now because
+  it changes when settling fires at all, and that interacts with the hard-won smooth-motion
+  and serial-flooding work.
 
 ---
 

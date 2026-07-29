@@ -138,6 +138,21 @@ MAX_HOVER_Z = 0.205
 # far past the deadband stops catching real tracking failures.
 ARM_SETTLE_TOLERANCE = 0.07
 
+# Mirrors mycobot_bridge.py's SETTLE_QUIET_PERIOD_SEC. Kept in sync BY HAND, the
+# same way GRIPPER_OPEN/CLOSED_RAD already are -- the two files live in different
+# packages and neither currently depends on the other. If you change it there,
+# change it here.
+#
+# This exists because the two halves disagree about when a move is finished:
+# _send_goal_and_wait is satisfied at ARM_SETTLE_TOLERANCE (0.07 rad), while the
+# bridge will not attempt any correction until the command has been UNCHANGED
+# for this long. See settle_pause().
+SETTLE_QUIET_PERIOD_SEC = 1.0
+# Extra time on top, for the settle to actually issue its move and for the arm
+# to execute it. SETTLE_RESEND_INTERVAL_SEC in the bridge is 0.5s, and a small
+# biased correction is a short move, so one interval plus change is enough.
+SETTLE_ACT_MARGIN_SEC = 1.0
+
 
 def hover_z(target_z):
     """Hover height above target_z, clamped to the reachable ceiling."""
@@ -252,8 +267,19 @@ GROUP_NAME = "arm_group"
 # the yaw=0 REFERENCE quaternion for gripper_yaw_quat() below -- other
 # scripts (annulus_test.py) import these raw components directly, so leave
 # them as-is and do yaw adjustments via gripper_yaw_quat() instead.
-GRASP_QX = -0.7071
-GRASP_QY = 0.7071
+#
+# EXACT, not 4-decimal (fixed 2026-07-29). 0.7071 is not 1/sqrt(2); the
+# resulting quaternion is not quite a unit quaternion and does not describe
+# quite a straight-down rotation. Measured: the rounded constants asked the
+# flange for a pose 0.5019 deg off vertical, so half a degree of the
+# long-standing grasp tilt was baked into the TARGET before any solver or servo
+# was involved. Costs nothing to make exact.
+#
+# This is NOT the main cause of that tilt -- the other ~3.2 deg is the pitch
+# joints undershooting, see SETTLE_BIAS_* in mycobot_bridge.py -- but it is the
+# one part of it that was pure arithmetic.
+GRASP_QX = -math.sqrt(0.5)
+GRASP_QY = math.sqrt(0.5)
 GRASP_QZ = 0.0
 GRASP_QW = 0.0
 
@@ -1799,6 +1825,33 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw, block_yaw_deg=0.0):
     return joint_values
 
 
+def settle_pause(io_client, label):
+    """Hold still long enough for mycobot_bridge's biased settle to act.
+
+    Needed because the two mechanisms disagree about when a move is "done".
+    _send_goal_and_wait declares convergence at ARM_SETTLE_TOLERANCE = 0.07 rad,
+    while the bridge's settle needs SETTLE_QUIET_PERIOD_SEC = 1.0 s of
+    UNCHANGED command before it will fire at all. With only the 0.5 s inter-step
+    sleep, the descent was declared converged at 0.0426 rad, the gripper close
+    started 0.5 s later, that changed the command, and the settle timer reset --
+    so the arm's settle never ran even once before the grasp. Measured in the
+    2026-07-29 grasp pose: 3.70 deg of tilt and 10.2 mm of droop still present
+    at the moment the jaws closed, with a correction mechanism that was
+    technically enabled and never got a turn.
+
+    Only worth doing where the final pose accuracy is what matters -- the two
+    descents. Hovers and retreats do not need it and should not pay for it.
+    """
+    wait = SETTLE_QUIET_PERIOD_SEC + SETTLE_ACT_MARGIN_SEC
+    print(f"[settle] holding {wait:.1f}s before {label} so the bridge's biased "
+          "settle can close out the residual")
+    time.sleep(wait)
+    joints = io_client.current_joint_positions(list(HOME_RADIANS.keys()))
+    print("[settle] joints after pause: "
+          f"{[round(math.degrees(v), 2) for v in joints.values()]}")
+    return True
+
+
 def toggle_gripper(io_client):
     """Close then open the gripper as a functional pre-start check."""
     if not io_client.gripper_move_to(GRIPPER_CLOSED):
@@ -2134,6 +2187,8 @@ def main():
          lambda: move_arm_to(io_client, px, py, hover_z(pz))),
         ("Descend to grasp pose (Cartesian)",
          lambda: cartesian_move_to(io_client, px, py, pz)),
+        ("Let the settle close out the grasp residual",
+         lambda: settle_pause(io_client, "the grasp")),
         ("Close gripper (grasp, stop on contact)", lambda: gripper_close_until_contact(io_client)),
         ("Retreat after grasp (Cartesian)",
          lambda: cartesian_move_to(io_client, px, py, hover_z(pz), allow_fallback=True)),
@@ -2141,6 +2196,8 @@ def main():
          lambda: move_arm_to(io_client, lx, ly, hover_z(lz))),
         ("Descend to place pose (Cartesian)",
          lambda: cartesian_move_to(io_client, lx, ly, lz)),
+        ("Let the settle close out the place residual",
+         lambda: settle_pause(io_client, "the release")),
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
         ("Retreat after release (Cartesian)",
          lambda: cartesian_move_to(io_client, lx, ly, hover_z(lz), allow_fallback=True)),

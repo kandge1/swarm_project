@@ -174,6 +174,70 @@ SETTLE_QUIET_PERIOD_SEC = 1.0
 SETTLE_MIN_PROGRESS_RAD = 0.002
 SETTLE_MAX_STALLED = 3
 
+# ---------------------------------------------------------------------------
+# BIASED SETTLE -- the fix for the persistent grasp tilt (2026-07-29)
+# ---------------------------------------------------------------------------
+# Until now settling re-sent the IDENTICAL command and hoped. TESTS.md Test 1
+# exists precisely because that cannot work, and its results say so directly:
+# re-commanding the same value moved the joint by not one digit across 20
+# consecutive attempts, because the servo is already inside its own dead band
+# and has nothing left to chase.
+#
+# What DOES work, measured 2026-07-29 over 108 trials: commanding target + k*e,
+# where e is the measured residual. Joint 0's median |err|/|e| at k=1 was 0.07 --
+# a single bias of e cut the error to 7% of itself. The pitch joints needed
+# closer to 2e (median 1.00 at k=1, mostly moving by k=2), so the gain here
+# escalates per attempt rather than sitting at 1.0.
+#
+# WHY THIS MATTERS BEYOND A FEW MILLIMETRES. The long-standing "the gripper is
+# always tilted when it grasps" complaint was diagnosed on 2026-07-29 and it is
+# this, exactly:
+#   - joint3_to_joint2, joint4_to_joint3, joint5_to_joint4 and joint6_to_joint5
+#     all have HORIZONTAL axes under the downward grasp, so each one tilts the
+#     approach axis 1:1 -- verified 1.000 deg of tilt per 1 deg of joint error.
+#   - joint2_to_joint1 and joint6output_to_joint6 are vertical and contribute
+#     exactly 0.000 deg of tilt.
+#   - the four pitch errors therefore ADD. In the logged grasp pose they were
+#     -1.63, -0.51, -1.45 and +0.87 deg, and reproducing the observed 3.704 deg
+#     tilt from those four alone matched to three decimals.
+# So the tilt is not mechanical, not the URDF, and not an IK tolerance. It is
+# four undershooting joints stacking up, and biasing the command is the fix.
+#
+# The bias is capped hard. It is an open-loop overshoot by construction, and an
+# uncapped one driven by a single bad reading would fling the arm.
+SETTLE_BIAS_ENABLED = True
+SETTLE_BIAS_GAIN = [1.0, 1.5, 2.0]   # by attempt; held at the last value after
+SETTLE_MAX_BIAS_RAD = 0.070          # 4.0 deg. Test 1's worst single-joint
+                                     # residual was 2.78 deg, so this allows a
+                                     # full correction plus margin and nothing
+                                     # like a second move.
+
+# Per-joint threshold for APPLYING a bias, once settling has decided to fire.
+# Deliberately NOT SETTLE_TOLERANCE_RAD, and this distinction is the whole fix:
+# that constant is 0.03 rad = 1.72 deg, which is LARGER than the individual
+# errors causing the tilt. In the logged grasp pose the six joint errors were
+# 0.0166 / 0.0285 / 0.0090 / 0.0254 / 0.0152 / 0.0426 rad -- settling fired
+# (joint6output's 0.0426 exceeded the gate) but gating the per-joint bias on the
+# same 0.03 would have biased ONLY joint6output, which is vertical and
+# contributes exactly 0.000 deg of tilt, while skipping all four pitch joints
+# that cause it. The correction would have looked active and fixed nothing.
+#
+# 0.004 rad = 0.23 deg, a bit under 3x the 0.0015 rad readback quantum: small
+# enough to catch every joint that matters, large enough not to chase noise.
+SETTLE_BIAS_MIN_RAD = 0.004
+# Joint limits, radians, in JOINT_ORDER. From the URDF -- biasing commands the
+# arm PAST its target, so without clamping a target already near a limit (e.g.
+# joint6output, which KDL likes to peg at -2.4434) could be pushed through it.
+JOINT_LIMITS_RAD = [
+    (-2.9321, 2.9321),   # joint2_to_joint1
+    (-2.4434, 2.4434),   # joint3_to_joint2
+    (-2.6179, 2.6179),   # joint4_to_joint3
+    (-3.6179, 3.6179),   # joint5_to_joint4
+    (-2.7052, 2.7925),   # joint6_to_joint5
+    (-3.1416, 3.1416),   # joint6output_to_joint6
+    (-0.7400, 0.1500),   # gripper_controller
+]
+
 # ASYNC WRITES -- the fix for the 1.8Hz command rate (2026-07-26).
 #
 # pymycobot's send_angles() defaults to has_reply=True, i.e. it BLOCKS until
@@ -892,7 +956,27 @@ class Bridge:
         stalled = (previous_error is not None
                    and previous_error - error < SETTLE_MIN_PROGRESS_RAD)
 
-        arm_degrees = [math.degrees(p) for p in command[:6]]
+        # BIAS THE RE-SEND. Sending command[:6] unchanged is what Test 1 proved
+        # useless -- see SETTLE_BIAS_* above. Per joint: aim at command + gain*e,
+        # capped, clamped to the joint's own limit, and only for joints that are
+        # actually short (a joint already inside tolerance must not be nudged).
+        arm_target = list(command[:6])
+        bias_applied = []
+        if SETTLE_BIAS_ENABLED:
+            gain = SETTLE_BIAS_GAIN[min(attempt - 1, len(SETTLE_BIAS_GAIN) - 1)]
+            for i in range(6):
+                residual = command[i] - measured[i]
+                if abs(residual) <= SETTLE_BIAS_MIN_RAD:
+                    continue
+                bias = max(-SETTLE_MAX_BIAS_RAD,
+                           min(SETTLE_MAX_BIAS_RAD, gain * residual))
+                lo, hi = JOINT_LIMITS_RAD[i]
+                biased = max(lo, min(hi, command[i] + bias))
+                arm_target[i] = biased
+                bias_applied.append(
+                    f"{JOINT_ORDER[i]} {math.degrees(biased - command[i]):+.2f}deg")
+
+        arm_degrees = [math.degrees(p) for p in arm_target]
         try:
             if arm_error > SETTLE_TOLERANCE_RAD:
                 self._send_angles(arm_degrees, self.speed)
@@ -916,9 +1000,12 @@ class Bridge:
                 which.append(f"arm {arm_error:.4f}")
             if gripper_needs_settle:
                 which.append(f"gripper {gripper_error:.4f} (opening)")
+            bias_note = (" bias[" + ", ".join(bias_applied) + "]"
+                         if bias_applied else " (no bias)")
             print(f"[mycobot_bridge] TIMING settle re-send {attempt}/"
                   f"{SETTLE_MAX_RESENDS}: still short by {', '.join(which)} rad "
-                  f"(> {SETTLE_TOLERANCE_RAD}), re-commanding at speed {self.speed}")
+                  f"(> {SETTLE_TOLERANCE_RAD}), re-commanding at speed "
+                  f"{self.speed}{bias_note}")
             if gave_up:
                 print(f"[mycobot_bridge] TIMING settle giving up: {error:.4f} rad "
                       f"error stopped improving over {SETTLE_MAX_STALLED} attempts "
