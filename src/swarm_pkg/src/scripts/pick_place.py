@@ -151,18 +151,19 @@ SETTLE_QUIET_PERIOD_SEC = 1.0
 # Extra time on top, for the settle to actually issue its moves and for the arm
 # to execute them.
 #
-# Was 1.0s, raised to 3.0s on 2026-07-29. The bridge only re-sends every
-# SETTLE_RESEND_INTERVAL_SEC = 0.5s and cannot start until the 1.0s quiet period
-# has elapsed, so a 1.0s margin allowed exactly ONE correction attempt -- the
-# hardware logs show "settle re-send 1/20" and never a 2/20. One attempt is not
-# enough when the first one can land inside the servo dead band and do nothing,
-# which is what happened: the gain escalation past attempt 1 was unreachable.
+# Raised 1.0 -> 3.0s on 2026-07-29 to let the bridge's escalating settle bias run
+# more than one attempt, then put BACK to 1.0s the same day. The bias it existed
+# to serve is disabled (see mycobot_bridge.py's SETTLE_BIAS_ENABLED: gain 1.0 sits
+# inside the servo dead band, gain 2.0 is the marginal-stability boundary, and
+# nothing in between both moves the joint and converges).
 #
-# 3.0s allows roughly 6 attempts, so the escalating gain can actually escalate.
-# The bridge stops early on its own once the error is inside tolerance
-# (SETTLE_TOLERANCE_RAD) or after SETTLE_MAX_STALLED attempts with no progress,
-# so this is an upper bound on the wait, not a fixed cost.
-SETTLE_ACT_MARGIN_SEC = 3.0
+# Widening the window is not neutral now that there is nothing to escalate. It let
+# the divergent run reach "settle re-send 14/20", and every one of those attempts
+# was a real ~4 deg command to the arm. With the bias off the re-sends are
+# identical values the arm has already ignored, so extra attempts buy nothing and
+# just add dead time to every move. The bridge's own stall detector gives up after
+# SETTLE_MAX_STALLED anyway.
+SETTLE_ACT_MARGIN_SEC = 1.0
 
 
 def hover_z(target_z):
@@ -287,12 +288,55 @@ GROUP_NAME = "arm_group"
 # was involved. Costs nothing to make exact.
 #
 # This is NOT the main cause of that tilt -- the other ~3.2 deg is the pitch
-# joints undershooting, see SETTLE_BIAS_* in mycobot_bridge.py -- but it is the
-# one part of it that was pure arithmetic.
+# joints undershooting, see SAG_PRECOMP_DEG below -- but it is the one part of it
+# that was pure arithmetic.
 GRASP_QX = -math.sqrt(0.5)
 GRASP_QY = math.sqrt(0.5)
 GRASP_QZ = 0.0
 GRASP_QW = 0.0
+
+# GRAVITY SAG PRE-COMPENSATION (2026-07-29). Aim the grasp orientation this many
+# degrees OUTWARD (away from the base, in the vertical plane through the target)
+# so that the arm's sag brings it back to vertical.
+#
+# This replaces the corrective-nudge approach in mycobot_bridge.py, which is
+# disabled -- see SETTLE_BIAS_ENABLED there for the algebra, but in short: a
+# stationary joint will not move for a command delta smaller than its dead band,
+# and the dead band here is larger than the error being corrected, so no
+# after-the-fact nudge can work. Pre-compensation sidesteps that entirely,
+# because the arm reaches this target as part of a full trajectory -- the joints
+# are already in motion, so the dead band never arms.
+#
+# WHY A SINGLE CONSTANT IS DEFENSIBLE. Four measured grasp/place poses:
+#
+#   pose               tilt      lean . radial    lean . tangential   reach
+#   grasp   run 1     4.372      -0.903            -0.429            0.248 m
+#   grasp   run 2     4.189      -0.909            -0.416            0.249 m
+#   place   run 1     5.087      -0.952            -0.305            0.249 m
+#   place   run 2     5.049      -0.921            -0.389            0.249 m
+#
+# The lean is 0.90-0.95 radial and NEGATIVE (inward, toward the base) in every
+# case. Grasp and place sit ~180 deg apart in base yaw (+104.7 vs -74.1), so in
+# the world frame these tilts point in opposite directions -- but in the arm's own
+# radial frame they are the same direction and nearly the same size. That is the
+# signature of a pose-frame-constant gravity sag, and it is what makes one scalar,
+# rotated into place per target, the right model rather than six joint offsets.
+#
+# 4.6 deg is the mean of the four. Predicted residual with a single constant:
+# 0.41 deg at the grasp pose, 0.45 deg at the place pose (both IK-verified
+# reachable, residual ~1e-11, all joints inside limits) -- a 10x improvement, with
+# what is left being just the 0.86 deg grasp-vs-place spread.
+#
+# CAVEAT, stated because the first hardware run will test it: the pre-compensated
+# IK solution reconfigures the wrist rather than nudging it (joint5_to_joint4 goes
+# 9.75 -> 26.71 deg at the grasp pose), which changes the gravity moment arms. So
+# the sag at the pre-compensated pose is not guaranteed to equal the sag measured
+# at the uncompensated one. This is a first-order correction and may want one
+# iteration. If measured tilt overshoots past vertical (leans OUTWARD after this
+# change), reduce; if it lands short, increase.
+#
+# Set to 0.0 to disable and recover the exact prior behaviour.
+SAG_PRECOMP_DEG = 4.6
 
 CARTESIAN_MAX_STEP = 0.005       # 5mm interpolation resolution
 CARTESIAN_JUMP_THRESHOLD = 0.0   # 0 disables jump-threshold filtering
@@ -538,16 +582,55 @@ _GRASP_YAW_JOINT_OFFSET = -math.radians(GRIPPER_YAW_DEG)
 # reset_arm.py, annulus_test.py, collision_contacts.py and this script's own
 # main() all keep working unchanged, and the TESTS.md characterization baseline
 # does not move.
-def grasp_quat_for(block_yaw_deg=0.0):
+def sag_precomp_quat(x, y, precomp_deg=None):
+    """World-frame rotation that tips the approach axis OUTWARD by precomp_deg,
+    in the vertical plane containing the base axis and the target (x, y).
+
+    Pre-multiplied onto the grasp quaternion so the arm is asked for a pose
+    tilted against its own gravity sag -- see SAG_PRECOMP_DEG.
+
+    The rotation axis is r_hat x z_hat, where r_hat is the horizontal direction
+    from the base to the target. Rotating about it by a positive angle swings the
+    downward approach axis away from the base, which is the direction opposite the
+    measured lean.
+
+    Returns the identity quaternion when there is nothing to do, including for a
+    target directly over the base axis where r_hat is undefined (and where a tilt
+    direction is meaningless anyway).
+    """
+    if precomp_deg is None:
+        precomp_deg = SAG_PRECOMP_DEG
+    r = math.hypot(x, y)
+    if not precomp_deg or r < 1e-6:
+        return (0.0, 0.0, 0.0, 1.0)
+    # axis = r_hat x z_hat = (ry, -rx, 0) / r, already unit once divided by r
+    ax, ay = y / r, -x / r
+    half = math.radians(precomp_deg) / 2.0
+    s = math.sin(half)
+    return (ax * s, ay * s, 0.0, math.cos(half))
+
+
+def grasp_quat_for(block_yaw_deg=0.0, x=None, y=None):
     """The grasp quaternion for a block rotated block_yaw_deg about world +Z.
 
     Reads GRIPPER_YAW_DEG at CALL time, not at import time, so --gripper-yaw-deg
     still takes effect (gripper_yaw_quat's own default argument is bound at def
     time and would not).
+
+    x, y are the TARGET position. Supplying them enables the gravity sag
+    pre-compensation, which needs to know which way "outward" is. Omitting them
+    (the default) returns the uncompensated orientation, so any caller that does
+    not care about sag -- or any pose where it does not apply -- is unchanged.
     """
     if not block_yaw_deg:
-        return (GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
-    return gripper_yaw_quat(GRIPPER_YAW_DEG + block_yaw_deg)
+        base = (GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
+    else:
+        base = gripper_yaw_quat(GRIPPER_YAW_DEG + block_yaw_deg)
+    if x is None or y is None:
+        return base
+    # World-frame correction: pre-multiply, so it composes with the yaw rather
+    # than being applied in the (already rotated) tool frame.
+    return quat_multiply(sag_precomp_quat(x, y), base)
 
 
 def _bearing_seeds(x, y, block_yaw_deg=0.0):
@@ -1696,13 +1779,14 @@ def make_orientation_constraint(link_name, frame_id, qx, qy, qz, qw,
 
 def make_grasp_pose(x, y, z, block_yaw_deg=0.0):
     """Pose for Cartesian waypoints: position + the downward grasp orientation,
-    yawed to meet a block rotated block_yaw_deg (0.0 = the fixed grasp yaw)."""
+    yawed to meet a block rotated block_yaw_deg (0.0 = the fixed grasp yaw), and
+    tipped outward by SAG_PRECOMP_DEG to cancel the arm's gravity sag."""
     pose = Pose()
     pose.position.x = x
     pose.position.y = y
     pose.position.z = z
     (pose.orientation.x, pose.orientation.y,
-     pose.orientation.z, pose.orientation.w) = grasp_quat_for(block_yaw_deg)
+     pose.orientation.z, pose.orientation.w) = grasp_quat_for(block_yaw_deg, x, y)
     return pose
 
 
@@ -1996,8 +2080,15 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0):
 
     block_yaw_deg rotates the jaws about world +Z to meet a block that is not
     square to the world. 0.0 is the fixed grasp yaw every caller used before
-    the AprilTag feature -- see grasp_quat_for()."""
-    qx, qy, qz, qw = grasp_quat_for(block_yaw_deg)
+    the AprilTag feature -- see grasp_quat_for().
+
+    x, y are passed to grasp_quat_for so the sag pre-compensation applies here
+    too, not only to the Cartesian descent. It has to be on BOTH: hover uses this
+    function and the descent uses make_grasp_pose, and if their orientations
+    disagree the "straight down" Cartesian descent has to rotate the wrist while
+    translating, which is exactly the sideways nudge that descent is careful to
+    avoid."""
+    qx, qy, qz, qw = grasp_quat_for(block_yaw_deg, x, y)
 
     ik_state = None
     if lock_orientation:
@@ -2054,10 +2145,13 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
     # at the fixed grasp yaw while descending onto a rotated block and the two
     # disagree by exactly block_yaw_deg, which shows up as a Cartesian solve
     # that falls short of min_fraction for no visible reason.
+    # Carries the sag pre-compensation for the same reason it carries the yaw: the
+    # path constraint and the target pose must describe the SAME orientation, or
+    # the solve falls short of min_fraction with no visible cause.
     path_constraints = Constraints()
     path_constraints.orientation_constraints.append(
         make_orientation_constraint(
-            POSE_LINK, PLANNING_FRAME, *grasp_quat_for(block_yaw_deg),
+            POSE_LINK, PLANNING_FRAME, *grasp_quat_for(block_yaw_deg, x, y),
             z_tolerance=0.15)
     )
 

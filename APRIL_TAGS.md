@@ -63,7 +63,7 @@ in shot) but not the answer.
 
 This matters because of a constraint documented at length in `PROJECT_CONTEXT.md`: the
 arm's absolute positioning is not trustworthy. `IK_POS_TOLERANCE = 0.02`, the residual
-grasp tilt was **wrongly believed** mechanical (see [the tilt](#the-grasp-tilt-solved-2026-07-29)), and `_send_goal_and_wait`
+grasp tilt was **wrongly believed** mechanical (see [the tilt](#the-grasp-tilt--diagnosed-fix-in-progress-2026-07-29)), and `_send_goal_and_wait`
 infers success from `/joint_states` because `arm_group_controller` has no `constraints:`
 block to report tracking failure itself. Any design that computes block position from
 *where the arm thinks it is* inherits every bit of that error.
@@ -261,7 +261,14 @@ aborted — precisely the failure Test 1 exists to predict.
 
 ---
 
-## The grasp tilt, solved (2026-07-29)
+## The grasp tilt — diagnosed, fix in progress (2026-07-29)
+
+> **Status.** The *cause* is settled and proven (four pitch joints undershooting, below). The
+> *fix* is not. One approach was tried on hardware and failed outright — see
+> [Fix 2](#fix-2--the-biased-settle-re-send-tried-failed-disabled), which is worth reading
+> before proposing anything that nudges a stationary joint. The current approach
+> ([Fix 3](#fix-3--sag-pre-compensation-in-task-space-current-approach)) is predicted but
+> unverified. Best measured tilt so far: **4.189°**.
 
 The long-standing "the gripper is always visibly tilted when it grasps" complaint.
 Previously concluded to be **mechanical and unfixable** — sag under the camera+gripper mass,
@@ -314,47 +321,103 @@ is consistent run to run precisely because Test 1 measured repeatability at 0.04
 deterministic undershoot produces a deterministic tilt, which is exactly why it "never goes
 away and is always the same angle."
 
-### Fixes applied
+### Fix 1 — the rounded quaternion (kept)
 
-1. **`GRASP_QX/QY` were rounded to 4 decimals.** `0.7071 ≠ 1/√2`, and the resulting
-   quaternion asked the flange for a pose **0.5019° off vertical**. Half a degree of the tilt
-   was baked into the target before any solver or servo was involved. Now `±math.sqrt(0.5)`
-   exactly → target tilt 0.0000°. Free.
-2. **The settle re-send is now biased** (`SETTLE_BIAS_*` in `mycobot_bridge.py`). It used to
-   re-send the *identical* command, which Test 1 proved can never work. It now aims at
-   `command + gain·residual`, gain escalating 1.0 → 1.5 → 2.0 per attempt, capped at 4° and
-   clamped to joint limits.
-3. **A per-joint bias threshold** (`SETTLE_BIAS_MIN_RAD = 0.004`), *not* `SETTLE_TOLERANCE_RAD`.
-   This distinction is the fix. The tolerance is 0.03 rad = 1.72°, larger than the individual
-   errors causing the tilt — gating on it would have biased only `joint6output` (0.0426 rad,
-   and vertical, so zero tilt) while skipping all four pitch joints. The correction would have
-   looked active and fixed nothing. Caught in simulation before hardware time.
-4. **`settle_pause()` after each descent.** The descent was declared converged at 0.0426 rad
-   (inside `ARM_SETTLE_TOLERANCE` = 0.07), pick_place slept 0.5 s, the gripper close changed
-   the command, and the bridge's 1.0 s quiet-period timer reset — so **the arm's settle never
-   ran once before the grasp**. A correction mechanism that was enabled and never got a turn.
+**`GRASP_QX/QY` were rounded to 4 decimals.** `0.7071 ≠ 1/√2`, and the resulting quaternion
+asked the flange for a pose **0.5019° off vertical**. Half a degree of the tilt was baked into
+the target before any solver or servo was involved. Now `±math.sqrt(0.5)` exactly → target
+tilt 0.0000°, confirmed on hardware (`commanded tilt 0.001°`). Free, and it stays.
 
-Simulated end to end against the measured residuals: one biased attempt takes tilt
-3.704° → 0.000° and z 0.1448 → 0.1550 m, then stops.
+### Fix 2 — the biased settle re-send: TRIED, FAILED, DISABLED
+
+Two hardware runs. The idea was to re-send `command + gain·residual` instead of the identical
+command. It does not work, and the second run was **physically dangerous** — the arm struck
+the table. Both outcomes fall out of one line of algebra that should have been written down
+*before* burning robot time on it:
+
+> A joint commanded to `c` settles at `c − d` for a deterministic undershoot `d`. Biasing
+> commands `c + g·d`, which settles at `c + (g−1)·d`. Settle measures the residual against the
+> original `c`, so **`residual_next = (1 − g)·residual`**, which converges only for `0 < g < 2`.
+
+| gain | behaviour |
+|---|---|
+| `g = 1` | residual → 0. **Deadbeat. 1.0 was the exactly-correct gain, not a weak one.** |
+| `g = 2` | residual → `−d`. Marginal: sustained oscillation, no decay. |
+| `g > 2` | divergent. |
+
+**Run 1, `g = 1.0`** — the deadbeat value — and the arm did not move a single count. Bias
+`[+1.03, +1.89, +0.51, +1.89, +0.79, +3.06]°`, final residual
+`[+1.03, +1.90, +0.51, +1.89, +0.79, +3.06]°`. Identical. Gain 1.0 asks for a delta of `d`
+(~1–2°), which is **below the servo dead band**, so the joint ignores it. Tilt 4.442 → 4.372°.
+
+**Run 2, `g = 2.0` plus a 1.5× escalation multiplier** = effective gain 3.0, past the boundary
+and into divergence. The log shows it exactly — `joint3_to_joint2` went `+3.79, −4.01, +4.01,
+−4.01, +4.01 …` for **14 attempts**, sign-flipping every time, pinned at the 4° cap, residual
+*growing* `0.0362 → 0.0374 → 0.0729 → 0.0581 → 0.0791 → 0.0853`. A 4° pitch swing at 0.28 m
+reach is ~20 mm of vertical travel: that is what hit the table on the place descent. Tilt
+4.372 → 4.189°, i.e. nothing.
+
+**The two failures together close the door.** Breaking the dead band needs `g` well above 1;
+staying stable needs `g` below 2; and the dead band for these joints is *larger* than the `d`
+being corrected. No gain satisfies both. A stationary joint cannot be nudged by less than its
+own dead band — exactly the case `TESTS.md:63` anticipated ("dither, dead-zone inversion, or
+external metrology"). `SETTLE_BIAS_ENABLED = False`; do not re-enable without new evidence
+that the dead band itself has changed.
+
+Two incidental bugs the same logs exposed, both fixed: the bias was computed and logged during
+*gripper-only* settles where the arm was never re-sent (misleading log, no motion — it cost
+real debugging time), and `loop_rate` collapses to **1.1–1.8 Hz** during settles with
+`get_angles() returned -1` alongside, so the loop was biasing against stale readings.
+
+### Fix 3 — sag pre-compensation in task space (current approach)
+
+The dead band only arms when a joint is **stationary**. During a trajectory the joints are
+already moving, so instead of correcting after the fact, aim past: command a grasp orientation
+tilted *outward* by the sag, and let the sag bring it to vertical. `SAG_PRECOMP_DEG = 4.6` in
+`pick_place.py`, applied via `sag_precomp_quat()`.
+
+What makes one scalar the right model rather than six joint offsets — four measured poses:
+
+| pose | tilt | lean · radial | lean · tangential | reach |
+|---|---|---|---|---|
+| grasp, run 1 | 4.372° | −0.903 | −0.429 | 0.248 m |
+| grasp, run 2 | 4.189° | −0.909 | −0.416 | 0.249 m |
+| place, run 1 | 5.087° | −0.952 | −0.305 | 0.249 m |
+| place, run 2 | 5.049° | −0.921 | −0.389 | 0.249 m |
+
+The lean is 0.90–0.95 radial and **negative (inward, toward the base) in every case**. Grasp
+and place sit ~180° apart in base yaw (+104.7° vs −74.1°), so in the *world* frame these tilts
+point in opposite directions — but in the arm's own radial frame they are the same direction
+and nearly the same size. That is the signature of a pose-frame-constant gravity sag, and it
+is why a single scalar, rotated into place per target, is the correct model.
+
+Applied to `make_grasp_pose`, `move_arm_to` and `cartesian_move_to`'s path constraint —
+**all three**, deliberately. Hover uses one and the descent the other, and if their
+orientations disagree the "straight down" Cartesian descent has to rotate the wrist while
+translating, which is the sideways nudge that descent exists to avoid.
+
+Verified before hardware: commanded tilt exactly 4.6000° with `lean · radial = +1.0000`
+(purely outward) at both poses; quaternion stays unit; identity when `SAG_PRECOMP_DEG = 0`.
+IK reaches both pre-compensated targets with residual ~1e-11, all joints inside limits.
+
+**Predicted: 4.189° → 0.41° at the grasp pose, 5.049° → 0.45° at the place pose.** The residual
+is just the 0.86° grasp-vs-place spread that one shared constant cannot cover.
 
 ### Not yet verified on hardware
 
-That simulation assumes each servo undershoots its *new* target by the same signed residual —
-the ideal Coulomb-friction model. Test 1 supports it for J0 (median `|err|/|e|` = 0.07 at
-k=1) but the pitch joints had median 1.00 at k=1 and mostly moved only by k=2, which is
-exactly why the gain escalates. **Expect the real improvement to be partial on the first
-attempt.** What to check on the next run:
+The prediction above assumes the sag at the *pre-compensated* pose equals the sag measured at
+the uncompensated one. It may not: the pre-compensated IK solution reconfigures the wrist
+rather than nudging it (`joint5_to_joint4` 9.75° → 26.71° at the grasp pose), which changes the
+gravity moment arms. This is a first-order correction and may want one iteration.
 
-- `[mycobot_bridge] TIMING settle re-send ... bias[...]` lines appear, naming the pitch joints
-  (needs `--log-timing`). If they say `(no bias)`, the residuals were under
-  `SETTLE_BIAS_MIN_RAD` and nothing needed doing.
-- Stop the arm in the grasp pose again, capture `/joint_states`, re-run the FK check. The
-  number to beat is 3.70°.
-- If the tilt persists, the next lever is `SETTLE_TOLERANCE_RAD` (0.03 → ~0.015). Its current
-  value was chosen on the basis that small errors were uncorrectable, which was true for
-  *unbiased* re-sends and is no longer the governing assumption. Left alone for now because
-  it changes when settling fires at all, and that interacts with the hard-won smooth-motion
-  and serial-flooding work.
+- Stop the arm in the grasp pose, capture `/joint_states`, re-run the FK check. **Number to
+  beat: 4.189°.**
+- If it lands short of vertical (still leaning inward), raise `SAG_PRECOMP_DEG`; if it
+  overshoots (now leaning *outward*), lower it. The sign of `lean · radial` says which.
+- If grasp and place need materially different values, `SAG_PRECOMP_DEG` becomes a function of
+  reach rather than a constant — the data to fit it is already in the table above.
+- No `bias[...]` lines should appear at all now. If any do, `SETTLE_BIAS_ENABLED` did not take,
+  which means `mycobot_hardware` was not rebuilt on the robot.
 
 ---
 

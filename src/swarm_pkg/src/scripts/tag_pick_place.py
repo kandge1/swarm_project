@@ -131,7 +131,7 @@ def quat_to_matrix(q):
     )
 
 
-def camera_offset_world(block_yaw_deg):
+def camera_offset_world(block_yaw_deg, x=None, y=None):
     """(dx, dy): where the lens sits relative to the flange, in world metres.
 
     The lens is 40 mm off the flange axis, which is 40% of the zone's width --
@@ -140,12 +140,16 @@ def camera_offset_world(block_yaw_deg):
     does not care whether this is right. Getting it wrong loses tags out of
     frame; it does not bias the answer.
 
-    Depends on the grasp yaw because the whole tool assembly rotates with it.
+    Depends on the grasp yaw because the whole tool assembly rotates with it, and
+    on the target position because SAG_PRECOMP_DEG tips the whole assembly outward
+    by ~4.6 deg. That tip swings the lens by 40 mm * sin(4.6 deg) = 3.2 mm, which
+    is small next to the framing margin but free to get right -- pass the target
+    and the offset matches the orientation actually commanded.
     """
     from pick_place import grasp_quat_for
 
     offset, _view = tool_frame_check.flange_to_camera()
-    rotation = quat_to_matrix(grasp_quat_for(block_yaw_deg))
+    rotation = quat_to_matrix(grasp_quat_for(block_yaw_deg, x, y))
     world = [sum(rotation[i][k] * offset[k] for k in range(3)) for i in range(3)]
     return world[0], world[1]
 
@@ -275,7 +279,7 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
     Returns (response, converged, flange_world_xy) or (None, False, None).
     """
     target_world = detector.zone_to_world(*target_zone_xy)
-    offset = camera_offset_world(block_yaw_deg)
+    offset = camera_offset_world(block_yaw_deg, target_world[0], target_world[1])
     # Command the FLANGE such that the CAMERA lands on the target.
     flange = (target_world[0] - offset[0], target_world[1] - offset[1])
 
@@ -382,7 +386,7 @@ def run_stage1(io_client, detector, args, log):
     # the camera gets there the flange -- and therefore the jaws -- is on the
     # block. Reusing the same converge-on-the-camera loop is the point: it is
     # the only thing here that measures the arm.
-    offset = camera_offset_world(grasp_yaw_deg)
+    offset = camera_offset_world(grasp_yaw_deg, detector.zone_x, detector.zone_y)
     offset_zone = detector.world_to_zone(detector.zone_x + offset[0],
                                          detector.zone_y + offset[1])
     camera_target = (block.zx + offset_zone[0], block.zy + offset_zone[1])

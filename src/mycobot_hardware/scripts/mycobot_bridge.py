@@ -205,7 +205,50 @@ SETTLE_MAX_STALLED = 3
 #
 # The bias is capped hard. It is an open-loop overshoot by construction, and an
 # uncapped one driven by a single bad reading would fling the arm.
-SETTLE_BIAS_ENABLED = True
+#
+# DISABLED 2026-07-29 after two hardware runs. Keep it off. The mechanism is a
+# proven dead end, and the second run was physically dangerous -- the arm struck
+# the table. Both facts come out of the same one-line model, which should have
+# been written down before either run:
+#
+#   a joint commanded to c settles at c - d, for a deterministic undershoot d
+#   (Test 1: repeatability 0.045 deg, so d really is deterministic).
+#   Biasing commands c + g*d, which settles at c + (g-1)*d.
+#   Settle measures the residual against the ORIGINAL c, so
+#
+#            residual_next = (1 - g) * residual
+#
+#   |1 - g| < 1  =>  converges only for 0 < g < 2.
+#     g = 1  -> residual 0. DEADBEAT. 1.0 was the exactly-correct gain.
+#     g = 2  -> residual -d. Marginal: sustained oscillation, no decay.
+#     g > 2  -> divergent.
+#
+# Run 1 used g = 1.0, the deadbeat value, and the arm did not move a single
+# count: bias [+1.03, +1.89, +0.51, +1.89, +0.79, +3.06] deg, final residual
+# [+1.03, +1.90, +0.51, +1.89, +0.79, +3.06]. Gain 1.0 asks for a delta of d
+# (~1-2 deg), which is BELOW the servo dead band, so the joint ignores it.
+#
+# Run 2 used g = 2.0 with an escalation multiplier of up to 1.5x, i.e. effective
+# gain 3.0 -- past the marginal boundary and into divergence. The log shows it
+# exactly: joint3_to_joint2 went +3.79, -4.01, +4.01, -4.01, +4.01 ... for 14
+# attempts, sign-flipping every time, pinned at the cap, with the residual
+# GROWING 0.0362 -> 0.0374 -> 0.0729 -> 0.0581 -> 0.0791 -> 0.0853. A 4 deg
+# pitch swing at ~0.28 m reach is ~20 mm of vertical travel; that is what hit
+# the table on the place descent. Tilt improved 4.372 -> 4.189 deg, i.e. nothing.
+#
+# The two failures are not independent, and together they close the door:
+# breaking the dead band needs g well above 1, staying stable needs g below 2,
+# and the dead band for these joints is LARGER than the d being corrected. No
+# gain satisfies both. A stationary joint cannot be nudged by less than its own
+# dead band, full stop -- which is exactly the case TESTS.md:63 anticipated
+# ("dither, dead-zone inversion, or external metrology").
+#
+# What replaces it: feedforward on the STREAMED trajectory rather than a
+# post-hoc nudge -- see JOINT_FF_BIAS_DEG below. During a trajectory the joint
+# is already moving, so the dead band never arms, and the same deterministic d
+# can be aimed past instead of corrected after. Do not re-enable this flag
+# without new evidence that the dead band itself has changed.
+SETTLE_BIAS_ENABLED = False
 
 # PER-JOINT gain, not one global value. Set from Test 1's staircase (2026-07-29),
 # and the first hardware run with the bias live is what forced the distinction.
@@ -1003,7 +1046,14 @@ class Bridge:
         # actually short (a joint already inside tolerance must not be nudged).
         arm_target = list(command[:6])
         bias_applied = []
-        if SETTLE_BIAS_ENABLED:
+        # Gate on arm_needs_settle, not just the flag: line ~1024 only re-sends the
+        # arm when the ARM is short, so computing a bias during a gripper-only
+        # settle produced a log line full of joint biases that were never sent.
+        # That cost real debugging time -- four "bias[joint2_to_joint1 -0.97deg,
+        # ...]" lines during a gripper release read as the arm being wiggled when
+        # it was untouched.
+        arm_needs_settle = arm_error > SETTLE_TOLERANCE_RAD
+        if SETTLE_BIAS_ENABLED and arm_needs_settle:
             escalation = SETTLE_BIAS_GAIN[min(attempt - 1, len(SETTLE_BIAS_GAIN) - 1)]
             for i in range(6):
                 residual = command[i] - measured[i]
@@ -1021,7 +1071,7 @@ class Bridge:
         arm_degrees = [math.degrees(p) for p in arm_target]
         settle_speed = SETTLE_SPEED if bias_applied else self.speed
         try:
-            if arm_error > SETTLE_TOLERANCE_RAD:
+            if arm_needs_settle:
                 self._send_angles(arm_degrees, settle_speed)
             if gripper_needs_settle:
                 self._set_gripper_value(gripper_rad_to_value(command[6]), self.speed)
