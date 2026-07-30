@@ -138,6 +138,35 @@ MAX_HOVER_Z = 0.205
 # far past the deadband stops catching real tracking failures.
 ARM_SETTLE_TOLERANCE = 0.07
 
+# PER-JOINT override, for joints where the global tolerance is the wrong question.
+#
+# 2026-07-29: a run aborted at "Move to pre-grasp" with joint6output_to_joint6 at
+# -0.0712 rad against the 0.07 tolerance -- failing by 0.0012 rad, i.e. 0.07 deg.
+# Every other joint was inside 0.022. Re-running worked. That is not a fluke, it
+# is a joint sitting on the threshold: joint6output carries the largest dead-band
+# residual of the six (+3.06 deg = 0.053 rad in earlier logs, 4.08 deg here), so
+# it will keep landing either side of 0.07 and aborting good runs at random. Test
+# 1's 'extended' posture failed the same way, by 0.07 deg against a 3.0 deg gate.
+#
+# Raising the GLOBAL tolerance to cover it is the wrong fix, because 0.07 rad is
+# already ~1 cm at the fingertips and the pitch joints are exactly where that
+# error becomes the grasp tilt this file spends so much effort on.
+#
+# joint6output_to_joint6 is different in kind, though: it is one of the two
+# VERTICAL-axis joints, so it contributes exactly 0.000 deg of tilt (see the FK
+# decomposition in APRIL_TAGS.md). Its error shows up as gripper YAW, not lean --
+# on a square block that is nearly free, and Stage 3's rectangular blocks care
+# about it only to the extent the jaws must span the short face. So it can be held
+# to a looser standard than the joints that tilt the tool, and this is a real
+# distinction rather than a convenient one.
+#
+# 0.09 rad = 5.2 deg: clears the worst residual seen with margin, still far short
+# of a genuine tracking failure (the aborted run had moved 3.30 rad before
+# stalling, so real failures are not subtle).
+ARM_SETTLE_TOLERANCE_PER_JOINT = {
+    "joint6output_to_joint6": 0.09,
+}
+
 # Mirrors mycobot_bridge.py's SETTLE_QUIET_PERIOD_SEC. Kept in sync BY HAND, the
 # same way GRIPPER_OPEN/CLOSED_RAD already are -- the two files live in different
 # packages and neither currently depends on the other. If you change it there,
@@ -288,55 +317,84 @@ GROUP_NAME = "arm_group"
 # was involved. Costs nothing to make exact.
 #
 # This is NOT the main cause of that tilt -- the other ~3.2 deg is the pitch
-# joints undershooting, see SAG_PRECOMP_DEG below -- but it is the one part of it
+# joints undershooting, see SAG_PRECOMP_RADIAL_DEG below -- but it is the one part
 # that was pure arithmetic.
 GRASP_QX = -math.sqrt(0.5)
 GRASP_QY = math.sqrt(0.5)
 GRASP_QZ = 0.0
 GRASP_QW = 0.0
 
-# GRAVITY SAG PRE-COMPENSATION (2026-07-29). Aim the grasp orientation this many
-# degrees OUTWARD (away from the base, in the vertical plane through the target)
-# so that the arm's sag brings it back to vertical.
+# GRAVITY SAG PRE-COMPENSATION (2026-07-29). Aim the grasp orientation slightly
+# off vertical so that the arm's own sag brings it back TO vertical.
 #
-# This replaces the corrective-nudge approach in mycobot_bridge.py, which is
-# disabled -- see SETTLE_BIAS_ENABLED there for the algebra, but in short: a
-# stationary joint will not move for a command delta smaller than its dead band,
-# and the dead band here is larger than the error being corrected, so no
-# after-the-fact nudge can work. Pre-compensation sidesteps that entirely,
-# because the arm reaches this target as part of a full trajectory -- the joints
-# are already in motion, so the dead band never arms.
+# Replaces the corrective-nudge approach in mycobot_bridge.py, which is disabled
+# -- see SETTLE_BIAS_ENABLED there for the algebra. In short: a stationary joint
+# will not move for a command delta smaller than its dead band, and the dead band
+# here is LARGER than the error being corrected, so no after-the-fact nudge can
+# work at any gain. Pre-compensation sidesteps that entirely, because the arm
+# reaches this target as part of a full trajectory -- the joints are already in
+# motion, so the dead band never arms.
 #
-# WHY A SINGLE CONSTANT IS DEFENSIBLE. Four measured grasp/place poses:
+# TWO components, in the arm's own frame at the target, not one:
+#   radial     -- in the vertical plane through the base axis and the target.
+#                 Positive = lean OUTWARD, away from the base.
+#   tangential -- perpendicular to that, about the radial direction.
+#                 Positive = lean along (z_hat x r_hat).
 #
-#   pose               tilt      lean . radial    lean . tangential   reach
-#   grasp   run 1     4.372      -0.903            -0.429            0.248 m
-#   grasp   run 2     4.189      -0.909            -0.416            0.249 m
-#   place   run 1     5.087      -0.952            -0.305            0.249 m
-#   place   run 2     5.049      -0.921            -0.389            0.249 m
+# The first version of this corrected radial only, and hardware showed why that
+# was not enough. Measured tilt decomposed into the two components (deg):
 #
-# The lean is 0.90-0.95 radial and NEGATIVE (inward, toward the base) in every
-# case. Grasp and place sit ~180 deg apart in base yaw (+104.7 vs -74.1), so in
-# the world frame these tilts point in opposite directions -- but in the arm's own
-# radial frame they are the same direction and nearly the same size. That is the
-# signature of a pose-frame-constant gravity sag, and it is what makes one scalar,
-# rotated into place per target, the right model rather than six joint offsets.
+#   pose             tilt    radial   tangential
+#   grasp  before    4.189    -3.809     -1.743
+#   place  before    5.049    -4.651     -1.964
+#   grasp  radial-only run 1  2.019    +1.543     -1.301
+#   grasp  radial-only run 3  2.246    +1.615     -1.561
+#   place  radial-only run 1  2.319    -0.572     -2.247
+#   place  radial-only run 3  2.197    -0.510     -2.137
 #
-# 4.6 deg is the mean of the four. Predicted residual with a single constant:
-# 0.41 deg at the grasp pose, 0.45 deg at the place pose (both IK-verified
-# reachable, residual ~1e-11, all joints inside limits) -- a 10x improvement, with
-# what is left being just the 0.86 deg grasp-vs-place spread.
+# Radial went from -3.8/-4.7 to about zero: that part worked. TANGENTIAL was never
+# touched (-1.7 -> -1.3, -2.0 -> -2.2) and is now the dominant residual. It is
+# negative in all eight measurements, so it is exactly as systematic as radial
+# was; correcting one axis and not the other just left the other one behind.
 #
-# CAVEAT, stated because the first hardware run will test it: the pre-compensated
-# IK solution reconfigures the wrist rather than nudging it (joint5_to_joint4 goes
-# 9.75 -> 26.71 deg at the grasp pose), which changes the gravity moment arms. So
-# the sag at the pre-compensated pose is not guaranteed to equal the sag measured
-# at the uncompensated one. This is a first-order correction and may want one
-# iteration. If measured tilt overshoots past vertical (leans OUTWARD after this
-# change), reduce; if it lands short, increase.
+# This is also why the place pose looks visibly worse than the pick pose, which
+# reads as the tilt "amplifying" through the sequence. It does not amplify: place
+# simply has the larger tangential term (-2.2 vs -1.3) and always did.
 #
-# Set to 0.0 to disable and recover the exact prior behaviour.
-SAG_PRECOMP_DEG = 4.6
+# PAYLOAD. The radial residuals disagree in a way that is physically meaningful,
+# not noise: grasp OVERSHOT (+1.54, wants less pre-comp) while place UNDERSHOT
+# (-0.57, wants more), and the place descent is the one where the gripper is
+# HOLDING A BLOCK. More mass on the end -> more sag -> more pre-compensation
+# needed. So the correction carries a payload term rather than two unrelated
+# per-pose constants, which is both better justified and generalises to any
+# loaded/unloaded move instead of just these two hardcoded poses.
+#
+# Values below solve the four measurements for zero residual, using the measured
+# radial response (1.16x at the grasp pose, 0.89x at the place pose) rather than
+# assuming the commanded degree lands as a degree.
+#
+# Set both EMPTY values to 0.0 to disable entirely and recover prior behaviour.
+SAG_PRECOMP_RADIAL_DEG = 3.27          # empty gripper
+SAG_PRECOMP_TANGENTIAL_DEG = 1.30      # empty gripper
+# Added ON TOP of the above while a block is held.
+SAG_PRECOMP_PAYLOAD_RADIAL_DEG = 1.97
+SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG = 0.95
+
+# HONEST LIMITS OF THIS MODEL, because the goal is ~1 mm and this will not get
+# there on its own:
+#   - It is fitted to TWO positions, both at 0.249 m reach. Reach and height
+#     dependence are entirely unmeasured, so it is not known to hold anywhere
+#     else in the workspace -- and Stage 1 onward grasps at arbitrary positions
+#     inside the zone.
+#   - The payload term is fitted to ONE block mass.
+#   - The flange-to-jaw lever is 0.056 m, so 1 deg of residual tilt is 1.0 mm of
+#     jaw offset, and a 30 mm block tilted 1 deg has its top face 0.5 mm out of
+#     level. Stacking compounds that per course.
+# The scalable answer is to stop modelling and start measuring: the wrist camera
+# is rigid to the flange, so the AprilTag homography taken at hover can report
+# the actual flange tilt in situ, per pose, every time. That needs the camera
+# intrinsics that camera.launch.py's unused camera_info_url hook is already
+# there for. See "Stage 0b.4" in APRIL_TAGS.md.
 
 CARTESIAN_MAX_STEP = 0.005       # 5mm interpolation resolution
 CARTESIAN_JUMP_THRESHOLD = 0.0   # 0 disables jump-threshold filtering
@@ -582,35 +640,53 @@ _GRASP_YAW_JOINT_OFFSET = -math.radians(GRIPPER_YAW_DEG)
 # reset_arm.py, annulus_test.py, collision_contacts.py and this script's own
 # main() all keep working unchanged, and the TESTS.md characterization baseline
 # does not move.
-def sag_precomp_quat(x, y, precomp_deg=None):
-    """World-frame rotation that tips the approach axis OUTWARD by precomp_deg,
-    in the vertical plane containing the base axis and the target (x, y).
+def sag_precomp_angles(holding_block=False):
+    """(radial_deg, tangential_deg) of pre-compensation to apply."""
+    radial = SAG_PRECOMP_RADIAL_DEG
+    tangential = SAG_PRECOMP_TANGENTIAL_DEG
+    if holding_block:
+        radial += SAG_PRECOMP_PAYLOAD_RADIAL_DEG
+        tangential += SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG
+    return radial, tangential
 
-    Pre-multiplied onto the grasp quaternion so the arm is asked for a pose
-    tilted against its own gravity sag -- see SAG_PRECOMP_DEG.
 
-    The rotation axis is r_hat x z_hat, where r_hat is the horizontal direction
-    from the base to the target. Rotating about it by a positive angle swings the
-    downward approach axis away from the base, which is the direction opposite the
-    measured lean.
+def sag_precomp_quat(x, y, holding_block=False, angles=None):
+    """World-frame rotation that tips the downward approach axis against the
+    arm's gravity sag at target (x, y) -- see SAG_PRECOMP_RADIAL_DEG.
 
-    Returns the identity quaternion when there is nothing to do, including for a
-    target directly over the base axis where r_hat is undefined (and where a tilt
-    direction is meaningless anyway).
+    Pre-multiplied onto the grasp quaternion, so it composes with the block yaw
+    rather than being applied in the already-rotated tool frame.
+
+    Both rotation axes are horizontal and derived from r_hat, the direction from
+    the base axis out to the target:
+      radial     about (r_hat x z_hat) -- swings the tool away from the base.
+      tangential about  r_hat          -- swings it along (z_hat x r_hat).
+    Rodrigues on a = -z_hat confirms both signs: rotating -z_hat about r_hat by
+    +T gives -z_hat*cos(T) + (z_hat x r_hat)*sin(T), i.e. +T of tangential lean.
+
+    Returns identity when there is nothing to do, including for a target on the
+    base axis where r_hat -- and therefore any notion of "outward" -- is undefined.
     """
-    if precomp_deg is None:
-        precomp_deg = SAG_PRECOMP_DEG
+    if angles is None:
+        angles = sag_precomp_angles(holding_block)
+    radial_deg, tangential_deg = angles
     r = math.hypot(x, y)
-    if not precomp_deg or r < 1e-6:
+    if r < 1e-6 or (not radial_deg and not tangential_deg):
         return (0.0, 0.0, 0.0, 1.0)
-    # axis = r_hat x z_hat = (ry, -rx, 0) / r, already unit once divided by r
-    ax, ay = y / r, -x / r
-    half = math.radians(precomp_deg) / 2.0
-    s = math.sin(half)
-    return (ax * s, ay * s, 0.0, math.cos(half))
+    rx, ry = x / r, y / r
+
+    def about(axis, deg):
+        half = math.radians(deg) / 2.0
+        s = math.sin(half)
+        return (axis[0] * s, axis[1] * s, axis[2] * s, math.cos(half))
+
+    # r_hat x z_hat = (ry, -rx, 0) for unit r_hat in the XY plane.
+    q_radial = about((ry, -rx, 0.0), radial_deg)
+    q_tangential = about((rx, ry, 0.0), tangential_deg)
+    return quat_multiply(q_tangential, q_radial)
 
 
-def grasp_quat_for(block_yaw_deg=0.0, x=None, y=None):
+def grasp_quat_for(block_yaw_deg=0.0, x=None, y=None, holding_block=False):
     """The grasp quaternion for a block rotated block_yaw_deg about world +Z.
 
     Reads GRIPPER_YAW_DEG at CALL time, not at import time, so --gripper-yaw-deg
@@ -621,6 +697,9 @@ def grasp_quat_for(block_yaw_deg=0.0, x=None, y=None):
     pre-compensation, which needs to know which way "outward" is. Omitting them
     (the default) returns the uncompensated orientation, so any caller that does
     not care about sag -- or any pose where it does not apply -- is unchanged.
+
+    holding_block adds the payload term: a loaded gripper sags measurably more
+    than an empty one, which is the difference between the pick and place descents.
     """
     if not block_yaw_deg:
         base = (GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
@@ -630,7 +709,7 @@ def grasp_quat_for(block_yaw_deg=0.0, x=None, y=None):
         return base
     # World-frame correction: pre-multiply, so it composes with the yaw rather
     # than being applied in the (already rotated) tool frame.
-    return quat_multiply(sag_precomp_quat(x, y), base)
+    return quat_multiply(sag_precomp_quat(x, y, holding_block), base)
 
 
 def _bearing_seeds(x, y, block_yaw_deg=0.0):
@@ -1101,9 +1180,15 @@ class RobotIOClient(Node):
             # -0.48 - (-0.53) evaluates to 0.050000000000000044, which is not
             # <= 0.05. Observed on real hardware 2026-07-26: a grasp reported
             # "per-joint error 0.05, tolerance 0.05" and failed.
+            # Per-joint tolerance where the global one asks the wrong question --
+            # see ARM_SETTLE_TOLERANCE_PER_JOINT. Only applied when it LOOSENS the
+            # gate, so passing a tighter settle_tolerance explicitly (the gripper
+            # calls this with 0.05) is never silently widened.
             reached = all(
                 name in self._joint_positions and
-                abs(self._joint_positions[name] - pos) <= settle_tolerance + 1e-9
+                abs(self._joint_positions[name] - pos) <= max(
+                    settle_tolerance,
+                    ARM_SETTLE_TOLERANCE_PER_JOINT.get(name, 0.0)) + 1e-9
                 for name, pos in target.items()
             )
             for n, p0 in start_positions.items():
@@ -1168,9 +1253,18 @@ class RobotIOClient(Node):
         else:
             verdict = ("the arm DID move but stopped short -- a tracking or joint "
                        "limit problem, not a dead write path.")
+        # Name the per-joint overrides explicitly. Reporting a flat "tolerance
+        # 0.07" while a joint is actually gated at 0.09 sends the next person
+        # chasing the wrong number, which is how the 0.0712-vs-0.07 abort read as
+        # a random fluke rather than a threshold sitting in the wrong place.
+        applied = {n: max(settle_tolerance, ARM_SETTLE_TOLERANCE_PER_JOINT[n])
+                   for n in target
+                   if ARM_SETTLE_TOLERANCE_PER_JOINT.get(n, 0.0) > settle_tolerance}
+        tol_note = (f"{settle_tolerance} rad, overridden {applied}"
+                    if applied else f"{settle_tolerance} rad")
         self.get_logger().error(
             f"{label} goal: ACCEPTED by the controller but /joint_states never "
-            f"converged within {timeout_sec}s (tolerance {settle_tolerance} rad).\n"
+            f"converged within {timeout_sec}s (tolerance {tol_note}).\n"
             f"  per-joint error (current - target): {errors}\n"
             f"  max movement of ANY joint during the whole wait: "
             f"{max_excursion:.4f} rad\n"
@@ -1777,16 +1871,17 @@ def make_orientation_constraint(link_name, frame_id, qx, qy, qz, qw,
     return constraint
 
 
-def make_grasp_pose(x, y, z, block_yaw_deg=0.0):
+def make_grasp_pose(x, y, z, block_yaw_deg=0.0, holding_block=False):
     """Pose for Cartesian waypoints: position + the downward grasp orientation,
     yawed to meet a block rotated block_yaw_deg (0.0 = the fixed grasp yaw), and
-    tipped outward by SAG_PRECOMP_DEG to cancel the arm's gravity sag."""
+    tipped against the arm's gravity sag -- see SAG_PRECOMP_RADIAL_DEG."""
     pose = Pose()
     pose.position.x = x
     pose.position.y = y
     pose.position.z = z
     (pose.orientation.x, pose.orientation.y,
-     pose.orientation.z, pose.orientation.w) = grasp_quat_for(block_yaw_deg, x, y)
+     pose.orientation.z, pose.orientation.w) = grasp_quat_for(
+        block_yaw_deg, x, y, holding_block)
     return pose
 
 
@@ -2074,7 +2169,8 @@ def go_home(io_client):
     return io_client.arm_execute(joint_trajectory)
 
 
-def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0):
+def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
+                holding_block=False):
     """Joint-space plan to a target position. Uses deterministic seeded IK
     when possible; falls back to OMPL constraint sampling if all seeds fail.
 
@@ -2088,7 +2184,7 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0):
     disagree the "straight down" Cartesian descent has to rotate the wrist while
     translating, which is exactly the sideways nudge that descent is careful to
     avoid."""
-    qx, qy, qz, qw = grasp_quat_for(block_yaw_deg, x, y)
+    qx, qy, qz, qw = grasp_quat_for(block_yaw_deg, x, y, holding_block)
 
     ik_state = None
     if lock_orientation:
@@ -2124,7 +2220,7 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0):
 
 
 def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=False,
-                      block_yaw_deg=0.0):
+                      block_yaw_deg=0.0, holding_block=False):
     """Straight-line Cartesian move from the current pose to (x, y, z),
     holding the fixed downward grasp orientation throughout.
 
@@ -2139,19 +2235,19 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
     joint_values = io_client.current_joint_positions(list(HOME_RADIANS.keys()))
     print(f"[cartesian] joints at start: {[round(v, 4) for v in joint_values.values()]}")
 
-    target = make_grasp_pose(x, y, z, block_yaw_deg)
+    target = make_grasp_pose(x, y, z, block_yaw_deg, holding_block)
 
     # The PATH constraint must carry the same yaw as the target pose. Leave it
     # at the fixed grasp yaw while descending onto a rotated block and the two
     # disagree by exactly block_yaw_deg, which shows up as a Cartesian solve
-    # that falls short of min_fraction for no visible reason.
-    # Carries the sag pre-compensation for the same reason it carries the yaw: the
-    # path constraint and the target pose must describe the SAME orientation, or
-    # the solve falls short of min_fraction with no visible cause.
+    # that falls short of min_fraction for no visible reason. Same argument for
+    # the sag pre-compensation: constraint and target must describe the SAME
+    # orientation, or the solve falls short of min_fraction with no visible cause.
     path_constraints = Constraints()
     path_constraints.orientation_constraints.append(
         make_orientation_constraint(
-            POSE_LINK, PLANNING_FRAME, *grasp_quat_for(block_yaw_deg, x, y),
+            POSE_LINK, PLANNING_FRAME,
+            *grasp_quat_for(block_yaw_deg, x, y, holding_block),
             z_tolerance=0.15)
     )
 
@@ -2173,7 +2269,8 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
         if not allow_fallback:
             return False
         print(f"[cartesian] falling back to joint-space move_arm_to for ({x}, {y}, {z})")
-        return move_arm_to(io_client, x, y, z, block_yaw_deg=block_yaw_deg)
+        return move_arm_to(io_client, x, y, z, block_yaw_deg=block_yaw_deg,
+                           holding_block=holding_block)
 
     print(f"Executing Cartesian move to ({x}, {y}, {z}) (fraction={fraction:.2f})...")
 
@@ -2295,15 +2392,20 @@ def main():
         ("Let the settle close out the grasp residual",
          lambda: settle_pause(io_client, "the grasp")),
         ("Close gripper (grasp, stop on contact)", lambda: gripper_close_until_contact(io_client)),
+        # holding_block=True from here until the release: a loaded gripper sags
+        # measurably more than an empty one, and the place descent is where that
+        # showed up as ~2 deg of extra tilt versus the pick descent.
         ("Retreat after grasp (Cartesian)",
-         lambda: cartesian_move_to(io_client, px, py, hover_z(pz), allow_fallback=True)),
+         lambda: cartesian_move_to(io_client, px, py, hover_z(pz), allow_fallback=True,
+                                   holding_block=True)),
         ("Move to pre-place (above place)",
-         lambda: move_arm_to(io_client, lx, ly, hover_z(lz))),
+         lambda: move_arm_to(io_client, lx, ly, hover_z(lz), holding_block=True)),
         ("Descend to place pose (Cartesian)",
-         lambda: cartesian_move_to(io_client, lx, ly, lz)),
+         lambda: cartesian_move_to(io_client, lx, ly, lz, holding_block=True)),
         ("Let the settle close out the place residual",
          lambda: settle_pause(io_client, "the release")),
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
+        # Block released: back to the empty-gripper pre-compensation.
         ("Retreat after release (Cartesian)",
          lambda: cartesian_move_to(io_client, lx, ly, hover_z(lz), allow_fallback=True)),
         ("Return to home pose (final)", lambda: go_home(io_client)),

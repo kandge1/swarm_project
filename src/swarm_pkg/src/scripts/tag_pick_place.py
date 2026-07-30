@@ -141,8 +141,8 @@ def camera_offset_world(block_yaw_deg, x=None, y=None):
     frame; it does not bias the answer.
 
     Depends on the grasp yaw because the whole tool assembly rotates with it, and
-    on the target position because SAG_PRECOMP_DEG tips the whole assembly outward
-    by ~4.6 deg. That tip swings the lens by 40 mm * sin(4.6 deg) = 3.2 mm, which
+    on the target position because the sag pre-compensation tips the whole assembly
+    off vertical. That tip swings the lens by 40 mm * sin(~4 deg) = ~3 mm, which
     is small next to the framing margin but free to get right -- pass the target
     and the offset matches the orientation actually commanded.
     """

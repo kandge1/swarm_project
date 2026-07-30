@@ -263,12 +263,23 @@ aborted — precisely the failure Test 1 exists to predict.
 
 ## The grasp tilt — diagnosed, fix in progress (2026-07-29)
 
-> **Status.** The *cause* is settled and proven (four pitch joints undershooting, below). The
-> *fix* is not. One approach was tried on hardware and failed outright — see
-> [Fix 2](#fix-2--the-biased-settle-re-send-tried-failed-disabled), which is worth reading
-> before proposing anything that nudges a stationary joint. The current approach
-> ([Fix 3](#fix-3--sag-pre-compensation-in-task-space-current-approach)) is predicted but
-> unverified. Best measured tilt so far: **4.189°**.
+> **Status.** The *cause* is settled and proven (four pitch joints undershooting, below). One
+> fix was tried on hardware and failed outright — see
+> [Fix 2](#fix-2--the-biased-settle-re-send-tried-failed-disabled), worth reading before
+> anyone proposes nudging a stationary joint again. Task-space pre-compensation
+> ([Fix 3](#fix-3--sag-pre-compensation-in-task-space-current-approach)) works and is on
+> hardware.
+>
+> | | tilt | note |
+> |---|---|---|
+> | original | 4.19° / 5.05° | grasp / place |
+> | radial-only pre-comp | **2.02° / 2.32°** | measured, 2 runs |
+> | + tangential + payload | 0.2–0.5° predicted | **awaiting hardware** |
+>
+> The end goal is an assembly system building structures out of blocks, so the target is ~1 mm
+> and ~1°, not "looks straight". At the 0.056 m flange-to-jaw lever, **1° of residual tilt =
+> 1.0 mm of jaw offset**, and a 30 mm block tilted 1° has its top face 0.5 mm out of level —
+> which compounds per course when stacking. That is why this is worth this much effort.
 
 The long-standing "the gripper is always visibly tilted when it grasps" complaint.
 Previously concluded to be **mechanical and unfixable** — sag under the camera+gripper mass,
@@ -400,24 +411,117 @@ Verified before hardware: commanded tilt exactly 4.6000° with `lean · radial =
 (purely outward) at both poses; quaternion stays unit; identity when `SAG_PRECOMP_DEG = 0`.
 IK reaches both pre-compensated targets with residual ~1e-11, all joints inside limits.
 
-**Predicted: 4.189° → 0.41° at the grasp pose, 5.049° → 0.45° at the place pose.** The residual
-is just the 0.86° grasp-vs-place spread that one shared constant cannot cover.
+**Predicted: 4.189° → 0.41° at the grasp pose, 5.049° → 0.45° at the place pose.**
 
-### Not yet verified on hardware
+#### Hardware result: radial worked, and exposed the other half of the problem
 
-The prediction above assumes the sag at the *pre-compensated* pose equals the sag measured at
-the uncompensated one. It may not: the pre-compensated IK solution reconfigures the wrist
-rather than nudging it (`joint5_to_joint4` 9.75° → 26.71° at the grasp pose), which changes the
-gravity moment arms. This is a first-order correction and may want one iteration.
+Three runs (run 2 aborted early, unrelated — relaunching both launch files cleared it).
+Measured tilt **4.19° → 2.02°/2.25°** at the grasp and **5.05° → 2.32°/2.20°** at the place.
+Real, repeatable, and not enough. Decomposing into the two horizontal components explains why:
 
-- Stop the arm in the grasp pose, capture `/joint_states`, re-run the FK check. **Number to
-  beat: 4.189°.**
-- If it lands short of vertical (still leaning inward), raise `SAG_PRECOMP_DEG`; if it
-  overshoots (now leaning *outward*), lower it. The sign of `lean · radial` says which.
-- If grasp and place need materially different values, `SAG_PRECOMP_DEG` becomes a function of
-  reach rather than a constant — the data to fit it is already in the table above.
-- No `bias[...]` lines should appear at all now. If any do, `SETTLE_BIAS_ENABLED` did not take,
-  which means `mycobot_hardware` was not rebuilt on the robot.
+| pose | tilt | radial | tangential |
+|---|---|---|---|
+| grasp, before | 4.19° | −3.81 | −1.74 |
+| place, before | 5.05° | −4.65 | −1.96 |
+| grasp, run 1 | 2.02° | **+1.54** | −1.30 |
+| grasp, run 3 | 2.25° | **+1.62** | −1.56 |
+| place, run 1 | 2.32° | **−0.57** | −2.25 |
+| place, run 3 | 2.20° | **−0.51** | −2.14 |
+
+1. **Radial went from −3.8/−4.7 to roughly zero.** The mechanism is sound: pre-compensation
+   during a trajectory does defeat the dead band, exactly as the Fix-2 algebra predicted it
+   would.
+2. **Tangential was never corrected and is now the dominant residual** (−1.7 → −1.3, −2.0 →
+   −2.2). It is negative in all eight measurements, so it is every bit as systematic as radial
+   was. Correcting one axis of a two-axis error just leaves the other one standing.
+3. **This is why place looks worse than pick, and why it reads as the tilt "amplifying" through
+   the sequence.** It does not amplify. Place has the larger tangential term (−2.2 vs −1.3) and
+   always did — compare the two "before" rows, where the same gap is already present.
+
+The radial residuals also disagree in a physically meaningful way rather than randomly: grasp
+**overshot** (+1.54, wants less) while place **undershot** (−0.57, wants more), and the place
+descent is the one **holding a block**. More end mass → more sag. So the model gains a payload
+term rather than two unrelated per-pose constants.
+
+Fitted for zero residual using the measured radial response (1.16× at grasp, 0.89× at place —
+a commanded degree does not land as a degree):
+
+```
+SAG_PRECOMP_RADIAL_DEG             = 3.27   # empty
+SAG_PRECOMP_TANGENTIAL_DEG         = 1.30   # empty
+SAG_PRECOMP_PAYLOAD_RADIAL_DEG     = 1.97   # added while holding
+SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG = 0.95   # added while holding
+```
+
+`holding_block` is threaded through `make_grasp_pose`, `move_arm_to` and `cartesian_move_to`,
+set True from the grasp close until the release. Verified in isolation: the composed quaternion
+reproduces the requested radial/tangential lean to 0.006°, stays unit-norm, and returns
+identity both when disabled and on the base axis.
+
+#### Unrelated bug the same session surfaced: the aborting run was not a fluke
+
+One of the three runs aborted at "Move to pre-grasp" with
+`joint6output_to_joint6: -0.0712 rad` against `ARM_SETTLE_TOLERANCE = 0.07` — **failing by
+0.0012 rad = 0.07°**, with every other joint inside 0.022. Re-running worked, which is exactly
+what makes it look random. It is not: `joint6output_to_joint6` carries the largest dead-band
+residual of the six (+3.06° in earlier logs, 4.08° here), so it sits on the threshold and will
+keep landing either side of it. Test 1's `extended` posture failed the same way, by 0.07°
+against a 3.0° gate.
+
+Raising the global tolerance would be wrong — 0.07 rad is already ~1 cm at the fingertips, and
+the pitch joints are precisely where that error becomes the grasp tilt. But `joint6output` is
+**vertical-axis**, contributing exactly 0.000° of tilt; its error is gripper *yaw*, not lean. So
+it earns a looser gate on a real distinction rather than a convenient one:
+`ARM_SETTLE_TOLERANCE_PER_JOINT = {"joint6output_to_joint6": 0.09}`, applied only where it
+loosens (so the gripper's explicit 0.05 is never silently widened). The timeout message now
+names the override, because reporting a flat "tolerance 0.07" while a joint is gated at 0.09 is
+what made this read as a fluke in the first place.
+
+### Next hardware check
+
+- Stop the arm in each descent, capture `/joint_states`, decompose. **Numbers to beat: 2.02°
+  grasp, 2.32° place.** Target ≤ 0.5° both.
+- Read the *signed components*, not just total tilt — total tilt cannot tell you which of the
+  four constants to move. Residual radial → adjust `SAG_PRECOMP_RADIAL_DEG` (or the payload
+  term if only the place pose is off); residual tangential → the tangential pair.
+- No `bias[...]` lines should appear at all. If any do, `SETTLE_BIAS_ENABLED = False` did not
+  take, which means `mycobot_hardware` was not rebuilt **on the robot**.
+
+### Why this model still will not reach 1 mm, and what will — Stage 0b.4
+
+The four constants above are fitted to **two positions, both at 0.249 m reach**, with **one
+block mass**. Reach and height dependence are completely unmeasured. Stage 1 onward grasps at
+arbitrary positions inside the zone and Stage 3 introduces 24 blocks of differing mass, so this
+model is being asked to extrapolate in three directions it has no data in. It is the right fix
+for the two hardcoded poses and a placeholder everywhere else.
+
+Two ways forward, and the second is much better:
+
+1. **Calibration map.** Sweep tilt over a grid of (reach, height, payload), fit radial and
+   tangential as functions of those. Straightforward, but it is a lot of robot time, it goes
+   stale whenever the tool or a servo changes, and it is still open-loop — nothing detects when
+   it has drifted.
+
+2. **Measure the tilt in situ from the tags.** The wrist camera is *rigid to the flange*, so
+   the flange's orientation relative to the zone plane is recoverable from the AprilTag
+   homography that Stage 1 already computes at every hover. A camera perfectly perpendicular to
+   the mat images the tag square as a square; any tilt turns it into a trapezoid, and the
+   asymmetry gives both the direction and the magnitude. So the arm can measure its own tilt,
+   at the actual pose, on every pick — no model, no map, and self-correcting if anything
+   changes.
+
+   This is `TESTS.md:63`'s "external metrology" applied to orientation rather than position,
+   and it is the same move that already makes the position loop trustworthy: `camera_in_zone()`
+   converges on where the camera *actually* went rather than where the encoders claim.
+
+   **What it needs:** camera intrinsics, to decompose a homography into rotation. Currently
+   uncalibrated — but `camera.launch.py:14-18` already has a `camera_info_url` argument sitting
+   unused, and a one-off checkerboard calibration populates it. That is the single highest-value
+   unblock for the assembly goal, because it converts tilt from something modelled into
+   something measured.
+
+   Ordering note: this supersedes the constants above rather than extending them, so do not
+   invest in the calibration map first.
 
 ---
 
