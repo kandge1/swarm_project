@@ -61,12 +61,12 @@ URDF_JOINT_NAMES = [
 # Manufacturer joint limits in degrees. By default, each joint receives five
 # evenly spaced test values spanning its own full range.
 JOINT_LIMITS_DEG = {
-    1: (-167.0, 167.0),
-    2: (-75.0, 90.0),
-    3: (-90.0, 90.0),
-    4: (-90.0, 90.0),
-    5: (-154.0, 154.0),
-    6: (-179.0, 179.0),
+    1: (-170.0, 170.0),
+    2: (-135.0, 140.0),
+    3: (-150.0, 150.0),
+    4: (-145.0, 135.0),
+    5: (-170.0, 170.0),
+    6: (-180.0, 180.0),
 }
 
 # Robot communication settings are fixed here, so they do not need to be
@@ -353,13 +353,53 @@ def generate_theoretical_grid(fk: UrdfFK, joint_angle_sets: List[List[float]], o
     the physical robot.
     """
     path = os.path.join(output_dir, "theoretical_workspace_5x6.csv")
+
+    # Store every calculated XYZ value so the minimum, maximum, and total
+    # span of the approximate workspace can be reported after the grid runs.
+    x_values = []
+    y_values = []
+    z_values = []
+
     with open(path, "w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(JOINT_NAMES + ["x_mm", "y_mm", "z_mm"])
         for pose in itertools.product(*joint_angle_sets):
             pose = list(pose)
             fk.validate(pose)
-            writer.writerow(pose + list(xyz_mm(fk.calculate(pose))))
+
+            x_mm, y_mm, z_mm = xyz_mm(fk.calculate(pose))
+            writer.writerow(pose + [x_mm, y_mm, z_mm])
+
+            x_values.append(x_mm)
+            y_values.append(y_mm)
+            z_values.append(z_mm)
+
+    x_min = min(x_values)
+    x_max = max(x_values)
+    y_min = min(y_values)
+    y_max = max(y_values)
+    z_min = min(z_values)
+    z_max = max(z_values)
+
+    print("\n========== APPROXIMATE ROBOT WORKSPACE ==========")
+    print(f"X range: {x_min:.2f} mm to {x_max:.2f} mm")
+    print(f"Y range: {y_min:.2f} mm to {y_max:.2f} mm")
+    print(f"Z range: {z_min:.2f} mm to {z_max:.2f} mm")
+
+    print("\nWorkspace spans:")
+    print(f"X span: {x_max - x_min:.2f} mm")
+    print(f"Y span: {y_max - y_min:.2f} mm")
+    print(f"Z span: {z_max - z_min:.2f} mm")
+
+    limits_path = os.path.join(output_dir, "workspace_limits.csv")
+    with open(limits_path, "w", newline="") as limits_file:
+        limits_writer = csv.writer(limits_file)
+        limits_writer.writerow(["axis", "minimum_mm", "maximum_mm", "span_mm"])
+        limits_writer.writerow(["X", x_min, x_max, x_max - x_min])
+        limits_writer.writerow(["Y", y_min, y_max, y_max - y_min])
+        limits_writer.writerow(["Z", z_min, z_max, z_max - z_min])
+
+    print("Workspace limits saved:", limits_path)
     return path
 
 
