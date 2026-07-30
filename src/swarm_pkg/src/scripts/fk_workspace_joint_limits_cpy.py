@@ -61,12 +61,12 @@ URDF_JOINT_NAMES = [
 # Manufacturer joint limits in degrees. By default, each joint receives five
 # evenly spaced test values spanning its own full range.
 JOINT_LIMITS_DEG = {
-    1: (-170.0, 170.0),
-    2: (-135.0, 140.0),
-    3: (-150.0, 150.0),
-    4: (-145.0, 135.0),
-    5: (-170.0, 170.0),
-    6: (-180.0, 180.0),
+    1: (-167.0, 167.0),
+    2: (-75.0, 90.0),
+    3: (-90.0, 90.0),
+    4: (-90.0, 90.0),
+    5: (-154.0, 154.0),
+    6: (-179.0, 179.0),
 }
 
 # Robot communication settings are fixed here, so they do not need to be
