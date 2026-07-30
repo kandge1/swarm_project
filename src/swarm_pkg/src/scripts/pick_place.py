@@ -148,10 +148,21 @@ ARM_SETTLE_TOLERANCE = 0.07
 # bridge will not attempt any correction until the command has been UNCHANGED
 # for this long. See settle_pause().
 SETTLE_QUIET_PERIOD_SEC = 1.0
-# Extra time on top, for the settle to actually issue its move and for the arm
-# to execute it. SETTLE_RESEND_INTERVAL_SEC in the bridge is 0.5s, and a small
-# biased correction is a short move, so one interval plus change is enough.
-SETTLE_ACT_MARGIN_SEC = 1.0
+# Extra time on top, for the settle to actually issue its moves and for the arm
+# to execute them.
+#
+# Was 1.0s, raised to 3.0s on 2026-07-29. The bridge only re-sends every
+# SETTLE_RESEND_INTERVAL_SEC = 0.5s and cannot start until the 1.0s quiet period
+# has elapsed, so a 1.0s margin allowed exactly ONE correction attempt -- the
+# hardware logs show "settle re-send 1/20" and never a 2/20. One attempt is not
+# enough when the first one can land inside the servo dead band and do nothing,
+# which is what happened: the gain escalation past attempt 1 was unreachable.
+#
+# 3.0s allows roughly 6 attempts, so the escalating gain can actually escalate.
+# The bridge stops early on its own once the error is inside tolerance
+# (SETTLE_TOLERANCE_RAD) or after SETTLE_MAX_STALLED attempts with no progress,
+# so this is an upper bound on the wait, not a fixed cost.
+SETTLE_ACT_MARGIN_SEC = 3.0
 
 
 def hover_z(target_z):

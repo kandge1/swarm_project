@@ -206,7 +206,34 @@ SETTLE_MAX_STALLED = 3
 # The bias is capped hard. It is an open-loop overshoot by construction, and an
 # uncapped one driven by a single bad reading would fling the arm.
 SETTLE_BIAS_ENABLED = True
-SETTLE_BIAS_GAIN = [1.0, 1.5, 2.0]   # by attempt; held at the last value after
+
+# PER-JOINT gain, not one global value. Set from Test 1's staircase (2026-07-29),
+# and the first hardware run with the bias live is what forced the distinction.
+#
+# That run biased every joint correctly, with the right signs, and the arm did
+# not move AT ALL: the bias commanded for the grasp was
+# [+1.03, +1.89, +0.51, +1.89, +0.79, +3.06] deg and the residual left at the end
+# of the move was [+1.03, +1.90, +0.51, +1.89, +0.79, +3.06] -- identical. Tilt
+# went 4.442 -> 4.372 deg, i.e. nothing. A gain of 1.0 is INSIDE the dead band
+# for these joints, exactly as Test 1's k=1 column said it would be (pitch joints
+# median |err|/|e| = 1.00, stuck 53% and 58% of the time, moving reliably only at
+# k=2).
+#
+# But a single larger gain is wrong too, because the joints genuinely differ:
+#   index 0 (joint2_to_joint1, base yaw) -- Test 1 median |err|/|e|: k=1 0.07,
+#       k=2 0.94, k=3 1.87. Gain 1.0 is near-perfect and 2.0 OVERSHOOTS badly.
+#   indices 1, 2 (joint3_to_joint2, joint4_to_joint3) -- k=1 1.00 (does not
+#       move), k=2 mostly moves. Gain 2.0.
+#   indices 3, 4, 5 -- NOT swept by Test 1 (it covered joints 0-2 only). Treated
+#       as pitch-like at 2.0 because 3 and 4 are the remaining horizontal-axis
+#       joints and behave like 1-2 in the runs logged so far. This is the one
+#       row here that is inference rather than measurement.
+SETTLE_BIAS_GAIN_PER_JOINT = [1.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+
+# Escalation MULTIPLIER on top of the per-joint gain, by attempt, for the case
+# where even the tuned gain leaves the joint short. Starts at 1.0 so the first
+# attempt is exactly the measured gain and nothing more.
+SETTLE_BIAS_GAIN = [1.0, 1.25, 1.5]  # by attempt; held at the last value after
 SETTLE_MAX_BIAS_RAD = 0.070          # 4.0 deg. Test 1's worst single-joint
                                      # residual was 2.78 deg, so this allows a
                                      # full correction plus margin and nothing
@@ -225,6 +252,20 @@ SETTLE_MAX_BIAS_RAD = 0.070          # 4.0 deg. Test 1's worst single-joint
 # 0.004 rad = 0.23 deg, a bit under 3x the 0.0015 rad readback quantum: small
 # enough to catch every joint that matters, large enough not to chase noise.
 SETTLE_BIAS_MIN_RAD = 0.004
+
+# Speed for the corrective move itself, rather than self.speed (which runs up to
+# 50). Added 2026-07-29: the first run with the bias live produced a visible
+# lurch at the end of every move, and the log says exactly why -- a +1.95 deg
+# correction commanded at speed 50. Before biasing, settle re-sent the identical
+# value and the arm ignored it, so the same code path was felt as nothing at all;
+# making it work is what made it noticeable.
+#
+# Not slower than MIN_SPEED. That floor is there because "10 is below what this
+# arm needs to break static friction" -- and a correction that cannot break
+# friction is the exact failure this whole mechanism exists to fix, so undershoot
+# on speed would quietly reintroduce it. 25 halves the lurch and stays on the
+# right side of that line; a ~2 deg move at 25 is still quick.
+SETTLE_SPEED = MIN_SPEED
 # Joint limits, radians, in JOINT_ORDER. From the URDF -- biasing commands the
 # arm PAST its target, so without clamping a target already near a limit (e.g.
 # joint6output, which KDL likes to peg at -2.4434) could be pushed through it.
@@ -963,11 +1004,12 @@ class Bridge:
         arm_target = list(command[:6])
         bias_applied = []
         if SETTLE_BIAS_ENABLED:
-            gain = SETTLE_BIAS_GAIN[min(attempt - 1, len(SETTLE_BIAS_GAIN) - 1)]
+            escalation = SETTLE_BIAS_GAIN[min(attempt - 1, len(SETTLE_BIAS_GAIN) - 1)]
             for i in range(6):
                 residual = command[i] - measured[i]
                 if abs(residual) <= SETTLE_BIAS_MIN_RAD:
                     continue
+                gain = SETTLE_BIAS_GAIN_PER_JOINT[i] * escalation
                 bias = max(-SETTLE_MAX_BIAS_RAD,
                            min(SETTLE_MAX_BIAS_RAD, gain * residual))
                 lo, hi = JOINT_LIMITS_RAD[i]
@@ -977,9 +1019,10 @@ class Bridge:
                     f"{JOINT_ORDER[i]} {math.degrees(biased - command[i]):+.2f}deg")
 
         arm_degrees = [math.degrees(p) for p in arm_target]
+        settle_speed = SETTLE_SPEED if bias_applied else self.speed
         try:
             if arm_error > SETTLE_TOLERANCE_RAD:
-                self._send_angles(arm_degrees, self.speed)
+                self._send_angles(arm_degrees, settle_speed)
             if gripper_needs_settle:
                 self._set_gripper_value(gripper_rad_to_value(command[6]), self.speed)
         except Exception as exc:
@@ -1005,7 +1048,7 @@ class Bridge:
             print(f"[mycobot_bridge] TIMING settle re-send {attempt}/"
                   f"{SETTLE_MAX_RESENDS}: still short by {', '.join(which)} rad "
                   f"(> {SETTLE_TOLERANCE_RAD}), re-commanding at speed "
-                  f"{self.speed}{bias_note}")
+                  f"{settle_speed}{bias_note}")
             if gave_up:
                 print(f"[mycobot_bridge] TIMING settle giving up: {error:.4f} rad "
                       f"error stopped improving over {SETTLE_MAX_STALLED} attempts "
