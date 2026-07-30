@@ -32,18 +32,32 @@ sudo apt install ros-jazzy-rmw-cyclonedds-cpp
 sudo apt install ros-galactic-rmw-cyclonedds-cpp
 ```
 
-**Add to your terminal session (both machines, each time you open a new terminal):**
+**Add to your terminal session, each time you open a new terminal. The config
+FILENAME differs per machine -- Cyclone DDS behaves differently enough between
+the robot's Galactic build and mars's Jazzy build that the settings are split
+into two files (see `cyclone_dds_integration_log.md`). Use `cyclonedds.xml`
+with no suffix and it will not exist as valid config for either machine.**
+
+On the robot (Galactic):
 ```bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
 ```
 
-Or add to your shell's `.bashrc` / `.zshrc` to persist across sessions:
+On mars (Jazzy):
+```bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_jazzy.xml
+```
+
+Or add the matching block to your shell's `.bashrc` / `.zshrc` (per machine) to
+persist across sessions -- e.g. on the robot:
 ```bash
 echo 'export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp' >> ~/.bashrc
 echo 'export ROS_DOMAIN_ID=42' >> ~/.bashrc
-echo 'export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml' >> ~/.bashrc
+echo 'export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml' >> ~/.bashrc
 ```
 
 Then reload: `source ~/.bashrc`
@@ -193,9 +207,17 @@ cd ~/swarm_project
 source /opt/ros/galactic/setup.bash
 
 # Set DDS environment (must be done before ros2_control starts)
+# NOTE: cyclonedds_galactic.xml, not cyclonedds.xml -- the config was split
+# per-distro (see cyclone_dds_integration_log.md); cyclonedds.xml is a stale
+# pre-split file that stays orphaned in install/ once colcon has ever built it,
+# because colcon does not clean install/ artifacts whose source was deleted.
+# It is also not valid XML (a "--" inside an XML comment body, illegal), so
+# pointing at it makes ros2_control_node and robot_state_publisher crash on
+# startup with "can't open configuration file" -- rmw_create_node then fails
+# and every controller spawner retries against a domain that never formed.
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
 
 colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
 source install/setup.bash
@@ -257,10 +279,12 @@ that plugin, only `ros2_control_node` does, and that stays on the robot).
 ```bash
 cd ~/swarm_project
 source /opt/ros/galactic/setup.bash
-# DDS env already in .bashrc -- skip these exports if so:
+# DDS env already in .bashrc -- skip these exports if so. If .bashrc still
+# says cyclonedds.xml (no _galactic suffix), fix it there too -- see the note
+# in Terminal 1 of the split-terminal walkthrough above.
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
 
 colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
 source install/setup.bash
@@ -274,7 +298,7 @@ source /opt/ros/jazzy/setup.bash
 # DDS env already in .bashrc -- skip these exports if so:
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_jazzy.xml
 
 colcon build --packages-skip mycobot_hardware
 source install/setup.bash
@@ -435,7 +459,10 @@ python3 zone_view.py /tmp/zone.png --method otsu --write /tmp/annotated.png
 │   │   ├── package.xml
 │   │   ├── CMakeLists.txt
 │   │   └── config/
-│   │       └── cyclonedds.xml   # Cyclone DDS config (multicast disabled)
+│   │       ├── cyclonedds_galactic.xml   # DDS config for the robot (Galactic)
+│   │       └── cyclonedds_jazzy.xml      # DDS config for mars (Jazzy) -- the
+│   │                                     #   two differ; see cyclone_dds_
+│   │                                     #   integration_log.md for why
 │   │
 │   └── swarm_interfaces/        # Service defs shared Pi <-> mars
 │       ├── package.xml          # MUST be built on BOTH machines
@@ -580,7 +607,7 @@ On mars (workstation), in one terminal:
 source ~/swarm/swarm_project/install/setup.bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_jazzy.xml
 
 # Run a simple talker
 ros2 run demo_nodes_cpp talker
@@ -592,7 +619,7 @@ On the robot, in another terminal:
 source ~/swarm_project/install/setup.bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds.xml
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
 
 # Echo the topic
 ros2 topic echo /chatter
@@ -612,6 +639,11 @@ If it doesn't work:
 - Check that both machines can ping each other (not multicast, regular ICMP)
 - Confirm `ros-jazzy-rmw-cyclonedds-cpp` is installed on mars
 - Confirm `ros-galactic-rmw-cyclonedds-cpp` is installed on the robot
-- Check the IPs in `cyclonedds.xml` are correct (mars: 172.27.89.157,
-  robot: 172.30.6.165)
+- Check you are pointing at the right FILE for this machine:
+  `cyclonedds_galactic.xml` on the robot, `cyclonedds_jazzy.xml` on mars.
+  Plain `cyclonedds.xml` is a stale pre-split artifact -- if `ros2 pkg prefix
+  swarm_network`'s install dir still has one, it is orphaned build output, not
+  live config, and it is not even valid XML. Safe to `rm` it.
+- Check the IPs in that file are correct (mars's address changes when its DHCP
+  lease renews -- see `PROJECT_CONTEXT.md`; robot: 172.30.6.165)
 
