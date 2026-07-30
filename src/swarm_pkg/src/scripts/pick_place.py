@@ -223,6 +223,70 @@ DEFAULT_BLOCK_SIZE = 0.02
 GRIPPER_OPEN = 0.15    # matches URDF joint upper limit
 GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
 
+# ---------------------------------------------------------------------------
+# WHY A LEVEL FLANGE CAN STILL HOLD THE BLOCK AT AN ANGLE
+# ---------------------------------------------------------------------------
+# Recorded 2026-07-29 after the sag fix landed. /joint_states-derived flange tilt
+# was 0.50 deg at the grasp and 0.19 deg at the place -- and the held block was
+# still visibly tilted, more so at the place. Both observations are correct. They
+# measure different things, and the difference is the point:
+#
+#   sag   -> the FLANGE is not vertical. Pose-dependent, visible in
+#            /joint_states, fixed by SAG_PRECOMP_* (4.19 -> 0.50 deg, verified).
+#   this  -> the flange IS vertical and the BLOCK is not. Everything past the
+#            last encoder. Completely invisible to /joint_states, so no amount of
+#            joint-space work can see it, let alone fix it.
+#
+# A theory that was WRONG, written down so it is not re-derived: the gripper is
+# angular, every finger joint being revolute about one axis, and that axis is
+# HORIZONTAL in world at both poses ([-0.025, +0.9997, -0.001] at the grasp),
+# so pad swing would tilt the block degree for degree. It does not. The mimic
+# tags make it a parallelogram linkage --
+#     gripper_left3_to_gripper_left1  mimic gripper_controller x-1.0
+# -- so gripper_left3 turns +theta and the pad turns -theta, netting exactly
+# zero. Confirmed by FK: pad rotation 0.000 deg at every point in the travel
+# (0.135, 0.0, -0.2325, -0.60). The pads translate. They never rotate.
+#
+# What the same check DID turn up, and what to investigate first: at the logged
+# contact point (gripper_controller = -0.2325) the two pad links sit ~69 mm
+# apart, against a 30 mm block. And `effort` reads 0.000 on every line of every
+# log, so gripper_close_until_contact has only jaw POSITION LAG to work with --
+# "CONTACT: jaw trailing its command by 0.0675 rad" is as consistent with the
+# linkage binding as with the block. If contact is firing early, the block is
+# held SLACK, which would explain a tilt that is worse at the place pose than the
+# pick pose: a loose block swings and re-settles during the transit between them.
+# A rigid mount error, by contrast, would be identical at both.
+#
+# THE OTHER CANDIDATE is a real mount offset: the URDF reaches the gripper via
+# two hand-authored right angles,
+#     joint6output_to_camera_flange   rpy = "1.5708 1.5708 0"
+#     camera_flange_to_gripper_base   rpy = "0 1.5708 1.5708"
+# and if the physical mount does not match them, "flange vertical" and "jaws
+# vertical" differ by a constant -- which is exactly the original complaint that
+# the tilt "is always the same, always very consistently that angle, and never
+# goes away".
+#
+# The two are distinguished by one 5-second test: grip a block, then try to move
+# it by hand. If it shifts, the grip is slack (fix the contact detection, not the
+# geometry). If it is rock solid and still tilted, it is the mount, and the
+# constants below correct it.
+#
+# These are a TOOL-FRAME correction, and that frame matters. The error is fixed
+# relative to the gripper, so it must rotate with the gripper; SAG_PRECOMP_* is a
+# world-frame effect and pre-multiplies instead. Applying a tool-frame error in
+# the radial frame would cancel it at one pose and double it at the pose 180 deg
+# opposite -- which is worth knowing, because grasp and place ARE ~180 deg apart
+# here, and that is one candidate explanation for the pick/place asymmetry.
+#
+# MEASURING THEM: put the arm at the grasp pose, then sight the jaw faces against
+# vertical from the front and from the side (phone level app against a jaw face
+# is enough). Adjust the axis that matches the direction of lean; if the tilt
+# doubles instead of vanishing, flip the sign.
+#
+# Both 0.0 = disabled, exactly the behaviour before this was added.
+GRIPPER_MOUNT_TILT_X_DEG = 0.0   # about the flange's local X
+GRIPPER_MOUNT_TILT_Y_DEG = 0.0   # about the flange's local Y
+
 # gripper_controller's URDF effort limit is 1000 (an unset-default value, not
 # a real spec), so nothing in sim stops the gripper from driving straight
 # through GRIPPER_CLOSED regardless of what's between the fingers -- it'll
@@ -705,6 +769,16 @@ def grasp_quat_for(block_yaw_deg=0.0, x=None, y=None, holding_block=False):
         base = (GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
     else:
         base = gripper_yaw_quat(GRIPPER_YAW_DEG + block_yaw_deg)
+    # Mount tilt is constant in the TOOL frame, so it POST-multiplies -- unlike
+    # the sag correction, which is a world-frame effect and pre-multiplies. See
+    # GRIPPER_MOUNT_TILT_X_DEG for why the frame is the whole question here.
+    for axis, deg in ((0, GRIPPER_MOUNT_TILT_X_DEG), (1, GRIPPER_MOUNT_TILT_Y_DEG)):
+        if not deg:
+            continue
+        half = math.radians(deg) / 2.0
+        v = [0.0, 0.0, 0.0]
+        v[axis] = math.sin(half)
+        base = quat_multiply(base, (v[0], v[1], v[2], math.cos(half)))
     if x is None or y is None:
         return base
     # World-frame correction: pre-multiply, so it composes with the yaw rather

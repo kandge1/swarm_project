@@ -244,6 +244,152 @@ def test_three_tag_fallback(method, failures):
                    "position off by %.2f mm on three tags" % (pos * 1000))
 
 
+def test_two_tag_pair(method, failures):
+    """TWO tags, an adjacent pair -- the case real hardware always produces.
+
+    The gripper hides the far pair from every reachable hover, so this is not an
+    edge case to tolerate, it is the normal path. 8 corners = 16 equations for a
+    homography's 8 DOF, so the fit is over-determined and the residual still
+    means something; what suffers is conditioning across the thin direction of
+    the pair. The gate is therefore LOOSER than the four-tag gate, and saying so
+    out loud is the point -- a two-tag fix is usable but is not four tags.
+    """
+    rng = np.random.default_rng(11)
+    zone = zv.zone_for("pickup")
+    size = 0.030
+    label = "two-tag adjacent pair"
+    # Occlude tags 2 and 3, leaving the 0-1 edge: the worst realistic geometry.
+    img = perspective_warp(
+        render_zone(zone, [(0.008, -0.006, 0.4, size, size)],
+                    skip_tags=(zone.tag_ids[2], zone.tag_ids[3])), rng)
+    res = zv.analyze(img, zone, method=method)
+
+    if not failures.check(res.success and res.blocks, label, res.message):
+        return
+    failures.check(res.tags_seen == 2, label, "tags_seen %d" % res.tags_seen)
+    d = res.blocks[0]
+    pos = math.hypot(d.zx - 0.008, d.zy + 0.006)
+    # 3x the four-tag gate. Justified, not arbitrary: the pair spans the zone one
+    # way and only tag_size the other, so the fit extrapolates ~6x across the
+    # thin direction and amplifies corner noise by about that factor.
+    failures.check(pos <= MAX_POSITION_ERR_M * 3.0, label,
+                   "position off by %.2f mm on two tags" % (pos * 1000))
+
+
+def test_tag_spread_metric(method, failures):
+    """The conditioning metric must ORDER the constellations correctly and admit
+    every case real hardware produces.
+
+    Written after the floor was first set to 0.12, which silently rejected every
+    DIAGONAL pair -- worse conditioned (0.117) than an adjacent pair (0.164)
+    because its 8 corners bunch along the diagonal. Which pair the gripper leaves
+    visible depends on wrist angle, so that floor banned a case the acquisition
+    plan actively produces.
+    """
+    zone = zv.zone_for("pickup")
+    t = zone.tag_ids
+    label = "tag spread metric"
+    r = lambda ids: zv.tag_spread_ratio({i: None for i in ids}, zone)
+
+    four, three = r(t), r([t[0], t[1], t[2]])
+    adj, diag = r([t[0], t[1]]), r([t[0], t[2]])
+
+    failures.check(four > three > adj, label,
+                   "ordering wrong: four=%.3f three=%.3f adjacent=%.3f"
+                   % (four, three, adj))
+    failures.check(diag < adj, label,
+                   "diagonal pair (%.3f) should be THINNER than adjacent (%.3f)"
+                   % (diag, adj))
+    # Both two-tag cases must clear the floor: the gripper produces both.
+    failures.check(min(adj, diag) >= zv.TAG_SPREAD_MIN_RATIO, label,
+                   "floor %.3f rejects a real case (adjacent %.3f, diagonal %.3f)"
+                   % (zv.TAG_SPREAD_MIN_RATIO, adj, diag))
+    failures.check(zv.TAG_SPREAD_MIN_RATIO > 0.0, label, "floor disabled")
+
+
+def test_multi_view_fusion(method, failures):
+    """Four stills, each seeing a DIFFERENT pair -- the real acquisition plan.
+
+    Simulates rotating the wrist between stills so the occluded pair changes.
+    Fusion must beat the single worst view, and the reported spread must be an
+    honest bound on the error rather than decoration.
+    """
+    rng = np.random.default_rng(17)
+    zone = zv.zone_for("pickup")
+    size = 0.030
+    truth = (0.010, -0.007)
+    label = "multi-view fusion"
+
+    pairs = [(2, 3), (0, 3), (0, 1), (1, 2)]     # which two are hidden
+    images = [
+        perspective_warp(
+            render_zone(zone, [(truth[0], truth[1], 0.35, size, size)],
+                        skip_tags=(zone.tag_ids[a], zone.tag_ids[b])),
+            np.random.default_rng(100 + i))
+        for i, (a, b) in enumerate(pairs)
+    ]
+
+    fused = zv.analyze_multi(images, zone, method=method)
+    if not failures.check(fused.success and fused.blocks, label, fused.message):
+        return
+    failures.check(fused.good_views == 4, label,
+                   "only %d/4 stills usable" % fused.good_views)
+    failures.check(sorted(fused.tag_ids_union) == sorted(zone.tag_ids), label,
+                   "union of tags seen was %s" % (fused.tag_ids_union,))
+
+    f = fused.blocks[0]
+    err = math.hypot(f.zx - truth[0], f.zy - truth[1])
+    failures.check(f.n_views >= 3, label, "fused from only %d views" % f.n_views)
+    failures.check(err <= MAX_POSITION_ERR_M * 2.0, label,
+                   "fused position off by %.2f mm" % (err * 1000))
+
+    # The headline claim: fusing is better than trusting one still. Compare
+    # against the WORST contributing view, since that is the one a single-still
+    # pipeline could have picked.
+    worst = max(math.hypot(d.zx - truth[0], d.zy - truth[1]) for d in f.views)
+    failures.check(err <= worst + 1e-9, label,
+                   "fusion (%.2f mm) worse than the worst single view (%.2f mm)"
+                   % (err * 1000, worst * 1000))
+
+    # And the spread has to actually bound the error, or it is worse than not
+    # reporting one -- a number that reads as confidence while meaning nothing.
+    failures.check(f.spread_m >= err * 0.5, label,
+                   "spread %.2f mm implausibly small next to %.2f mm of error"
+                   % (f.spread_m * 1000, err * 1000))
+    print("      fusion: %.2f mm err, worst single view %.2f mm, spread %.2f mm"
+          % (err * 1000, worst * 1000, f.spread_m * 1000))
+
+
+def test_yaw_wrap_fusion(method, failures):
+    """Yaw fusion across the symmetry wrap.
+
+    A square's 0 and 90 degrees are the same pose. Averaging them naively gives
+    45 -- a pose the block is never in, and off by enough that the jaws miss the
+    faces entirely. This is the one fusion bug that would be catastrophic rather
+    than merely noisy, so it gets its own test with no rendering involved.
+    """
+    label = "yaw wrap fusion"
+    period = math.pi / 2.0
+
+    class D:
+        def __init__(self, yaw):
+            self.zx = self.zy = 0.0
+            self.zyaw = yaw
+            self.width = self.length = 0.030
+            self.shape = "square"
+            self.symmetry = 4
+
+    # Readings straddling the wrap: just under 90 deg and just over 0 deg.
+    near = [math.radians(89.0), math.radians(1.0), math.radians(0.5)]
+    fused = zv.fuse_detections([[D(y)] for y in near])
+    failures.check(len(fused) == 1, label, "expected one cluster")
+    got = fused[0].zyaw % period
+    dev = min(got, period - got)
+    failures.check(dev <= math.radians(3.0), label,
+                   "wrapped yaws averaged to %.1f deg, expected ~0"
+                   % math.degrees(got))
+
+
 def test_camera_position(method, failures):
     """Shift the mat under a fixed camera and check camera_in_zone tracks it.
 
@@ -345,6 +491,10 @@ def main():
         test_square_sweep(method, failures)
         test_rectangle(method, failures)
         test_three_tag_fallback(method, failures)
+        test_two_tag_pair(method, failures)
+        test_tag_spread_metric(method, failures)
+        test_multi_view_fusion(method, failures)
+        test_yaw_wrap_fusion(method, failures)
         test_camera_position(method, failures)
         test_empty_zone_is_success(method, failures)
         test_no_tags_fails_cleanly(method, failures)

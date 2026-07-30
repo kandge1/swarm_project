@@ -121,6 +121,46 @@ MAX_CORRECTIONS = 2                  # then abort rather than descend blind
 DETECT_SERVICE_TIMEOUT = 20.0        # s; a still plus vision on the Pi
 SETTLE_AFTER_MOVE_SEC = 0.6          # let the arm stop ringing before a still
 
+# ---------------------------------------------------------------------------
+# Multi-view acquisition
+# ---------------------------------------------------------------------------
+# The gripper hangs in front of the lens and hides the far pair of tags from
+# every hover the arm can reach, so ONE still sees 2 of the 4 tags. That fit is
+# over-determined but poorly conditioned across the thin direction of the pair
+# (zone_vision.MIN_TAGS has the arithmetic). The fix is several stills with the
+# wrist rotated between them, so a different pair is hidden each time.
+#
+# WRIST yaw, via joint6output_to_joint6, NOT a base rotation. Two reasons:
+#   - J0 has 1.83 deg of measured backlash (8.0 mm at r = 0.25 m), so rotating
+#     the base between stills would move the camera by more than the thing being
+#     measured. The wrist joint is far better behaved.
+#   - the camera sits 40 mm off the flange axis, so a wrist rotation swings the
+#     lens around the zone and changes which tags are occluded, which is exactly
+#     the effect wanted.
+#
+# The angles do NOT need to be accurate, or even known. Each still is solved
+# independently from the tags visible in it alone -- see the note above
+# zone_vision.analyze_multi. The rotation only has to CHANGE the occlusion. That
+# is what makes this robust on a robot whose encoders disagree with its links by
+# degrees (APRIL_TAGS.md, ROOT CAUSE).
+#
+# Four offsets at 90 deg is the professor's suggestion and it is a good one: it
+# guarantees every tag is visible in at least one still regardless of which pair
+# the gripper starts out hiding.
+MULTIVIEW_YAW_OFFSETS_DEG = (0.0, 90.0, 180.0, 270.0)
+
+# Give up on the multi-view pass once this many stills have produced a usable
+# homography. 4 tags across >=2 views is already enough to fuse; the remaining
+# stills cost a wrist move and ~1 s each for diminishing return.
+MULTIVIEW_ENOUGH_VIEWS = 3
+
+# Fused spread above this means the views disagree badly enough that their
+# average should not be descended on. Deliberately larger than
+# CORRECTION_CONVERGED_M: this is view-to-view disagreement about a STATIONARY
+# block, so it is pure measurement scatter, whereas the correction threshold also
+# has to absorb the arm's dead band.
+MULTIVIEW_MAX_SPREAD_M = 0.006
+
 
 def quat_to_matrix(q):
     x, y, z, w = q
@@ -241,6 +281,77 @@ class Detector:
         c, s = math.cos(self.zone_yaw), math.sin(self.zone_yaw)
         dx, dy = wx - self.zone_x, wy - self.zone_y
         return c * dx + s * dy, -s * dx + c * dy
+
+
+def _response_to_detections(response):
+    """The service's BlockDetection[] as zone_vision.Detection objects.
+
+    fuse_detections only reads zone-local fields, so the world-frame ones are
+    left out on purpose -- they are derived from the caller's zone survey and
+    would add the survey's error to a comparison between views that all share it.
+    """
+    return [zv.Detection(zx=b.zx, zy=b.zy, zyaw=b.zyaw, width=b.width,
+                         length=b.length, shape=b.shape, symmetry=b.symmetry,
+                         fill_ratio=b.fill_ratio, area_px=b.area_px, box_px=None)
+            for b in response.blocks]
+
+
+def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
+                     holding_block=False, debug_prefix=None):
+    """Several stills at different wrist yaws, fused into one answer.
+
+    Returns (fused_blocks, views_used, tag_ids_union) -- fused_blocks is a list
+    of zone_vision.FusedDetection sorted by how many views agreed on them.
+
+    A still that fails is logged and skipped rather than aborting the pass: with
+    four offsets, losing one to glare or a marginal tag still leaves plenty.
+    """
+    per_view = []
+    ids = set()
+    used = 0
+
+    for index, offset in enumerate(MULTIVIEW_YAW_OFFSETS_DEG):
+        if used >= MULTIVIEW_ENOUGH_VIEWS:
+            print("[multiview] %d usable views, skipping the remaining %d still(s)"
+                  % (used, len(MULTIVIEW_YAW_OFFSETS_DEG) - index))
+            break
+
+        yaw = base_yaw_deg + offset
+        print("\n[multiview] still %d/%d at wrist yaw %+.0f deg (offset %+.0f)"
+              % (index + 1, len(MULTIVIEW_YAW_OFFSETS_DEG), yaw, offset))
+        if not move_arm_to(io_client, x, y, z, block_yaw_deg=yaw,
+                           holding_block=holding_block):
+            print("[multiview]   move failed, skipping this view")
+            continue
+        time.sleep(SETTLE_AFTER_MOVE_SEC)
+
+        debug = ("%s_view%d.png" % (debug_prefix, index)) if debug_prefix else None
+        response = detector.detect(zone, debug_image=debug)
+        if response is None:
+            print("[multiview]   no usable homography from this view")
+            continue
+
+        used += 1
+        ids.update(response.tag_ids)
+        per_view.append(_response_to_detections(response))
+
+    if not per_view:
+        print("[multiview] NO usable view. This is a framing, focus or lighting "
+              "problem -- check that any tag is visible at all before "
+              "suspecting the geometry.")
+        return [], 0, sorted(ids)
+
+    fused = zv.fuse_detections(per_view)
+    print("\n[multiview] %d usable view(s), tags seen across all of them: %s"
+          % (used, sorted(ids)))
+    for index, f in enumerate(fused):
+        flag = "" if f.trustworthy else "  <-- ONE VIEW ONLY, no cross-check"
+        print("[multiview]   [%d] zone (%+.1f, %+.1f) mm  yaw %+.1f deg  "
+              "%.1f x %.1f mm  %s  views=%d spread=%.1f mm/%.1f deg%s"
+              % (index, f.zx * 1000, f.zy * 1000, math.degrees(f.zyaw),
+                 f.width * 1000, f.length * 1000, f.shape, f.n_views,
+                 f.spread_m * 1000, math.degrees(f.spread_yaw_rad), flag))
+    return fused, used, sorted(ids)
 
 
 class CorrectionLog:

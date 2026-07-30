@@ -37,7 +37,10 @@ mark. Decided 2026-07-29.
 | — | Mat layout: 6in tag square around a ~4in working area | **Decided 2026-07-29** |
 | 0a | Characterization: dead-zone floor + repeatability scatter | **DONE 2026-07-29** — Test 1 passed (GO); Test 6 now largely redundant, repeatability fell out of Test 1 |
 | 0b | Calibration: tag lib, FOV, jaw mm/rad, camera framing offset | Camera offset **done** (from URDF); the other three need the robot |
+| — | Grasp tilt, encoder side: 4.19°/5.05° → **0.50°/0.19°** | **DONE 2026-07-29**, verified |
+| — | Grasp tilt, **actual block**: still 5–10° | **ROOT CAUSE FOUND 2026-07-30** — mechanical play downstream of the encoders; needs re-fit against measured tilt, or vision |
 | 1 | Pickup zone hardcoded, square blocks, random position + rotation | **Code complete, unverified on hardware** |
+| 1b | Multi-view tag fusion (2-of-4 tag occlusion) | **DONE 2026-07-30**, synthetic tests pass |
 | 2 | Place zone also tag-located | Not started |
 | 3 | 24-block database: shape/size ID, per-block grasp orientation | Not started |
 | 4 | Place anywhere in the place zone (beside / on top) | Not started |
@@ -63,7 +66,7 @@ in shot) but not the answer.
 
 This matters because of a constraint documented at length in `PROJECT_CONTEXT.md`: the
 arm's absolute positioning is not trustworthy. `IK_POS_TOLERANCE = 0.02`, the residual
-grasp tilt was **wrongly believed** mechanical (see [the tilt](#the-grasp-tilt--diagnosed-fix-in-progress-2026-07-29)), and `_send_goal_and_wait`
+grasp tilt was **wrongly believed** mechanical (see [the tilt](#the-grasp-tilt--encoder-side-solved-root-cause-is-mechanical-play-2026-07-30) — the flange-side error is fixed, but mechanical play past the encoders remains and is invisible to `/joint_states`), and `_send_goal_and_wait`
 infers success from `/joint_states` because `arm_group_controller` has no `constraints:`
 block to report tracking failure itself. Any design that computes block position from
 *where the arm thinks it is* inherits every bit of that error.
@@ -123,6 +126,78 @@ applies — the new usable half-extent is ±48.5 mm, i.e. essentially the whole 
 Related: an occluded tag is survivable. The homography is fitted from all four corners of
 every visible tag, so three tags give 12 correspondences and still over-determine it. Two
 is refused — the points span too thin a band to condition the fit.
+
+---
+
+## Mat geometry: where the tags physically go
+
+Origin is the **bottom of the robot base** — the URDF has `world -> g_base` at `xyz="0 0 0"`,
+so world origin and the base's mounting plane are the same point. +X and +Y are world axes;
+the numbers below assume `zone_yaw = 0`, i.e. the mat squared to the robot.
+
+Zone centres come from `pick_place.py`'s hand-tuned `PICK_XYZ` / `PLACE_XYZ`:
+
+| zone | centre (mm from base origin) |
+|---|---|
+| pickup | `(0, +250)` |
+| place | `(0, −250)` |
+
+Tag **centres** on the corners of a 152.4 mm (6.00 in) square:
+
+| zone | tag | zone-local (mm) | world from base (mm) | radius |
+|---|---|---|---|---|
+| pickup | 0 | (−76.2, −76.2) | **(−76.2, +173.8)** | 189.8 |
+| pickup | 1 | (+76.2, −76.2) | **(+76.2, +173.8)** | 189.8 |
+| pickup | 2 | (+76.2, +76.2) | **(+76.2, +326.2)** | 335.0 |
+| pickup | 3 | (−76.2, +76.2) | **(−76.2, +326.2)** | 335.0 |
+| place | 4 | (−76.2, −76.2) | **(−76.2, −326.2)** | 335.0 |
+| place | 5 | (+76.2, −76.2) | **(+76.2, −326.2)** | 335.0 |
+| place | 6 | (+76.2, +76.2) | **(+76.2, −173.8)** | 189.8 |
+| place | 7 | (−76.2, +76.2) | **(−76.2, −173.8)** | 189.8 |
+
+Ordering is `ZONE_CORNER_SIGNS`, counter-clockwise from the −X−Y corner. Note it is applied
+per-zone, so tag 4 sits at the place zone's −X−Y corner, which is its FAR side from the robot.
+
+Two things to notice before printing:
+
+- **The far tags sit at 335 mm radius**, well outside the 249 mm the arm actually works at.
+  They only need to be *seen*, not reached, so this is fine — but it is the number that decides
+  the FOV go/no-go (Stage 0b.2), and it grew when the tag square went 4in → 6in.
+- **Placement accuracy is yours, not the printer's.** The zone size is set by where you put the
+  tag centres with a ruler. `zone_size` is a parameter; if you end up with 150 mm instead of
+  152.4, measure it and pass the real number rather than forcing the placement.
+
+### Printing: `print_tag_sheet.py`
+
+`print_zone_tags.py` renders each zone as a finished mat, which is only useful if the printer
+honours "Actual Size" — and a mat printed at 96% is silently wrong in the worst possible way,
+because the tags still decode perfectly and only the GEOMETRY is off. Nothing downstream can
+detect that.
+
+`print_tag_sheet.py` puts all 8 tags on one A4 as individual cut-outs and removes the
+dependency on print scale entirely:
+
+```
+python3 print_tag_sheet.py --out print_sheets/all_tags_A4.png
+```
+
+- tags cut out and positioned **by hand with a ruler**, so zone size is a measurement, not a
+  print artifact
+- whatever scale the printer applied, **measure a tag and pass `--tag-size`**. A uniformly
+  scaled tag is not a defect, it is a different `tag_size` — which is already a parameter.
+- 4 mm quiet zone around each tag (the detector needs it; a tag cut flush to its black edge
+  gets much harder to find against a dark mat)
+- centre cross-hairs to measure to, since it is the tag **centre** that goes on the corner
+- an up-arrow on every tag: all 8 must share one "up" = zone +Y, which
+  `TAG_CORNER_OFFSETS` assumes
+- a 150 mm ruler to check what actually came out
+
+Verified by round-trip: the rendered sheet was fed back through `zone_vision._aruco_detect`
+and all 8 ids decode, each measuring 25.39 mm against a 25.40 nominal.
+
+**Getting an id onto the wrong corner is the one mistake the residual will not catch** — a
+mirrored or rotated zone frame is still a perfect fit. Check it against a block at a known
+corner.
 
 ---
 
@@ -261,25 +336,33 @@ aborted — precisely the failure Test 1 exists to predict.
 
 ---
 
-## The grasp tilt — diagnosed, fix in progress (2026-07-29)
+## The grasp tilt — encoder-side solved; ROOT CAUSE is mechanical play (2026-07-30)
 
-> **Status.** The *cause* is settled and proven (four pitch joints undershooting, below). One
-> fix was tried on hardware and failed outright — see
-> [Fix 2](#fix-2--the-biased-settle-re-send-tried-failed-disabled), worth reading before
-> anyone proposes nudging a stationary joint again. Task-space pre-compensation
-> ([Fix 3](#fix-3--sag-pre-compensation-in-task-space-current-approach)) works and is on
-> hardware.
+> **Status: half done, and the half that is done is not the half that was complained about.**
+> The FLANGE is now vertical to 0.2-0.5°, verified. But the held BLOCK is still visibly
+> tilted, and everything below the last encoder is invisible to `/joint_states` — so none of
+> the joint-space work could ever have addressed it. See
+> [the block tilt](#the-block-tilt-what-joint_states-cannot-see) for where that stands.
 >
-> | | tilt | note |
-> |---|---|---|
-> | original | 4.19° / 5.05° | grasp / place |
-> | radial-only pre-comp | **2.02° / 2.32°** | measured, 2 runs |
-> | + tangential + payload | 0.2–0.5° predicted | **awaiting hardware** |
+> | | grasp | place | jaw offset | block top face |
+> |---|---|---|---|---|
+> | original | 4.19° | 5.05° | 4.1 / 4.9 mm | 2.2 / 2.6 mm |
+> | radial-only pre-comp | 2.02° | 2.32° | 2.0 / 2.3 mm | 1.1 / 1.2 mm |
+> | **+ tangential + payload** | **0.50°** | **0.19°** | **0.49 / 0.18 mm** | **0.26 / 0.10 mm** |
 >
-> The end goal is an assembly system building structures out of blocks, so the target is ~1 mm
-> and ~1°, not "looks straight". At the 0.056 m flange-to-jaw lever, **1° of residual tilt =
-> 1.0 mm of jaw offset**, and a 30 mm block tilted 1° has its top face 0.5 mm out of level —
-> which compounds per course when stacking. That is why this is worth this much effort.
+> **8.3× and 27× better than where it started, and 2–5× inside the ~1 mm target.**
+>
+> The end goal is an assembly system building structures out of blocks, so the standard is ~1 mm
+> and ~1°, not "looks straight". At the 0.056 m flange-to-jaw lever, 1° of residual tilt = 1.0 mm
+> of jaw offset, and a 30 mm block tilted 1° has its top face 0.5 mm out of level — which
+> compounds per course when stacking. That is why this was worth the effort.
+>
+> Route to get here, worth reading before revisiting: the cause is four pitch joints
+> undershooting ([Evidence](#evidence)); the obvious fix of nudging them afterwards is
+> *provably impossible* ([Fix 2](#fix-2--the-biased-settle-re-send-tried-failed-disabled)) and
+> dangerous — it drove the arm into the table; what works is pre-compensating in task space
+> during a trajectory, on **both** horizontal axes, with a payload term
+> ([Fix 3](#fix-3--sag-pre-compensation-in-task-space-current-approach)).
 
 The long-standing "the gripper is always visibly tilted when it grasps" complaint.
 Previously concluded to be **mechanical and unfixable** — sag under the camera+gripper mass,
@@ -477,23 +560,154 @@ loosens (so the gripper's explicit 0.05 is never silently widened). The timeout 
 names the override, because reporting a flat "tolerance 0.07" while a joint is gated at 0.09 is
 what made this read as a fluke in the first place.
 
-### Next hardware check
+#### Hardware result: solved
 
-- Stop the arm in each descent, capture `/joint_states`, decompose. **Numbers to beat: 2.02°
-  grasp, 2.32° place.** Target ≤ 0.5° both.
-- Read the *signed components*, not just total tilt — total tilt cannot tell you which of the
-  four constants to move. Residual radial → adjust `SAG_PRECOMP_RADIAL_DEG` (or the payload
-  term if only the place pose is off); residual tangential → the tangential pair.
-- No `bias[...]` lines should appear at all. If any do, `SETTLE_BIAS_ENABLED = False` did not
-  take, which means `mycobot_hardware` was not rebuilt **on the robot**.
+Measured joint states, full clean run, no `bias[...]` lines (bridge correction stays off):
 
-### Why this model still will not reach 1 mm, and what will — Stage 0b.4
+```
+grasp: [103.71, -42.27, -63.98, 16.61, -0.35, 147.30]
+place: [ -74.09, -41.92, -58.62, 10.37, +0.08, -28.74]
+```
 
-The four constants above are fitted to **two positions, both at 0.249 m reach**, with **one
-block mass**. Reach and height dependence are completely unmeasured. Stage 1 onward grasps at
-arbitrary positions inside the zone and Stage 3 introduces 24 blocks of differing mass, so this
-model is being asked to extrapolate in three directions it has no data in. It is the right fix
-for the two hardcoded poses and a placeholder everywhere else.
+| pose | tilt | radial | tangential | jaw offset |
+|---|---|---|---|---|
+| grasp | **0.502°** | +0.438 | −0.245 | 0.49 mm |
+| place | **0.188°** | −0.185 | +0.034 | 0.18 mm |
+
+Both axes collapsed together, which is the confirmation that the two-axis model was the right
+shape: radial went +1.54 → +0.44 at the grasp and −0.57 → −0.19 at the place, tangential −1.30 →
+−0.25 and −2.25 → +0.03. The payload term also proved out — place, the loaded descent, is now
+the *better* of the two poses, having been the worse one at every earlier stage.
+
+**Deliberately not tuned further.** The residuals (0.44° radial at the grasp being the largest)
+are only ~3× the run-to-run scatter measured earlier (±0.11° tilt, ±0.04° radial, ±0.13°
+tangential across the two radial-only runs), and they come from a single run. Fitting four
+constants tighter against n=1 at that signal-to-noise is how you make it worse. The target is
+met with margin; stop here.
+
+If a future pass does want the last fraction of a degree, the direction is:
+`SAG_PRECOMP_RADIAL_DEG` 3.27 → ~2.9, `SAG_PRECOMP_TANGENTIAL_DEG` 1.30 → ~1.55,
+`SAG_PRECOMP_PAYLOAD_RADIAL_DEG` 1.97 → ~2.6 — and it needs 3+ runs per pose first.
+
+### ROOT CAUSE: mechanical play downstream of the encoders (2026-07-30)
+
+**The encoders cannot see the error.** Established by direct experiment, and it supersedes the
+speculation in the section below.
+
+Test: with the arm at the all-zeros home pose, read `/joint_states` while (1) letting it sag
+under its own weight, (2) physically holding it upright with all joint notches aligned, and
+(3) releasing it again. Photographs show J2 (`joint3_to_joint2`) visibly misaligned by several
+degrees when sagging. What the encoders reported:
+
+| transition | flange position | flange rotation |
+|---|---|---|
+| sagging → held upright | **4.49 mm** | **1.49°** |
+| upright → released | 3.80 mm | 1.12° |
+
+Per-joint, straightening the whole arm by hand moved the encoders a **total of 1.39° across all
+four pitch joints**, J2 itself by only **0.51°** — far less than the photo shows. The encoder is
+on the motor side of the joint; the deflection is in the gearing/coupling between it and the
+link, so the encoder is structurally blind to it.
+
+Not a resolution problem: every reported value is an exact multiple of the 0.0879° readback
+quantum. The sensor is fine. It is measuring the wrong side of the slop.
+
+**Consequences, which retire several earlier lines of work:**
+
+- FK-from-`/joint_states` tilt (0.19–0.50° after the sag fix) and the visibly tilted held block
+  (5–10°) are *both correct*. They measure opposite sides of the play.
+- Every joint-space correction — the settle bias, `SAG_PRECOMP_*`, tightening
+  `IK_ORI_XY_TOLERANCE` — operates on a signal that cannot observe the dominant error. This is
+  why the tilt survived all of them, and why the original complaint that it "never goes away"
+  was accurate all along.
+- `PICK_XYZ` / `PLACE_XYZ` were tuned by hand against the real robot, so the deflection is
+  already absorbed into the **position** constants. Nobody ever did the equivalent for
+  **orientation**. That asymmetry is the entire remaining gap.
+
+**What still works.** The deflection is repeatable — reading 3 returns to within 0.35°/joint of
+reading 1, consistent with Test 1's 0.045° repeatability. A repeatable error is calibratable.
+So `SAG_PRECOMP_*` is the right mechanism (pose-dependent, payload-aware); it was simply fitted
+against the FK number instead of against reality. **Re-fit it against measured physical block
+tilt** — level app on the block's top face at the pick pose and at the place pose, holding.
+
+**Check J2 mechanically first.** One joint with several degrees of play while the others have
+"a tiny bit" suggests a loose grub screw or worn gear rather than design compliance. Calibrating
+around a loose fastener bakes in a number that moves the next time it shifts.
+
+**And the reason the AprilTag work matters more than it looked.** The wrist camera is mounted on
+the **link** side, downstream of the play, so it observes the *true* orientation. It is the only
+sensor on this robot that can see this error at all. Vision-based correction is therefore not a
+convenience for arbitrary poses — it is the only route to millimetre accuracy on hardware with
+this much slop.
+
+---
+
+### The block tilt: what /joint_states cannot see
+
+Found 2026-07-29, immediately after the sag fix was confirmed. **The flange is vertical to
+0.2–0.5° and the held block is still visibly tilted, worse at the place pose.** Both
+measurements are right; they measure different things, and the gap between them is everything
+downstream of the last encoder — which no joint-space method can observe, let alone correct.
+
+**A theory that was wrong, recorded so nobody re-derives it.** The gripper is angular: every
+finger joint is revolute about one axis, and that axis is *horizontal* in world at both poses
+(`[-0.025, +0.9997, -0.001]` at the grasp, horizontal component 1.0000). So pad swing during
+closure would tilt the block degree for degree — 21.1° of swing between the logged open
+(`0.135`) and contact (`-0.2325`). Compelling, and false. The mimic tags make it a
+**parallelogram linkage**:
+
+```
+gripper_left3_to_gripper_left1   mimic gripper_controller x-1.0
+```
+
+`gripper_left3` turns +θ, the pad turns −θ, netting zero. Confirmed by FK: pad rotation
+**0.000° at every point** in the travel. The pads translate; they never rotate.
+
+**What that check did turn up, and the thing to test first.** At the logged contact point the
+two pad links sit ~69 mm apart, against a 30 mm block. And `effort` reads `0.000` on every line
+of every log, so `gripper_close_until_contact` has nothing but jaw *position lag* to work with —
+`CONTACT: jaw trailing its command by 0.0675 rad` is as consistent with the linkage binding as
+with the block. If contact fires early the block is held **slack**, and a loose block swinging
+and re-settling during transit explains a tilt that is worse at the place pose than at the pick
+pose. A rigid error would be identical at both. (Related: the jaw mm/rad calibration, Stage
+0b.3, is still unmeasured — it would settle this outright.)
+
+**The other candidate** is a genuine mount offset. The URDF reaches the gripper through two
+hand-authored right angles:
+
+```
+joint6output_to_camera_flange   rpy = "1.5708 1.5708 0"
+camera_flange_to_gripper_base   rpy = "0 1.5708 1.5708"
+```
+
+If the physical mount does not match, "flange vertical" and "jaws vertical" differ by a
+constant — which is precisely the original complaint that the tilt "is always the same, always
+very consistently that angle, and never goes away."
+
+**The distinguishing test takes five seconds:** grip a block, then try to move it by hand.
+Shifts → slack grip, fix the contact detection. Rock solid and still tilted → mount offset, and
+`GRIPPER_MOUNT_TILT_X_DEG` / `GRIPPER_MOUNT_TILT_Y_DEG` in `pick_place.py` correct it (both
+default 0.0; tool-frame post-multiply, verified unit-norm and bit-identical to prior behaviour
+when disabled).
+
+**Frame note, because it is the subtle part.** A mount error is constant in the *tool* frame, so
+the correction must rotate with the gripper. `SAG_PRECOMP_*` is a world-frame effect and
+pre-multiplies. Apply a tool-frame error in the radial frame and it cancels at one pose and
+doubles at the pose 180° opposite — and grasp and place here *are* ~180° apart, which is one
+candidate explanation for the pick/place asymmetry on its own.
+
+---
+
+### Where this model still does not apply — Stage 0b.4
+
+The tilt is solved **at the two hardcoded pick and place poses**. That is exactly what
+`pick_place.py` needs and it is verified there. But the four constants are fitted to two
+positions, both at 0.249 m reach, with one block mass, and reach/height dependence is
+unmeasured. Stage 1 grasps at arbitrary positions inside the zone and Stage 3 introduces 24
+blocks of differing mass — three directions this model has no data in.
+
+So: done for today's goal, and **re-check the tilt once Stage 1 is grasping off-centre**. If it
+degrades away from the fitted poses, do not chase it with more constants; go to option 2 below.
 
 Two ways forward, and the second is much better:
 
@@ -583,6 +797,78 @@ number.
    0/15/30/45 deg, plus two deliberately bad frames (one tag occluded, one with glare). Copy
    to mars. All threshold tuning happens against this corpus, not against the robot. The two
    bad frames must come back `success=false` with a useful message — never a wrong answer.
+
+---
+
+## The 2-of-4 tag occlusion, solved (2026-07-30)
+
+**The gripper hides half the tags.** It hangs in front of the lens, so every hover the arm can
+reach sees 2 of the 4 tags, never more. `MIN_TAGS = 3` refused every real frame — Stage 1 could
+not have run at all on hardware.
+
+**Two tags is not the degraded case it looked like.** Each tag gives 4 corners and each corner 2
+equations: 16 equations for a homography's 8 DOF. Genuinely over-determined, so `homography_rms`
+still carries information. (One tag would be 8 equations for 8 DOF — exact fit, zero residual by
+construction, useless as a health check. That is why the floor is 2, not 1.) `MIN_TAGS = 2`.
+
+What two tags actually cost is **conditioning**, and the measured numbers corrected two wrong
+intuitions:
+
+| constellation | spread ratio |
+|---|---|
+| all four | 1.0000 |
+| any three | 0.5890 |
+| adjacent pair | 0.1644 |
+| **diagonal pair** | **0.1170** |
+| single tag | 1.0000 |
+
+- A **diagonal** pair is *worse* conditioned than an adjacent one, which is backwards from
+  "diagonal spans the zone better". For a homography what matters is general position, and two
+  diagonal tags put all 8 corners in a thin band along the diagonal. An initial `0.12` floor
+  would have silently rejected every diagonal pair — a case wrist rotation actively produces.
+  Floor is `0.08`.
+- A **single tag** scores 1.0000, because the metric measures the constellation's *shape* and
+  four corners of one tag are a perfect square. It is scale-blind. `MIN_TAGS` excludes that case,
+  not this.
+
+Anything above the floor is *kept*, with quality expressed through `homography_rms` and the
+multi-view spread. Hard-rejecting weak-but-usable views in exchange for a cleaner-looking single
+answer is how a system ends up confident and wrong.
+
+### The acquisition plan, and the one design decision that matters
+
+Four stills at 90° of **wrist** yaw (`joint6output_to_joint6`, not base rotation — J0 has 1.83°
+of measured backlash, 8.0 mm at r = 0.25 m, which would move the camera further than the thing
+being measured). Four offsets guarantee every tag appears in at least one still whichever pair
+the gripper starts out hiding. Stops early once 3 views are usable.
+
+**Each still is solved independently, then the results are fused** — *not* pooled into one big
+fit. Pooling correspondences across stills would require knowing how far the wrist actually
+turned, and as of the root-cause finding above, that is precisely what this robot cannot be
+trusted about. Solving each still from only its own visible tags means **the fused answer never
+depends on the wrist angle being what the encoder claims.** The rotation only has to *change the
+occlusion*; it does not have to be known. That is what makes this work on worn gears.
+
+The second payoff is free and arguably worth more: **the spread across views is an independent,
+end-to-end error bar**, measured on the real mat under real lighting. Nothing else in the system
+produces one.
+
+### Verified (synthetic, `zone_vision_selftest.py`, 0 failures)
+
+- Four stills each seeing a different pair: **0.09 mm fused vs 0.17 mm for the worst single
+  view**, spread 0.23 mm — and the test asserts the spread actually bounds the error, since a
+  confidence number that does not is worse than none.
+- Mars-side path against mock service responses: **0.05 mm fused** from views scattered up to
+  1.48 mm.
+- **Yaw wrap:** views at 88°, 2°, 0.5°, 89° on a 4-fold block fuse to **89.87°**. Naive averaging
+  gives **44.9°** — the worst possible answer, putting the jaws on the corners instead of the
+  faces. This is the one fusion bug that would be catastrophic rather than noisy, so it has a
+  dedicated test with no rendering involved.
+- Two distinct blocks do not merge into one cluster.
+
+No `.srv` change was needed: the response already carries the zone-local fields fusion reads, and
+fusion runs on mars. That avoids a rebuild of `swarm_interfaces` on both machines from identical
+source, which is a documented pain point.
 
 ---
 

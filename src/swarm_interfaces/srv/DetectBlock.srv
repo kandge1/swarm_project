@@ -33,10 +33,23 @@ bool success
 string message              # human-readable reason when success is false
 
 # --- detection health -------------------------------------------------------
-# tags_seen < 4 means the homography used the three-tag fallback (three tags
-# plus the known square geometry determine the fourth corner). < 3 is a hard
-# failure. tag_ids says WHICH zone was actually seen -- the one real guard
-# against hovering over the wrong zone and confidently measuring it.
+# tags_seen is 2 on real hardware, not 4: the gripper hangs in front of the lens
+# and hides the far pair from every hover the arm can reach. 2 is the floor and
+# the normal case -- 8 tag corners give 16 equations for a homography's 8 DOF, so
+# the fit is still over-determined and homography_rms still means something. What
+# suffers is conditioning across the thin direction of the pair.
+#
+# The answer to that is NOT a better single still: it is several stills with the
+# wrist rotated between them, each solved independently and then fused by the
+# CALLER (zone_vision.fuse_detections, which mars already imports). Independently
+# is deliberate -- pooling correspondences across stills would need to know how
+# far the wrist actually turned, and this robot's worn servo gearing means the
+# encoders disagree with the links by degrees, invisibly. See APRIL_TAGS.md.
+#
+# So this service stays single-still by design and needs no multi-view fields.
+#
+# tag_ids says WHICH zone was actually seen -- the one real guard against
+# hovering over the wrong zone and confidently measuring it.
 uint8 tags_seen
 uint16[] tag_ids
 

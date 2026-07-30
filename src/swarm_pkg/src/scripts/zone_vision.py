@@ -49,10 +49,21 @@ homography_rms becomes the number that says whether to trust the answer. A bad
 homography otherwise fails silently and returns a confident wrong position,
 which is the worst failure mode available to this feature.
 
-It also makes the three-tag case fall out for free -- 12 correspondences is
-still plenty -- with no special-case geometry to reconstruct a missing corner.
-Two tags is refused: 8 points would be enough in principle, but they span a thin
-band across the image and the fit is badly conditioned along the other axis.
+It also makes the reduced-tag cases fall out for free, with no special-case
+geometry to reconstruct a missing corner: three tags give 12 correspondences and
+two give 8 (16 equations for 8 DOF -- still over-determined, so the residual
+still means something).
+
+TWO IS THE FLOOR, AND IT IS THE NORMAL CASE ON HARDWARE. The gripper hangs in
+front of the lens and hides the far pair of tags from every hover the arm can
+reach, so a real still shows 2 of the 4. What two tags cost is not degrees of
+freedom but CONDITIONING -- an adjacent pair spans the zone one way and only
+their own 25.4mm the other, so the fit extrapolates ~6x across the thin
+direction. tag_spread_ratio() measures that, and analyze_multi() is the answer
+to it: several stills at different wrist yaws, each solved independently, then
+fused. Independently is the operative word -- see the note above analyze_multi
+for why pooling the correspondences instead would reintroduce exactly the
+encoder error this whole design exists to avoid.
 
 ------------------------------------------------------------------------------
 ASSUMPTION THAT MUST BE CHECKED AGAINST THE CORPUS
@@ -105,7 +116,61 @@ ZONE_CORNER_SIGNS = ((-1, -1), (+1, -1), (+1, +1), (-1, +1))
 # bottom-right, bottom-left in the MARKER's own frame. Zone +Y is "up".
 TAG_CORNER_OFFSETS = ((-1, +1), (+1, +1), (+1, -1), (-1, -1))
 
-MIN_TAGS = 3                    # see module docstring; 2 is refused, not degraded
+# Lowered 3 -> 2 on 2026-07-30, because on real hardware 3 is unachievable: the
+# GRIPPER occludes the far pair of tags from every hover the arm can reach, so a
+# single still sees 2 of the 4, never more. Refusing 2 refused every real frame.
+#
+# 2 tags is not a degraded fit in the way the old comment claimed. Each tag
+# contributes 4 corners and each corner 2 equations, so 2 tags give 16 equations
+# for a homography's 8 DOF -- genuinely over-determined, and the RMS residual
+# stays meaningful. (1 tag would be 8 equations for 8 DOF: exactly determined,
+# zero residual by construction, and therefore worthless as a health check.
+# That is why the floor is 2 and not 1.)
+#
+# The real hazard with 2 tags is not the DOF count, it is CONDITIONING. Two
+# adjacent tags span the zone in one direction but only their own 25.4 mm in the
+# perpendicular one, so the fit extrapolates that direction ~6x out to the zone
+# edge and amplifies corner-localisation noise by the same factor. That is what
+# TAG_SPREAD_MIN_RATIO guards, and it is the reason analyze_multi() exists:
+# fusing several weak single-still fits from different wrist yaws both averages
+# the error down and, more usefully, makes the spread ACROSS stills an honest
+# independent estimate of the total error.
+MIN_TAGS = 2
+
+# Conditioning floor for the tag-corner constellation: the ratio of its minor to
+# major spread (PCA) in ZONE coordinates. MEASURED, not estimated:
+#
+#   all four tags      1.0000
+#   any three          0.5890
+#   adjacent pair      0.1644
+#   diagonal pair      0.1170
+#   single tag         1.0000  <- see below
+#
+# Two corrections to the obvious intuitions, both of which cost a first draft:
+#
+# 1. A DIAGONAL pair is WORSE conditioned than an adjacent one (0.117 vs 0.164),
+#    which is backwards from the "diagonal spans the zone better" reading. For a
+#    homography what matters is whether the points are in general position, and
+#    two diagonal tags put all 8 corners in a thin band along the diagonal --
+#    the perpendicular direction is pinned only by the 25.4mm tag width, over a
+#    longer (x sqrt 2) baseline than the adjacent case. Genuinely thinner.
+#
+# 2. A SINGLE tag scores 1.0000, because this metric measures the constellation's
+#    SHAPE and a lone tag's four corners are a perfect square. It says nothing
+#    about scale. MIN_TAGS = 2 is what excludes the single-tag case; do not
+#    expect this number to.
+#
+# 0.08 sits below both real two-tag cases deliberately. An earlier 0.12 would
+# have rejected every diagonal pair -- and which pair the gripper leaves visible
+# is a function of wrist angle, so that is a case the acquisition plan actively
+# produces. Hard-rejecting a weak-but-usable view is the wrong trade when
+# analyze_multi() can fuse it and report the spread: throwing data away in
+# exchange for a cleaner-looking single answer is how a system ends up confident
+# and wrong. The floor is here only for TRUE degeneracy -- collinear points, or
+# two "different" tags detected on top of each other -- where the fit is singular
+# and its answer is arbitrary rather than merely noisy. Quality of everything
+# above the floor is expressed by homography_rms and the multi-view spread.
+TAG_SPREAD_MIN_RATIO = 0.08
 
 # ---------------------------------------------------------------------------
 # Detection thresholds
@@ -241,6 +306,7 @@ class ZoneResult:
         self.tag_ids = []
         self.tag_corners = {}       # {id: 4x2 px} -- for the overlay
         self.homography_rms = 0.0
+        self.tag_spread = 0.0       # conditioning, see tag_spread_ratio()
         self.scale_px_per_m = 0.0
         self.camera_zx = 0.0        # zone-local point under the image centre
         self.camera_zy = 0.0        # -- see camera_in_zone()
@@ -382,6 +448,29 @@ def fit_homography(tag_corners_px, zone):
     projected = cv2.perspectiveTransform(src.reshape(-1, 1, 2), H).reshape(-1, 2)
     rms = float(np.sqrt(np.mean(np.sum((projected - dst) ** 2, axis=1))))
     return H, rms
+
+
+def tag_spread_ratio(tag_corners_px, zone):
+    """Minor/major spread of the visible tag corners in ZONE coordinates.
+
+    A pure geometry number -- it uses only WHICH tags were seen, never the pixel
+    measurements, so it is a property of the occlusion pattern and cannot be
+    fooled by a bad detection. See TAG_SPREAD_MIN_RATIO.
+
+    1.0 is an ideal square constellation; 0.0 is collinear, where the homography
+    is singular in one direction and its answer there is arbitrary rather than
+    just noisy.
+    """
+    targets = zone.tag_corner_targets()
+    pts = np.concatenate([targets[t] for t in sorted(tag_corners_px)], axis=0)
+    if len(pts) < 4:
+        return 0.0
+    centred = pts - pts.mean(axis=0)
+    # Singular values of the centred point set are its principal spreads.
+    sv = np.linalg.svd(centred, compute_uv=False)
+    if sv[0] <= 1e-12:
+        return 0.0
+    return float(sv[1] / sv[0])
 
 
 def _scale_at_centre(H_zone_to_px, zone):
@@ -643,6 +732,16 @@ def analyze(image, zone, method="canny", max_rms_px=MAX_HOMOGRAPHY_RMS_PX):
             % (len(tag_corners), list(zone.tag_ids), MIN_TAGS))
         return result
 
+    result.tag_spread = tag_spread_ratio(tag_corners, zone)
+    if result.tag_spread < TAG_SPREAD_MIN_RATIO:
+        result.message = (
+            "tags %s are too collinear (spread %.3f < %.3f). A homography fitted "
+            "to them is singular across the thin direction, so it would return a "
+            "confident-looking but arbitrary answer there. Rotate the wrist and "
+            "take another still -- see analyze_multi()."
+            % (result.tag_ids, result.tag_spread, TAG_SPREAD_MIN_RATIO))
+        return result
+
     H, rms = fit_homography(tag_corners, zone)
     result.homography_rms = rms
     if H is None:
@@ -683,4 +782,219 @@ def analyze(image, zone, method="canny", max_rms_px=MAX_HOMOGRAPHY_RMS_PX):
     # exactly this question before releasing, and Stage 4 asks it again.
     result.message = "%d tag(s), rms %.2f px, %d block(s)" % (
         result.tags_seen, rms, len(result.blocks))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Multi-view fusion
+# ---------------------------------------------------------------------------
+# WHY THIS EXISTS. On real hardware the gripper hangs in front of the lens and
+# occludes the far pair of tags from every hover the arm can reach: one still
+# sees 2 of the 4 tags, never more. A 2-tag homography is over-determined but
+# poorly conditioned across the thin direction of the pair (see MIN_TAGS), so a
+# single still is not something to descend on.
+#
+# The fix is to take several stills with the WRIST ROTATED between them, so a
+# different pair of tags is occluded each time, and combine the results.
+#
+# THE KEY DESIGN CHOICE, and the reason this is structured as "solve each still
+# independently, then fuse" rather than "pool all the correspondences into one
+# big fit": pooling would require knowing the camera pose of each still relative
+# to the others, i.e. trusting the arm's encoders about how far the wrist
+# actually turned. As of 2026-07-30 that is known to be exactly what this robot
+# cannot be trusted about -- the servo gears have enough wear that the encoder
+# and the link disagree by several degrees, invisibly (see APRIL_TAGS.md, ROOT
+# CAUSE). Each still here is self-contained: its homography comes only from tags
+# visible in that one frame, so the fused answer never depends on the wrist
+# angle being what the encoder claims. The wrist rotation only has to CHANGE the
+# occlusion; it does not have to be known.
+#
+# The second payoff is free and arguably worth more than the averaging: the
+# SPREAD across stills is an independent, end-to-end estimate of the real error,
+# measured on the actual mat under the actual lighting. Nothing else in this
+# system produces an honest error bar.
+
+MATCH_RADIUS_M = 0.012          # two views' detections are the same block if
+                                # their zone positions agree within this. 12 mm
+                                # is well under the 30 mm block so two distinct
+                                # blocks can never merge, and well over the
+                                # single-view error a 2-tag fit is expected to
+                                # have.
+MIN_VIEWS_PER_BLOCK = 2         # a block seen in only one still is reported but
+                                # flagged: one view has no cross-check at all.
+
+
+class FusedDetection:
+    """A block's pose agreed across several stills, with its spread."""
+
+    def __init__(self, zx, zy, zyaw, width, length, shape, symmetry,
+                 n_views, spread_m, spread_yaw_rad, views):
+        self.zx = zx
+        self.zy = zy
+        self.zyaw = zyaw
+        self.width = width
+        self.length = length
+        self.shape = shape
+        self.symmetry = symmetry
+        self.n_views = n_views
+        self.spread_m = spread_m            # max deviation from the fused centre
+        self.spread_yaw_rad = spread_yaw_rad
+        self.views = views                  # the contributing Detections
+
+    @property
+    def trustworthy(self):
+        return self.n_views >= MIN_VIEWS_PER_BLOCK
+
+    def world_pose(self, zone):
+        x, y = zone.zone_to_world(self.zx, self.zy)
+        return x, y, zone.zone_yaw_to_world(self.zyaw)
+
+    def __repr__(self):
+        return ("FusedDetection(zone=(%.4f, %.4f) yaw=%.1fdeg %s %.1fx%.1fmm "
+                "views=%d spread=%.1fmm/%.1fdeg)"
+                % (self.zx, self.zy, math.degrees(self.zyaw), self.shape,
+                   self.width * 1000.0, self.length * 1000.0, self.n_views,
+                   self.spread_m * 1000.0, math.degrees(self.spread_yaw_rad)))
+
+
+class FusedResult:
+    def __init__(self):
+        self.success = False
+        self.message = ""
+        self.blocks = []
+        self.views = []             # every ZoneResult, good or bad
+        self.good_views = 0
+        self.tag_ids_union = []
+        self.camera_spread_m = 0.0  # how far apart the per-still camera
+                                    # positions landed; see analyze_multi
+
+
+def _fold_yaw(yaw, symmetry):
+    """Fold a yaw into the canonical wedge for its symmetry order.
+
+    A square block's 0 and 90 degrees are the same physical pose, so averaging
+    them raw would give 45 -- a pose the block is never in. Folding first is what
+    makes a circular mean meaningful here.
+    """
+    if not symmetry:                     # 0 = continuous (a circle): yaw is
+        return 0.0                       # meaningless, do not average noise
+    period = math.pi * 2.0 / symmetry
+    return yaw % period
+
+
+def _circular_mean(angles, period):
+    """Mean of angles that wrap at `period`, via unit vectors.
+
+    Plain averaging breaks across the wrap point -- two readings either side of
+    it average to the opposite of the truth, which for a 4-fold block is the one
+    error large enough to make the gripper miss.
+    """
+    scale = 2.0 * math.pi / period
+    s = sum(math.sin(a * scale) for a in angles)
+    c = sum(math.cos(a * scale) for a in angles)
+    if abs(s) < 1e-12 and abs(c) < 1e-12:
+        return angles[0]
+    return (math.atan2(s, c) / scale) % period
+
+
+def fuse_detections(per_view_blocks, match_radius_m=MATCH_RADIUS_M):
+    """Group detections that refer to the same physical block across stills.
+
+    per_view_blocks: [[Detection, ...], ...], one list per still.
+    Greedy nearest-cluster assignment in zone coordinates -- adequate because
+    match_radius_m is far below the block pitch, so clusters cannot overlap.
+    """
+    clusters = []
+    for view_blocks in per_view_blocks:
+        for det in view_blocks:
+            for cluster in clusters:
+                if math.hypot(det.zx - cluster[0].zx,
+                              det.zy - cluster[0].zy) <= match_radius_m:
+                    cluster.append(det)
+                    break
+            else:
+                clusters.append([det])
+
+    fused = []
+    for cluster in clusters:
+        zx = float(np.median([d.zx for d in cluster]))
+        zy = float(np.median([d.zy for d in cluster]))
+        width = float(np.median([d.width for d in cluster]))
+        length = float(np.median([d.length for d in cluster]))
+        # Shape and symmetry by majority: a single still misreading a square as a
+        # rectangle must not decide the grasp for all of them.
+        shapes = [d.shape for d in cluster]
+        shape = max(set(shapes), key=shapes.count)
+        syms = [d.symmetry for d in cluster]
+        symmetry = max(set(syms), key=syms.count)
+
+        if symmetry:
+            period = math.pi * 2.0 / symmetry
+            folded = [_fold_yaw(d.zyaw, symmetry) for d in cluster]
+            zyaw = _circular_mean(folded, period)
+            # Spread measured the same wrapped way it was averaged.
+            devs = []
+            for a in folded:
+                d_ = abs(a - zyaw) % period
+                devs.append(min(d_, period - d_))
+            spread_yaw = max(devs) if devs else 0.0
+        else:
+            zyaw = 0.0
+            spread_yaw = 0.0
+
+        spread = max(math.hypot(d.zx - zx, d.zy - zy) for d in cluster)
+        fused.append(FusedDetection(zx, zy, zyaw, width, length, shape,
+                                    symmetry, len(cluster), spread,
+                                    spread_yaw, list(cluster)))
+    fused.sort(key=lambda f: -f.n_views)
+    return fused
+
+
+def analyze_multi(images, zone, method="canny",
+                  max_rms_px=MAX_HOMOGRAPHY_RMS_PX):
+    """analyze() over several stills of the same zone, fused into one answer.
+
+    The stills should be taken with the wrist rotated between them so a
+    different pair of tags is occluded in each. Their camera poses do NOT need to
+    be known, and deliberately are not used -- see the note above.
+
+    Views that fail are kept in .views with their messages rather than dropped
+    silently: "3 of 4 stills saw no tags" is a lighting or framing diagnosis, and
+    it must not look the same as "all 4 agreed".
+    """
+    result = FusedResult()
+    per_view = []
+    cams = []
+    ids = set()
+    for image in images:
+        view = analyze(image, zone, method=method, max_rms_px=max_rms_px)
+        result.views.append(view)
+        if not view.success:
+            continue
+        result.good_views += 1
+        ids.update(view.tag_ids)
+        per_view.append(view.blocks)
+        cams.append((view.camera_zx, view.camera_zy))
+
+    result.tag_ids_union = sorted(ids)
+
+    if result.good_views == 0:
+        msgs = "; ".join(v.message for v in result.views) or "no stills supplied"
+        result.message = "no still produced a usable homography (%s)" % msgs
+        return result
+
+    # How far apart the stills thought the CAMERA was. The arm does move the
+    # wrist between stills, so this is not expected to be zero -- it is a sanity
+    # bound, and a wild value means a still was fitted against a misdetected tag.
+    if len(cams) > 1:
+        mx = float(np.median([c[0] for c in cams]))
+        my = float(np.median([c[1] for c in cams]))
+        result.camera_spread_m = max(math.hypot(c[0] - mx, c[1] - my)
+                                     for c in cams)
+
+    result.blocks = fuse_detections(per_view)
+    result.success = True
+    result.message = "%d/%d stills usable, tags %s, %d block(s)" % (
+        result.good_views, len(result.views), result.tag_ids_union,
+        len(result.blocks))
     return result
