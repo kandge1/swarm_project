@@ -57,6 +57,7 @@ from pick_place import (  # noqa: E402
     GRASP_OFFSET_Z,
     GRIPPER_OPEN,
     HOME_RADIANS,
+    MAX_HOVER_Z,
     PLACE_XYZ,
     RobotIOClient,
     cartesian_move_to,
@@ -454,8 +455,28 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
 
 
 def run_stage1(io_client, detector, args, log):
-    hover = hover_z(args.zone_z + args.block_thickness + GRASP_OFFSET_Z)
-    print("[stage1] hover height %.4f m (clamped by MAX_HOVER_Z if needed)" % hover)
+    # DETECTION height, not grasp-approach height -- these are different
+    # questions and using one formula for both was a real bug (2026-07-30,
+    # first hardware run: hovered at 0.16 m, computed from block_thickness +
+    # GRASP_OFFSET_Z + APPROACH_HEIGHT, and saw ZERO of 4 tags -- while
+    # MAX_HOVER_Z = 0.205 m of reachable height sat unused).
+    #
+    # A short hover is right for a plain Cartesian approach to a KNOWN point --
+    # that is what hover_z(target_z) is for, and pick_place.py's PICK_XYZ flow
+    # uses it correctly. But hover_and_detect's job is to SEE the tags, and
+    # every millimetre of height only helps that: it widens the camera's view
+    # of the zone with no accuracy cost, because the actual grasp descent is a
+    # separate, later Cartesian move from wherever this hover ends up -- this
+    # height does not propagate into grasp_z (computed independently below).
+    # There is no reason to hover any lower than the arm can reach.
+    #
+    # So: hover at the reachable ceiling for BOTH detect passes (survey and
+    # grasp-hover), full stop. If tags are still not seen from here, the cause
+    # is not hover height -- see the framing checklist in APRIL_TAGS.md
+    # "Stage 0b.2 FOV go/no-go".
+    hover = MAX_HOVER_Z
+    print("[stage1] detect hover height %.4f m (MAX_HOVER_Z, for widest "
+          "camera view of the zone)" % hover)
 
     if not go_home(io_client):
         return False
