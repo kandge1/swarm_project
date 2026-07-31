@@ -28,6 +28,7 @@ import sys
 import threading
 import time
 
+import cv2
 import rclpy
 from cv_bridge import CvBridge
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
@@ -162,6 +163,43 @@ class BlockDetector(Node):
 
         response.success = result.success
         response.message = result.message
+
+        # When no tags of THIS zone were found, say what the frame actually
+        # contained. Without this, "saw 0 of zone's 4 tags" is the same message
+        # whether the mat is out of frame, the wrong zone is under the camera,
+        # the lens is out of focus, or the exposure is blown -- four different
+        # problems with four different fixes, and telling them apart otherwise
+        # means copying an image off the Pi mid-session.
+        #
+        # Deliberately computed only on the failure path: detect_all_tags is a
+        # second full detector pass, which is not worth paying for on every
+        # successful call.
+        if not result.tag_ids:
+            gray = frame if frame.ndim == 2 else cv2.cvtColor(
+                frame, cv2.COLOR_BGR2GRAY)
+            others = zv.detect_all_tags(gray)
+            # Laplacian variance is the standard cheap focus metric: sharp edges
+            # produce large second derivatives, a defocused frame does not.
+            focus = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+            mean = float(gray.mean())
+            lo, hi = float(gray.min()), float(gray.max())
+            diag = (" | frame %dx%d, mean %.0f (range %.0f-%.0f), focus %.0f"
+                    % (gray.shape[1], gray.shape[0], mean, lo, hi, focus))
+            if others:
+                diag += (" | %d AprilTag(s) of OTHER ids visible: %s -- the "
+                         "camera CAN see tags, so this is a zone/id mismatch, "
+                         "not an image problem"
+                         % (len(others), sorted(t for t, _ in others)))
+            else:
+                diag += " | NO AprilTag of any id anywhere in the frame"
+                if focus < 100:
+                    diag += " -- focus metric is very low, suspect defocus/blur"
+                if mean < 40:
+                    diag += " -- frame is very dark, suspect exposure"
+                elif mean > 215:
+                    diag += " -- frame is very bright, suspect glare/overexposure"
+            response.message += diag
+            self.get_logger().warn("diagnostics:%s" % diag)
         response.tags_seen = result.tags_seen
         response.tag_ids = [int(t) for t in result.tag_ids]
         response.homography_rms = float(result.homography_rms)

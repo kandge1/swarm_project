@@ -82,7 +82,7 @@ from tag_pick_place import (  # noqa: E402
 import time  # noqa: E402
 
 
-def measure_lens(io_client, detector, x, y, z, yaw_deg, label):
+def measure_lens(io_client, detector, x, y, z, yaw_deg, label, debug_path=None):
     """Move the flange to (x, y, z) at yaw_deg and return the lens position in
     world metres, measured from the tags. None if the still was unusable."""
     print("\n=== %s: flange (%.4f, %.4f, %.4f) at wrist yaw %+.1f deg ==="
@@ -92,7 +92,7 @@ def measure_lens(io_client, detector, x, y, z, yaw_deg, label):
         return None
     time.sleep(SETTLE_AFTER_MOVE_SEC)
 
-    response = detector.detect("pickup")
+    response = detector.detect("pickup", debug_image=debug_path)
     if response is None:
         print("[%s] no usable homography -- the lens is probably not over the "
               "mat at this yaw. Try --flange-y nearer the zone." % label)
@@ -133,20 +133,43 @@ def main():
                         math.radians(args.zone_yaw), args.zone_size)
 
     try:
+        # Preflight, because the failure mode otherwise is an rclpy traceback
+        # that says nothing about the actual cause. Running this ON THE ROBOT is
+        # the easy mistake: it needs move_group for IK (mars only), and this
+        # Galactic Cyclone DDS build's same-host discovery is unreliable anyway
+        # -- that is why real_robot_hardware.launch.py wraps its controller
+        # spawners in a retry loop. Cross-host from mars is the reliable path.
+        if not io_client._arm_client.wait_for_server(timeout_sec=10.0):
+            print("\n" + "=" * 70)
+            print("The arm action server never appeared. Almost always one of:")
+            print("  1. This is running ON THE ROBOT. It must run on MARS --")
+            print("     it needs move_group for IK, which only runs there.")
+            print("  2. real_robot_hardware.launch.py is not up on the robot,")
+            print("     or its controller spawners failed (check for")
+            print("     'retrying_spawner' errors in that terminal).")
+            print("  3. real_robot_planning.launch.py is not up on mars.")
+            print("=" * 70)
+            return 1
+
         if not go_home(io_client):
             return 1
         io_client.gripper_move_to(GRIPPER_OPEN)
 
+        # Always save the frames. If the measurement fails, these are the only
+        # thing that says why, and re-running to get them costs another cycle.
         a = measure_lens(io_client, detector, flange_x, flange_y, args.hover_z,
-                         args.yaw, "still A")
+                         args.yaw, "still A", debug_path="/tmp/calib_A.png")
         b = measure_lens(io_client, detector, flange_x, flange_y, args.hover_z,
-                         args.yaw + 180.0, "still B")
+                         args.yaw + 180.0, "still B", debug_path="/tmp/calib_B.png")
         go_home(io_client)
 
         if a is None or b is None:
-            print("\nCALIBRATION FAILED: need BOTH stills. The one that failed "
-                  "did not have enough tags in frame -- move the flange target "
-                  "with --flange-y so the lens lands over the mat at both yaws.")
+            print("\nCALIBRATION FAILED: need BOTH stills.")
+            print("Frames were saved ON THE PI as /tmp/calib_A.png and")
+            print("/tmp/calib_B.png -- the detector's diagnostics above say")
+            print("whether the mat was out of frame, out of focus, or badly")
+            print("exposed. Those need different fixes, so check before")
+            print("moving --flange-y on a guess.")
             return 1
 
         # The arm's own error cancels here -- see the module docstring.
