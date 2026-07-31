@@ -286,7 +286,11 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
 export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
 
-colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
+# swarm_network MUST be in this list: CYCLONEDDS_URI points at the install
+# tree, so a `git pull` that changes a peer IP has no effect until it is
+# rebuilt -- the robot keeps announcing to mars's old address and mars sees
+# zero publishers while everything looks healthy locally.
+colcon build --packages-select swarm_network mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
 source install/setup.bash
 ros2 launch mycobot_280pi_camera_moveit2 real_robot_hardware.launch.py
 ```
@@ -644,6 +648,16 @@ If it doesn't work:
   Plain `cyclonedds.xml` is a stale pre-split artifact -- if `ros2 pkg prefix
   swarm_network`'s install dir still has one, it is orphaned build output, not
   live config, and it is not even valid XML. Safe to `rm` it.
-- Check the IPs in that file are correct (mars's address changes when its DHCP
-  lease renews -- see `PROJECT_CONTEXT.md`; robot: 172.30.6.165)
+- Check the IPs in that file are correct. BOTH addresses change when the campus
+  DHCP lease renews -- mars has moved (172.27.89.157 -> 172.27.80.139) and so
+  has the robot (172.30.6.165 -> 172.30.11.51, 2026-07-31). Run `hostname -I`
+  on each machine and compare against the `<Peer>` entries. Symptom of a stale
+  entry: mars's `ros2 node list` shows only its own nodes and
+  `ros2 topic info /joint_states` reports 0 publishers, while the robot side
+  looks perfectly healthy locally. Confirm with a plain `ping` between the two
+  before touching anything in ROS.
+- Check the file you edited is the one Cyclone actually loads. `CYCLONEDDS_URI`
+  points into the INSTALL tree, so a `git pull` alone does not take effect --
+  `colcon build --packages-select swarm_network` and relaunch. Cyclone reads
+  the XML once at process start, so a running launch keeps the old peers.
 
