@@ -2244,7 +2244,7 @@ def go_home(io_client):
 
 
 def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
-                holding_block=False):
+                holding_block=False, orientation_override=None):
     """Joint-space plan to a target position. Uses deterministic seeded IK
     when possible; falls back to OMPL constraint sampling if all seeds fail.
 
@@ -2257,8 +2257,21 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
     function and the descent uses make_grasp_pose, and if their orientations
     disagree the "straight down" Cartesian descent has to rotate the wrist while
     translating, which is exactly the sideways nudge that descent is careful to
-    avoid."""
-    qx, qy, qz, qw = grasp_quat_for(block_yaw_deg, x, y, holding_block)
+    avoid.
+
+    orientation_override: (qx, qy, qz, qw) to use INSTEAD of grasp_quat_for.
+    For detection hovers, where the requirement is "aim the lens at the zone",
+    not "point the jaws straight down" -- see tag_pick_place.look_at_quat. This
+    is not the same problem as dropping lock_orientation: an unconstrained plan
+    satisfies position alone and OMPL is then free to pick ANY orientation,
+    which on 2026-07-30 produced a mirror-configuration solve with the base
+    swung 180 deg from the target, arm reaching back over itself. A specific
+    orientation, even one that is not straight down, keeps the plan a normal
+    reach instead of an arbitrary one."""
+    if orientation_override is not None:
+        qx, qy, qz, qw = orientation_override
+    else:
+        qx, qy, qz, qw = grasp_quat_for(block_yaw_deg, x, y, holding_block)
 
     ik_state = None
     if lock_orientation:

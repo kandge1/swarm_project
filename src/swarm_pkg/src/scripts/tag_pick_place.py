@@ -242,6 +242,74 @@ def camera_offset_world(block_yaw_deg, x=None, y=None):
     return world[0], world[1]
 
 
+# Fixed geometry from the URDF chain joint6_flange -> wrist_camera_optical_frame.
+# The optical axis is essentially the flange's own +Z, which is what makes the
+# aiming below a small correction rather than a full orientation solve.
+OPTICAL_AXIS_IN_FLANGE = (0.0058, 0.0058, 1.0000)
+LENS_OFFSET_IN_FLANGE = (-0.0282, 0.0283, 0.0185)
+
+
+def _mat_vec(R, v):
+    return [sum(R[i][k] * v[k] for k in range(3)) for i in range(3)]
+
+
+def _unit(v):
+    n = math.sqrt(sum(c * c for c in v))
+    return [c / n for c in v] if n > 1e-12 else list(v)
+
+
+def look_at_quat(flange_xyz, target_xyz, block_yaw_deg=0.0, iterations=2):
+    """Flange orientation that AIMS THE LENS at target_xyz.
+
+    Why this exists, and why "no orientation constraint" is not the alternative:
+    detection needs the camera >= ~220 mm above the mat to focus (measured
+    2026-07-30), and the arm cannot hold a straight-DOWN camera that high over a
+    zone 254 mm out -- every IK seed fails. The tempting shortcut is to drop the
+    orientation constraint entirely and let the planner reach the position any
+    way it likes. That was tried on hardware and is actively bad: OMPL is then
+    free to satisfy position alone, and it chose joint6_to_joint5 = -2.40 rad at
+    one height and swung the BASE to -1.69 rad (the mirror solution, arm reaching
+    back over itself) at another. Both produced beautifully sharp frames -- focus
+    221 and 207, up from 27-43 -- containing no tags at all, because the lens was
+    pointed at the wall.
+
+    So the fix is not fewer constraints, it is the RIGHT one: stop demanding
+    "point straight down" (which is a grasp requirement that detection never
+    needed) and demand "point at the zone" instead. That frees exactly the degree
+    of freedom the reach problem needs while keeping the only property detection
+    actually cares about.
+
+    Method: start from the known-reachable downward grasp orientation, then apply
+    the minimal rotation carrying its optical axis onto the direction from lens to
+    target. Iterated because the lens position itself moves when the orientation
+    changes -- the lens is 40 mm off the flange axis, so rotating the flange
+    swings it. Two passes converge well below a millimetre.
+    """
+    from pick_place import grasp_quat_for
+
+    q = grasp_quat_for(block_yaw_deg, flange_xyz[0], flange_xyz[1])
+    for _ in range(max(1, iterations)):
+        R = quat_to_matrix(q)
+        lens = [flange_xyz[i] + _mat_vec(R, LENS_OFFSET_IN_FLANGE)[i]
+                for i in range(3)]
+        desired = _unit([target_xyz[i] - lens[i] for i in range(3)])
+        current = _unit(_mat_vec(R, OPTICAL_AXIS_IN_FLANGE))
+
+        dot = max(-1.0, min(1.0, sum(a * b for a, b in zip(current, desired))))
+        angle = math.acos(dot)
+        if angle < 1e-9:
+            break
+        axis = _unit([current[1] * desired[2] - current[2] * desired[1],
+                      current[2] * desired[0] - current[0] * desired[2],
+                      current[0] * desired[1] - current[1] * desired[0]])
+        half = angle / 2.0
+        sin_h = math.sin(half)
+        delta = (axis[0] * sin_h, axis[1] * sin_h, axis[2] * sin_h, math.cos(half))
+        # World-frame correction, so it pre-multiplies.
+        q = quat_multiply(delta, q)
+    return q
+
+
 def reduce_yaw(yaw_rad, symmetry):
     """Fold a block's yaw into the smallest equivalent rotation.
 
