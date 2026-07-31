@@ -129,6 +129,65 @@ is refused — the points span too thin a band to condition the fit.
 
 ---
 
+## The URDF's tool geometry is not trustworthy (2026-07-30)
+
+Three separate errors past `joint6_flange` surfaced in one day. Treat **anything** in that
+file beyond the last joint as unverified until measured.
+
+1. **The gripper is not what it looked like.** Every finger joint is revolute about a
+   horizontal axis, which suggested pad swing would tilt the block degree-for-degree during
+   closure. False — the mimic tags make it a parallelogram linkage
+   (`gripper_left3_to_gripper_left1 mimic gripper_controller x-1.0`), so the pads translate
+   without rotating. Verified by FK: 0.000° of pad rotation across the whole jaw travel.
+2. **The camera is on the wrong side of the flange.** Established from hardware: the survey
+   hover saw 1 of 4 tags, and only the flipped model explains which. Under the URDF all four
+   tags sit at the same ~30° off-axis, so it cannot account for tag 0 being seen while 2 and 3
+   were not; flipped, 2 and 3 are at ~44° (outside any lens) and 0/1 at 21–24°.
+3. **That same transform contradicts its own comment.** The comment says the lens is *20 mm
+   along +X and 8.5 mm along +Z*; the values say *40 mm along X and 8.5 mm along Y*. Different
+   magnitude, different axis. Nobody ever checked it — so the direction is not the only thing
+   in doubt, the 40 mm is too.
+
+### Measuring it instead of guessing: `camera_offset_calibrate.py`
+
+The naive measurement — command the flange somewhere, see where the lens landed, subtract —
+does not work here, because it yields `lens_actual − flange_COMMANDED`, which carries the arm's
+own positioning error. With worn gearing that error is millimetres and invisible to the
+encoders, so it cannot be separated from the offset.
+
+Two stills at the **same commanded flange position**, wrist rotated 180° between them, fixes
+that. With `f` the flange's true position and `d` the lateral offset in world:
+
+```
+lens_A = f + d
+lens_B = f − d          (180° about the flange axis negates the lateral part)
+
+d = (lens_A − lens_B)/2     <-- f CANCELS; the arm's error drops out entirely
+f = (lens_A + lens_B)/2     <-- free bonus: the flange's ACTUAL position,
+                                externally measured, owing nothing to encoders
+```
+
+Both lens positions come from the tag homography, which is independent of the arm. Verified on
+synthetic data: an injected 8.3 mm arm error contributed **1.4e-17 m** to the recovered offset.
+
+The default calibration pose puts the flange at the zone centre, so the two stills land the lens
+~40 mm either side of it — each looking squarely at one edge's pair of tags rather than at the
+zone corners, which is the framing the centre-aimed survey cannot get.
+
+```bash
+python3 camera_offset_calibrate.py --zone-origin 0.0 0.254 0.0
+```
+
+It prints the offset in the flange frame, ready to paste into
+`camera_flange_to_camera_link`'s origin. **The SRDF needs no changes** — it references link
+*names* for collision pairs, and this is an origin edit, so the collision matrix is untouched.
+
+Sequence: measure → write the URDF → rebuild `mycobot_description` on **both** machines → set
+`CAMERA_MOUNT_FLIPPED = False`. The code-side flip in `tag_pick_place.py` exists only to unblock
+detection until the model itself is right, and should not outlive it.
+
+---
+
 ## Mat geometry: where the tags physically go
 
 Origin is the **bottom of the robot base** — the URDF has `world -> g_base` at `xyz="0 0 0"`,

@@ -172,6 +172,48 @@ def quat_to_matrix(q):
     )
 
 
+# The URDF puts the lens on the OPPOSITE side of the flange from where it
+# physically is. Established 2026-07-30 on hardware, and it is a model error, not
+# a code error: the chain to wrist_camera_link goes through two hand-authored
+# right angles (joint6output_to_camera_flange rpy="1.5708 1.5708 0", then
+# camera_flange_to_camera_link), the same kind of hand-authored tool geometry
+# that already proved untrustworthy for the gripper mount earlier the same day.
+#
+# The evidence. The survey hover was commanded so the URDF-modelled lens would
+# sit on the zone centre, and exactly ONE of four tags was detected. Predicted
+# off-axis angles for the two competing models, at the joint angles actually
+# achieved:
+#
+#     tag   URDF as written   lens 180 deg opposite
+#      0        30.9 deg           24.3 deg
+#      1        29.7 deg           21.3 deg
+#      2        30.4 deg           43.7 deg
+#      3        31.6 deg           44.5 deg
+#
+# The URDF model says all four sit at the same ~30 deg, so it cannot explain why
+# tag 0 was seen and tags 2 and 3 were not -- they are no further off-axis than
+# the one that worked. The flipped model puts 2 and 3 at ~44 deg, outside any
+# plausible lens, and 0 and 1 comfortably inside. Only the second model is
+# consistent with the observation. (Tag 1, inside the frame but undetected, is
+# separately explained by the gripper occluding it -- the known 2-of-4 problem.)
+CAMERA_MOUNT_FLIPPED = True
+
+# Wrist yaw used for DETECTION hovers, over and above the grasp yaw.
+#
+# This is NOT redundant with the flip above, and the reachability arithmetic is
+# why. With the lens physically on the near side of the flange, putting it over
+# a zone centre 254 mm out would need the FLANGE at 295 mm -- past this arm's
+# reach. Rotating the wrist 180 deg swings the lens to the far side, so the same
+# lens position needs the flange at only 213 mm, which is precisely where the arm
+# already parked this run. The flip tells the code which side the lens is on; this
+# picks the wrist angle that makes the required flange position reachable.
+#
+# Detection-only. The grasp descent still uses the block's own yaw -- rotating the
+# wrist about its own axis moves the jaws' orientation, not the flange position,
+# so the two are independent.
+DETECT_WRIST_YAW_DEG = 180.0
+
+
 def camera_offset_world(block_yaw_deg, x=None, y=None):
     """(dx, dy): where the lens sits relative to the flange, in world metres.
 
@@ -190,6 +232,11 @@ def camera_offset_world(block_yaw_deg, x=None, y=None):
     from pick_place import grasp_quat_for
 
     offset, _view = tool_frame_check.flange_to_camera()
+    if CAMERA_MOUNT_FLIPPED:
+        # Negate the LATERAL components only. The axial (+Z, along the flange
+        # axis) component is unaffected by a 180 deg rotation about that axis, so
+        # negating it too would move the lens up the tool rather than around it.
+        offset = (-offset[0], -offset[1], offset[2])
     rotation = quat_to_matrix(grasp_quat_for(block_yaw_deg, x, y))
     world = [sum(rotation[i][k] * offset[k] for k in range(3)) for i in range(3)]
     return world[0], world[1]
@@ -484,10 +531,13 @@ def run_stage1(io_client, detector, args, log):
         print("[stage1] could not open the gripper")
         return False
 
-    # --- 1. survey the zone, at yaw 0, camera over the zone centre ---------
+    # --- 1. survey the zone, camera over the zone centre -------------------
+    # DETECT_WRIST_YAW_DEG, not 0: the lens is on the near side of the flange, so
+    # at yaw 0 reaching the zone centre would need a 295 mm flange. See the
+    # constant for the arithmetic.
     response, converged, _ = hover_and_detect(
-        io_client, detector, log, (0.0, 0.0), 0.0, hover, "survey",
-        debug_image=args.debug_image)
+        io_client, detector, log, (0.0, 0.0), DETECT_WRIST_YAW_DEG, hover,
+        "survey", debug_image=args.debug_image)
     if response is None:
         return False
     if not converged:
@@ -523,8 +573,13 @@ def run_stage1(io_client, detector, args, log):
                                          detector.zone_y + offset[1])
     camera_target = (block.zx + offset_zone[0], block.zy + offset_zone[1])
 
+    # Detect at the flipped wrist yaw for the same reachability reason as the
+    # survey. The DESCENT below still uses grasp_yaw_deg -- rotating the wrist
+    # about its own axis changes the jaws' orientation, not the flange position,
+    # so the grasp is unaffected by having detected from the other side.
     response, converged, _ = hover_and_detect(
-        io_client, detector, log, camera_target, grasp_yaw_deg, hover, "grasp-hover",
+        io_client, detector, log, camera_target,
+        grasp_yaw_deg + DETECT_WRIST_YAW_DEG, hover, "grasp-hover",
         debug_image=args.debug_image)
     if response is None:
         return False
