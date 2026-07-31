@@ -1,18 +1,37 @@
 #!/usr/bin/env python3
 """Pi-side DetectBlock service: one still, one answer.
 
-RUNS ON THE ROBOT (the Pi), not on mars. It holds the wrist camera subscription
-and never sends an image anywhere -- the DDS link silently drops anything over
-~1400 bytes (PROJECT_CONTEXT.md, MTU fragmentation), so a cross-machine image
-stream is not slow, it is impossible. The reply is a few hundred bytes.
+RUNS ON THE ROBOT (the Pi), not on mars. It never sends an image anywhere -- the
+DDS link silently drops anything over ~1400 bytes on the mars<->robot Wi-Fi hop
+(PROJECT_CONTEXT.md, MTU fragmentation), so a cross-machine image stream is not
+slow, it is impossible. The reply is a few hundred bytes.
 
     # on the Pi, alongside real_robot_hardware.launch.py
-    ros2 launch mycobot_280pi_camera_moveit2 camera.launch.py
     python3 block_detector_node.py
 
     # from either machine, with the arm parked at a hover
     ros2 service call /detect_block swarm_interfaces/srv/DetectBlock \\
         "{zone: pickup, zone_x: 0.0, zone_y: 0.25, zone_z: 0.0, zone_yaw: 0.0}"
+
+READS THE CAMERA DIRECTLY (cv2.VideoCapture), not via a v4l2_camera_node topic.
+Changed 2026-07-31 -- it used to subscribe to /wrist_camera/image_raw, published
+by a SEPARATE process (camera.launch.py's v4l2_camera_node). Both processes are
+on the Pi, so the image never left the machine -- but ROS topic pub/sub still
+goes through Cyclone DDS's RTPS layer regardless of locality, and that layer was
+using the SAME MaxMessageSize=1400B tuned for the weak mars<->robot Wi-Fi hop. A
+640x480 BGR8 frame is 921,600 bytes, so under that cap it fragmented into ~700
+RTPS pieces PER FRAME, on loopback, for a hop that never touches Wi-Fi at all.
+Measured cost: a detect call that decoded tags fine still took the better part
+of a minute, with the node's own log showing repeated 'invalid data size' /
+'string data is not null-terminated' RTPS deserialization errors in between.
+Reading the device directly removes DDS from the image path completely, the
+same way live_tag_view.py already does.
+
+CONSEQUENCE: this node now OWNS THE CAMERA DEVICE. Do NOT also run
+camera.launch.py's v4l2_camera_node or live_tag_view.py at the same time --
+V4L2 only allows one reader, and the second one to start will fail to open the
+device (same conflict live_tag_view.py's docstring already warns about, now
+also applying between this node and that script).
 
 All the actual vision lives in zone_vision.py, which imports no ROS at all. This
 file is only the plumbing: grab a fresh frame, call analyze(), fill in the
@@ -30,11 +49,9 @@ import time
 
 import cv2
 import rclpy
-from cv_bridge import CvBridge
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from sensor_msgs.msg import Image
 
 from swarm_interfaces.msg import BlockDetection
 from swarm_interfaces.srv import DetectBlock
@@ -47,7 +64,9 @@ class BlockDetector(Node):
     def __init__(self):
         super().__init__("block_detector")
 
-        self.declare_parameter("image_topic", "/wrist_camera/image_raw")
+        self.declare_parameter("video_device", "/dev/video0")
+        self.declare_parameter("frame_width", 640)
+        self.declare_parameter("frame_height", 480)
         self.declare_parameter("method", "canny")
         self.declare_parameter("tag_size", zv.DEFAULT_TAG_SIZE)
         self.declare_parameter("default_zone_size", zv.DEFAULT_ZONE_SIZE)
@@ -59,27 +78,45 @@ class BlockDetector(Node):
         self.declare_parameter("warmup_frames", 3)
         self.declare_parameter("frame_timeout_sec", 4.0)
 
-        self._bridge = CvBridge()
         self._lock = threading.Lock()
         self._frame = None
         self._frame_seq = 0          # bumped per frame; how freshness is judged
 
-        # Separate callback groups + a MultiThreadedExecutor, so the image
-        # subscription keeps firing while a service callback is waiting for a
-        # fresh frame. On a single-threaded executor the service handler would
-        # block the very callback it is waiting on and deadlock until timeout.
-        self._image_group = MutuallyExclusiveCallbackGroup()
-        self._service_group = MutuallyExclusiveCallbackGroup()
+        device = self.get_parameter("video_device").value
+        self._cap = cv2.VideoCapture(device)
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH,
+                      self.get_parameter("frame_width").value)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT,
+                      self.get_parameter("frame_height").value)
+        if not self._cap.isOpened():
+            raise RuntimeError(
+                "could not open %s -- is it already held by camera.launch.py's "
+                "v4l2_camera_node or live_tag_view.py? Only one reader is "
+                "allowed; stop the other one first, or check `ls /dev/video*`."
+                % device)
 
-        topic = self.get_parameter("image_topic").value
-        self._sub = self.create_subscription(
-            Image, topic, self._on_image, 1, callback_group=self._image_group)
+        # Background thread, not a timer callback: cap.read() blocks on the
+        # USB transfer, and blocking inside an executor callback would stall
+        # every other callback on this node's executor along with it.
+        self._capture_stop = threading.Event()
+        self._capture_thread = threading.Thread(
+            target=self._capture_loop, daemon=True)
+        self._capture_thread.start()
+
+        # Separate callback groups + a MultiThreadedExecutor, so a service
+        # callback waiting on a fresh frame cannot block anything else this
+        # node needs to do. The capture thread is independent of both --
+        # ROS callback groups only govern ROS callbacks -- but keeping this
+        # matches the original single-threaded-executor deadlock this design
+        # was already built to avoid.
+        self._service_group = MutuallyExclusiveCallbackGroup()
         self._service = self.create_service(
             DetectBlock, "detect_block", self._on_request,
             callback_group=self._service_group)
 
         self.get_logger().info(
-            "block_detector up: listening on %s, serving /detect_block" % topic)
+            "block_detector up: reading %s directly, serving /detect_block"
+            % device)
         self.get_logger().info(
             "tag_size=%.4f m, default zone_size=%.4f m, method=%s"
             % (self.get_parameter("tag_size").value,
@@ -87,15 +124,26 @@ class BlockDetector(Node):
                self.get_parameter("method").value))
 
     # -- camera ------------------------------------------------------------
-    def _on_image(self, msg):
-        try:
-            frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-        except Exception as exc:                       # noqa: BLE001
-            self.get_logger().warn("cv_bridge failed: %s" % exc)
-            return
-        with self._lock:
-            self._frame = frame
-            self._frame_seq += 1
+    def _capture_loop(self):
+        """Runs on its own thread for the node's whole lifetime, continuously
+        pulling frames from the device. Same _frame/_frame_seq contract
+        _on_image used to fill from a DDS callback -- _grab_fresh_frame()
+        does not know or care which one is writing them."""
+        fail_streak = 0
+        while not self._capture_stop.is_set():
+            ok, frame = self._cap.read()
+            if not ok:
+                fail_streak += 1
+                if fail_streak % 30 == 1:      # log occasionally, not per-frame
+                    self.get_logger().warn(
+                        "cap.read() failed (%d in a row) -- camera unplugged, "
+                        "or /dev/video0 renumbered?" % fail_streak)
+                time.sleep(0.05)
+                continue
+            fail_streak = 0
+            with self._lock:
+                self._frame = frame
+                self._frame_seq += 1
 
     def _grab_fresh_frame(self):
         """(frame, error). Waits for a frame captured AFTER this call started.
@@ -122,12 +170,13 @@ class BlockDetector(Node):
 
         with self._lock:
             seen = self._frame_seq - start_seq
-        topic = self.get_parameter("image_topic").value
+        device = self.get_parameter("video_device").value
         if self._frame is None and seen == 0:
-            return None, ("no images on %s at all in %.1f s -- is camera.launch.py "
-                          "running on the Pi?" % (topic, timeout))
-        return None, ("only %d of %d fresh frames on %s in %.1f s; camera is "
-                      "publishing but too slowly to trust" % (seen, warmup, topic, timeout))
+            return None, ("no frames read from %s at all in %.1f s -- check "
+                          "`ls /dev/video*` and that nothing else has the "
+                          "device open" % (device, timeout))
+        return None, ("only %d of %d fresh frames from %s in %.1f s; camera is "
+                      "reading but too slowly to trust" % (seen, warmup, device, timeout))
 
     # -- service -----------------------------------------------------------
     def _on_request(self, request, response):
@@ -243,6 +292,14 @@ class BlockDetector(Node):
         except Exception as exc:                       # noqa: BLE001
             self.get_logger().warn("debug image failed (detection is unaffected): %s" % exc)
 
+    def close_camera(self):
+        """Stop the capture thread and release the device. Must happen before
+        the process exits, or the next reader (camera.launch.py,
+        live_tag_view.py, a re-run of this node) inherits a busy device."""
+        self._capture_stop.set()
+        self._capture_thread.join(timeout=2.0)
+        self._cap.release()
+
 
 def main():
     rclpy.init()
@@ -254,6 +311,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        node.close_camera()
         node.destroy_node()
         # rclpy installs its own signal handler, so a SIGTERM (which is how this
         # gets stopped in practice) has already shut the context down by the

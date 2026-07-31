@@ -57,7 +57,6 @@ from pick_place import (  # noqa: E402
     GRASP_OFFSET_Z,
     GRIPPER_OPEN,
     HOME_RADIANS,
-    MAX_HOVER_Z,
     PLACE_XYZ,
     RobotIOClient,
     cartesian_move_to,
@@ -65,6 +64,7 @@ from pick_place import (  # noqa: E402
     gripper_close_until_contact,
     hover_z,
     move_arm_to,
+    quat_multiply,
 )
 from swarm_interfaces.srv import DetectBlock  # noqa: E402
 
@@ -119,8 +119,37 @@ BACKLASH_J0_DEG = 1.83               # MEASURED, for logging and for that fix
 # ---------------------------------------------------------------------------
 
 MAX_CORRECTIONS = 2                  # then abort rather than descend blind
-DETECT_SERVICE_TIMEOUT = 20.0        # s; a still plus vision on the Pi
+
+# Raised 20 -> 45s on 2026-07-31. A detect call that decoded tags fine (2 tags,
+# rms 4.4px) still blew past 20s end to end -- the Pi's own log showed a burst of
+# repeating DDS deserialization errors ('invalid data size' / 'string data is not
+# null-terminated') before it recovered and answered. A 640x480 frame is ~920KB
+# against this link's deliberately small MaxMessageSize=1400B (the campus-WiFi
+# MTU fix), so it fragments into 700+ RTPS pieces per frame -- plausible that
+# reassembly occasionally stalls under this Galactic Cyclone DDS build. That is a
+# transport problem to fix separately; in the meantime, treating "slow" the same
+# as "broken" was throwing away answers that had already arrived correctly.
+DETECT_SERVICE_TIMEOUT = 45.0
+
 SETTLE_AFTER_MOVE_SEC = 0.6          # let the arm stop ringing before a still
+
+# Hover height for DETECTION only (not the grasp approach -- see GRASP_OFFSET_Z
+# and hover_z() in pick_place.py for that, unrelated).
+#
+# MEASURED 2026-07-30/31, not guessed:
+#   - lens needs >= ~220mm above the mat to focus at all (below that: Laplacian
+#     focus metric 27-84, no tag decodes even when pointed straight at one;
+#     above: 207-221, clean decodes).
+#   - a STRAIGHT-DOWN camera cannot reach that height at this zone's 254mm
+#     radius -- all 19 deterministic IK seeds fail, and letting OMPL sample
+#     freely is worse, not better (it found a mirror-configuration solve with
+#     the base swung 180deg, arm reaching back over itself, on hardware).
+#   - the fix is look_at_quat(): tilt the approach axis a few degrees off
+#     vertical so the flange position IS reachable, rather than demanding an
+#     orientation the arm cannot hold there. Verified end to end on hardware
+#     2026-07-31 at this exact height: IK converged on real seeds (not the
+#     fallback), and the detector decoded 2 tags at rms 4.4px.
+DETECT_HOVER_Z = 0.280
 
 # ---------------------------------------------------------------------------
 # Multi-view acquisition
@@ -242,11 +271,35 @@ def camera_offset_world(block_yaw_deg, x=None, y=None):
     return world[0], world[1]
 
 
-# Fixed geometry from the URDF chain joint6_flange -> wrist_camera_optical_frame.
-# The optical axis is essentially the flange's own +Z, which is what makes the
-# aiming below a small correction rather than a full orientation solve.
-OPTICAL_AXIS_IN_FLANGE = (0.0058, 0.0058, 1.0000)
-LENS_OFFSET_IN_FLANGE = (-0.0282, 0.0283, 0.0185)
+# Fixed geometry from the URDF chain joint6_flange -> wrist_camera_optical_frame,
+# WITH the CAMERA_MOUNT_FLIPPED correction already baked in.
+#
+# BUG, found 2026-07-31 on hardware: the first version of this took these two
+# constants straight from the raw URDF chain and never applied the flip. It then
+# aimed confidently and precisely -- at the position the WRONG-side camera model
+# predicts. camera_offset_world() (above) already knew about the flip; this did
+# not, because it was added the next day without cross-checking. Costed a run:
+# the detector's own tag-based measurement put the camera 104mm off in X, 27mm
+# in Y from where the (buggy) model claimed 0.37mm of error.
+#
+# The physical correction is a 180deg rotation about the flange's own axis
+# (== the optical axis, see below), which negates a vector's LATERAL (X, Y)
+# components and leaves its AXIAL (Z) component alone -- same operation
+# camera_offset_world() already does. Applied here directly rather than at
+# call time so every user of these two constants gets it automatically instead
+# of needing to remember to flip, which is exactly the mistake that happened.
+_RAW_OPTICAL_AXIS_IN_FLANGE = (0.0058, 0.0058, 1.0000)
+_RAW_LENS_OFFSET_IN_FLANGE = (-0.0282, 0.0283, 0.0185)
+if CAMERA_MOUNT_FLIPPED:
+    OPTICAL_AXIS_IN_FLANGE = (-_RAW_OPTICAL_AXIS_IN_FLANGE[0],
+                              -_RAW_OPTICAL_AXIS_IN_FLANGE[1],
+                              _RAW_OPTICAL_AXIS_IN_FLANGE[2])
+    LENS_OFFSET_IN_FLANGE = (-_RAW_LENS_OFFSET_IN_FLANGE[0],
+                             -_RAW_LENS_OFFSET_IN_FLANGE[1],
+                             _RAW_LENS_OFFSET_IN_FLANGE[2])
+else:
+    OPTICAL_AXIS_IN_FLANGE = _RAW_OPTICAL_AXIS_IN_FLANGE
+    LENS_OFFSET_IN_FLANGE = _RAW_LENS_OFFSET_IN_FLANGE
 
 
 def _mat_vec(R, v):
@@ -435,7 +488,14 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
         yaw = base_yaw_deg + offset
         print("\n[multiview] still %d/%d at wrist yaw %+.0f deg (offset %+.0f)"
               % (index + 1, len(MULTIVIEW_YAW_OFFSETS_DEG), yaw, offset))
-        if not move_arm_to(io_client, x, y, z, block_yaw_deg=yaw,
+        # look_at_quat, not a straight-down block_yaw_deg move: at DETECT_HOVER_Z
+        # straight-down is unreachable (see that constant). yaw still does its
+        # original job -- it is passed straight through to look_at_quat's own
+        # block_yaw_deg, which rotates the WRIST before the aiming tilt is
+        # applied, so it still changes which tag pair the gripper occludes.
+        target = (detector.zone_x, detector.zone_y, detector.zone_z)
+        q = look_at_quat((x, y, z), target, block_yaw_deg=yaw)
+        if not move_arm_to(io_client, x, y, z, orientation_override=q,
                            holding_block=holding_block):
             print("[multiview]   move failed, skipping this view")
             continue
@@ -503,11 +563,24 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
                      hover_height, label, debug_image=None):
     """Put the CAMERA over target_zone_xy, then correct until it is really there.
 
+    Aims via look_at_quat at the ZONE CENTRE (fixed, not target_zone_xy) rather
+    than holding a straight-down orientation. This is not optional at
+    DETECT_HOVER_Z: straight-down cannot reach that height at this radius at
+    all (see DETECT_HOVER_Z). Aiming at the fixed zone centre rather than the
+    per-attempt target keeps the orientation identical across correction
+    attempts, which is what the plain "flange += delta" correction below
+    assumes -- re-aiming at a moving target on every attempt would couple the
+    position and orientation corrections together.
+
     Returns (response, converged, flange_world_xy) or (None, False, None).
     """
     target_world = detector.zone_to_world(*target_zone_xy)
+    zone_centre_world = (detector.zone_x, detector.zone_y, detector.zone_z)
     offset = camera_offset_world(block_yaw_deg, target_world[0], target_world[1])
-    # Command the FLANGE such that the CAMERA lands on the target.
+    # Command the FLANGE such that the CAMERA lands on the target. Straight-down
+    # geometry, used only to pick a reasonable STARTING flange position -- the
+    # tilt from look_at_quat below shifts the true aim point slightly, and the
+    # correction loop is what actually converges on it.
     flange = (target_world[0] - offset[0], target_world[1] - offset[1])
 
     print("\n[%s] want camera at zone (%+.1f, %+.1f) mm -> world (%.4f, %.4f)"
@@ -519,8 +592,10 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
 
     response = None
     for attempt in range(MAX_CORRECTIONS + 1):
+        q = look_at_quat((flange[0], flange[1], hover_height), zone_centre_world,
+                         block_yaw_deg=block_yaw_deg)
         if not move_arm_to(io_client, flange[0], flange[1], hover_height,
-                           block_yaw_deg=block_yaw_deg):
+                           orientation_override=q):
             print("[%s] move failed" % label)
             return None, False, None
         time.sleep(SETTLE_AFTER_MOVE_SEC)
@@ -570,28 +645,16 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
 
 
 def run_stage1(io_client, detector, args, log):
-    # DETECTION height, not grasp-approach height -- these are different
-    # questions and using one formula for both was a real bug (2026-07-30,
-    # first hardware run: hovered at 0.16 m, computed from block_thickness +
-    # GRASP_OFFSET_Z + APPROACH_HEIGHT, and saw ZERO of 4 tags -- while
-    # MAX_HOVER_Z = 0.205 m of reachable height sat unused).
-    #
-    # A short hover is right for a plain Cartesian approach to a KNOWN point --
-    # that is what hover_z(target_z) is for, and pick_place.py's PICK_XYZ flow
-    # uses it correctly. But hover_and_detect's job is to SEE the tags, and
-    # every millimetre of height only helps that: it widens the camera's view
-    # of the zone with no accuracy cost, because the actual grasp descent is a
-    # separate, later Cartesian move from wherever this hover ends up -- this
-    # height does not propagate into grasp_z (computed independently below).
-    # There is no reason to hover any lower than the arm can reach.
-    #
-    # So: hover at the reachable ceiling for BOTH detect passes (survey and
-    # grasp-hover), full stop. If tags are still not seen from here, the cause
-    # is not hover height -- see the framing checklist in APRIL_TAGS.md
-    # "Stage 0b.2 FOV go/no-go".
-    hover = MAX_HOVER_Z
-    print("[stage1] detect hover height %.4f m (MAX_HOVER_Z, for widest "
-          "camera view of the zone)" % hover)
+    # DETECT_HOVER_Z, not MAX_HOVER_Z: this is the height that actually FOCUSES
+    # (measured 2026-07-30/31 -- see the constant). MAX_HOVER_Z = 0.205m was the
+    # reachable ceiling for a STRAIGHT-DOWN camera, and every hover at or below
+    # it produced a Laplacian focus metric of 27-84 -- too blurred to decode a
+    # tag even pointed straight at one. Height was never the limiting factor;
+    # focus distance was, and DETECT_HOVER_Z + look_at_quat (see hover_and_detect
+    # and detect_multiview) is what makes that height reachable at all.
+    hover = DETECT_HOVER_Z
+    print("[stage1] detect hover height %.4f m (measured focus floor is ~0.220m "
+          "lens height; this clears it)" % hover)
 
     if not go_home(io_client):
         return False
@@ -599,24 +662,43 @@ def run_stage1(io_client, detector, args, log):
         print("[stage1] could not open the gripper")
         return False
 
-    # --- 1. survey the zone, camera over the zone centre -------------------
-    # DETECT_WRIST_YAW_DEG, not 0: the lens is on the near side of the flange, so
-    # at yaw 0 reaching the zone centre would need a 295 mm flange. See the
-    # constant for the arithmetic.
-    response, converged, _ = hover_and_detect(
-        io_client, detector, log, (0.0, 0.0), DETECT_WRIST_YAW_DEG, hover,
-        "survey", debug_image=args.debug_image)
-    if response is None:
+    # --- 1. survey the zone: FOUR stills, wrist rotated 90deg between them,
+    #        fused into one answer -----------------------------------------
+    # This is the actual answer to the gripper occlusion problem (the gripper
+    # hangs in front of the lens and hides 2 of the 4 tags from any single
+    # still): rotate the wrist between stills so a DIFFERENT pair is hidden
+    # each time, solve each still independently, then fuse. See
+    # zone_vision.analyze_multi's docstring for why independently matters on
+    # this arm specifically -- pooling correspondences across stills would
+    # need to trust how far the wrist actually turned, which the worn servo
+    # gearing makes exactly the wrong thing to trust (APRIL_TAGS.md ROOT CAUSE).
+    survey_offset = camera_offset_world(0.0, detector.zone_x, detector.zone_y)
+    survey_flange = (detector.zone_x - survey_offset[0],
+                     detector.zone_y - survey_offset[1])
+    debug_prefix = (os.path.splitext(args.debug_image)[0]
+                    if args.debug_image else None)
+    fused_blocks, views_used, tags_union = detect_multiview(
+        io_client, detector, "pickup",
+        survey_flange[0], survey_flange[1], hover, 0.0,
+        debug_prefix=debug_prefix)
+
+    if views_used == 0:
+        print("[stage1] no still saw enough tags to fuse. This is a framing, "
+              "focus or lighting problem -- check the debug frames before "
+              "suspecting the geometry.")
         return False
-    if not converged:
-        print("[stage1] the survey hover never settled onto the zone centre. "
-              "The block position below is still valid (it comes from the "
-              "tags), but framing may be marginal.")
-    if not response.blocks:
+    if not fused_blocks:
         print("[stage1] zone is empty -- nothing to pick.")
         return False
 
-    block = response.blocks[0]
+    block = fused_blocks[0]
+    if not block.trustworthy:
+        print("[stage1] WARNING: the chosen block was seen in only 1 view, no "
+              "cross-check. Position may be less reliable than usual.")
+    else:
+        print("[stage1] block confirmed across %d views, spread %.1f mm / "
+              "%.1f deg" % (block.n_views, block.spread_m * 1000,
+                            math.degrees(block.spread_yaw_rad)))
     grasp_yaw = reduce_yaw(block.yaw, block.symmetry)
     grasp_yaw_deg = math.degrees(grasp_yaw)
     print("\n[stage1] block: %.1f x %.1f mm %s, zone (%+.1f, %+.1f) mm, "

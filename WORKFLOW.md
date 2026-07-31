@@ -334,16 +334,24 @@ Same split-compute layout as above, plus two things on the robot. All vision
 runs on the Pi -- no image ever crosses the DDS link, which silently drops
 anything over ~1400 bytes.
 
-### Terminal 4: Camera + detector (on the robot, Galactic)
+### Terminal 4: Detector (on the robot, Galactic)
 ```bash
-source ~/swarm_project/install/setup.bash
-ros2 launch mycobot_280pi_camera_moveit2 camera.launch.py
-```
-```bash
-# another terminal on the robot
 source ~/swarm_project/install/setup.bash
 python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py
 ```
+
+**Do NOT also launch `camera.launch.py`.** Changed 2026-07-31:
+`block_detector_node.py` now reads `/dev/video0` directly (`cv2.VideoCapture`)
+instead of subscribing to a topic published by `camera.launch.py`'s
+`v4l2_camera_node`. That used to route every frame through Cyclone DDS even
+though both processes were on the same Pi -- a 640x480 frame is 921,600 bytes
+against this link's deliberately small `MaxMessageSize=1400B` (tuned for the
+mars<->robot Wi-Fi hop, irrelevant to a purely local topic), so it fragmented
+into ~700 RTPS pieces per frame and occasionally stalled for the better part of
+a minute. V4L2 only allows one reader; running `camera.launch.py` alongside this
+node now means one of them fails to open the device, not that they cooperate.
+If you need the raw topic for something else (RViz, `live_tag_view.py`), stop
+this node first.
 
 ### Terminal 5: Detection and picking (on mars, Jazzy)
 ```bash
