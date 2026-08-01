@@ -223,6 +223,47 @@ def test_rectangle(method, failures):
                        % (math.degrees(d.zyaw), yaw_deg))
 
 
+def test_grid_line_rejected(method, failures):
+    """A printed-grid-line-shaped sliver must be REJECTED; the largest real
+    block must still be ACCEPTED. Both in one test because the fix is a single
+    threshold trying to sit between them.
+
+    Regression test for 2026-07-31, found on real hardware: the mat is printed
+    with an inch-square reference grid, and Canny fires on those lines exactly
+    like it fires on a block edge. Real detections from that run measured
+    134.1x16.7mm and 121.1x12.5mm objects -- physically impossible on a 152.4mm
+    zone with no block anywhere near that shape. See MAX_BLOCK_LENGTH_M.
+    """
+    rng = np.random.default_rng(23)
+    zone = zv.zone_for("pickup")
+    label = "grid line rejected"
+
+    # Matches the measured artifact shape, not just "very long" -- if the fix
+    # regresses to a looser threshold this should still catch it.
+    sliver_img = perspective_warp(
+        render_zone(zone, [(0.0, 0.0, 0.3, 0.015, 0.130)]), rng, strength=0.04)
+    res = zv.analyze(sliver_img, zone, method=method)
+    too_long = [d for d in (res.blocks if res.success else [])
+               if d.length > zv.MAX_BLOCK_LENGTH_M]
+    failures.check(not too_long, label,
+                   "a %.1fx%.1fmm sliver survived filtering as a block"
+                   % (too_long[0].width * 1000, too_long[0].length * 1000)
+                   if too_long else "")
+
+    # The largest block actually in this project (Stage 3's 1x3in cuboid) must
+    # NOT be caught by the same net that catches the sliver above.
+    rng2 = np.random.default_rng(29)
+    largest_img = perspective_warp(
+        render_zone(zone, [(0.0, 0.0, 0.2, 0.0254, 0.0762)]), rng2, strength=0.04)
+    res2 = zv.analyze(largest_img, zone, method=method)
+    label2 = "largest real block accepted"
+    if failures.check(res2.success and res2.blocks, label2, res2.message):
+        d = res2.blocks[0]
+        failures.check(abs(d.length - 0.0762) < 0.004, label2,
+                       "measured length %.1fmm, expected ~76.2mm"
+                       % (d.length * 1000))
+
+
 def test_three_tag_fallback(method, failures):
     """One tag occluded. 12 corner correspondences is still an over-determined
     fit, so this needs no special-case geometry -- but it must not silently
@@ -490,6 +531,7 @@ def main():
         print("\n--- method=%s ---" % method)
         test_square_sweep(method, failures)
         test_rectangle(method, failures)
+        test_grid_line_rejected(method, failures)
         test_three_tag_fallback(method, failures)
         test_two_tag_pair(method, failures)
         test_tag_spread_metric(method, failures)

@@ -151,6 +151,38 @@ SETTLE_AFTER_MOVE_SEC = 0.6          # let the arm stop ringing before a still
 #     fallback), and the detector decoded 2 tags at rms 4.4px.
 DETECT_HOVER_Z = 0.280
 
+# How far to pull the flange IN from the zone centre, toward the base, before
+# aiming with look_at_quat. MEASURED, from the exact pose verified on hardware
+# 2026-07-31: flange y=0.200 at z=0.280 against a zone centre at y=0.254
+# converged on real IK seeds and decoded 2 tags. 0.254 - 0.200 = 0.054m.
+#
+# NOT derived from camera_offset_world(). That was the first attempt and it is
+# a real bug worth naming: camera_offset_world's lateral offset is YAW-
+# DEPENDENT and its sign flips between wrist yaw 0 (-38.9mm) and yaw 180
+# (+41.0mm) at this zone. Using the yaw=0 value pulled the flange OUTWARD to
+# y=0.293 instead of inward -- past anything ever verified reachable, so every
+# one of the 4 multiview stills failed all 19 IK seeds and fell back to a
+# planning failure. look_at_quat aims via ROTATION, not by placing the flange
+# at a precise lens-offset distance, so the multiview flange position does not
+# need a per-yaw lens offset at all -- it only needs to be somewhere reachable
+# near the zone, and this is the specific spot already proven to be that.
+DETECT_HOVER_PULLIN_M = 0.054
+
+
+def _pullin_toward_base(x, y, pullin_m):
+    """(x, y) moved pullin_m closer to the base along the line to it.
+
+    Radial, not a fixed axis, so it still does something sane for a zone that
+    is not sitting on the Y axis (this pickup zone happens to be, so radial and
+    "subtract from y" are the same thing here, but generalizing costs nothing).
+    """
+    radial = math.hypot(x, y)
+    if radial <= pullin_m:
+        return (0.0, 0.0)
+    frac = 1.0 - pullin_m / radial
+    return (x * frac, y * frac)
+
+
 # ---------------------------------------------------------------------------
 # Multi-view acquisition
 # ---------------------------------------------------------------------------
@@ -576,19 +608,25 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
     """
     target_world = detector.zone_to_world(*target_zone_xy)
     zone_centre_world = (detector.zone_x, detector.zone_y, detector.zone_z)
-    offset = camera_offset_world(block_yaw_deg, target_world[0], target_world[1])
-    # Command the FLANGE such that the CAMERA lands on the target. Straight-down
-    # geometry, used only to pick a reasonable STARTING flange position -- the
-    # tilt from look_at_quat below shifts the true aim point slightly, and the
-    # correction loop is what actually converges on it.
-    flange = (target_world[0] - offset[0], target_world[1] - offset[1])
+    # STARTING flange position only -- the correction loop below is what
+    # actually converges on the target. Pulled toward the base by the same
+    # MEASURED amount as the survey (DETECT_HOVER_PULLIN_M), not derived from
+    # camera_offset_world(): that offset's sign is YAW-DEPENDENT (flips between
+    # +41mm and -39mm depending on block_yaw_deg, measured 2026-07-31) and using
+    # it to place the flange pushed the survey OUTWARD past anything reachable,
+    # failing every IK seed. block_yaw_deg here can be any value the block's
+    # detected orientation produces, so that failure mode is not hypothetical
+    # for this call either -- look_at_quat aims by rotating, so the flange does
+    # not need to sit at a yaw-precise lens-offset distance to begin with.
+    flange = _pullin_toward_base(target_world[0], target_world[1],
+                                 DETECT_HOVER_PULLIN_M)
 
     print("\n[%s] want camera at zone (%+.1f, %+.1f) mm -> world (%.4f, %.4f)"
           % (label, target_zone_xy[0] * 1000, target_zone_xy[1] * 1000,
              target_world[0], target_world[1]))
-    print("[%s] lens offset (%+.1f, %+.1f) mm -> flange to (%.4f, %.4f), yaw %+.1f deg"
-          % (label, offset[0] * 1000, offset[1] * 1000, flange[0], flange[1],
-             block_yaw_deg))
+    print("[%s] starting flange (%.4f, %.4f), %.0fmm pulled toward base, yaw "
+          "%+.1f deg" % (label, flange[0], flange[1],
+                        DETECT_HOVER_PULLIN_M * 1000, block_yaw_deg))
 
     response = None
     for attempt in range(MAX_CORRECTIONS + 1):
@@ -672,9 +710,12 @@ def run_stage1(io_client, detector, args, log):
     # this arm specifically -- pooling correspondences across stills would
     # need to trust how far the wrist actually turned, which the worn servo
     # gearing makes exactly the wrong thing to trust (APRIL_TAGS.md ROOT CAUSE).
-    survey_offset = camera_offset_world(0.0, detector.zone_x, detector.zone_y)
-    survey_flange = (detector.zone_x - survey_offset[0],
-                     detector.zone_y - survey_offset[1])
+    survey_flange = _pullin_toward_base(
+        detector.zone_x, detector.zone_y, DETECT_HOVER_PULLIN_M)
+    print("[stage1] survey flange (%.4f, %.4f) -- %.0fmm pulled in from zone "
+          "centre (%.4f, %.4f)" % (survey_flange[0], survey_flange[1],
+                                   DETECT_HOVER_PULLIN_M * 1000,
+                                   detector.zone_x, detector.zone_y))
     debug_prefix = (os.path.splitext(args.debug_image)[0]
                     if args.debug_image else None)
     fused_blocks, views_used, tags_union = detect_multiview(
@@ -699,12 +740,20 @@ def run_stage1(io_client, detector, args, log):
         print("[stage1] block confirmed across %d views, spread %.1f mm / "
               "%.1f deg" % (block.n_views, block.spread_m * 1000,
                             math.degrees(block.spread_yaw_rad)))
-    grasp_yaw = reduce_yaw(block.yaw, block.symmetry)
+    # block.yaw does not exist on a FusedDetection -- fusion happens entirely in
+    # ZONE-LOCAL coordinates (see _response_to_detections), deliberately, so
+    # comparing views never mixes in the caller's own zone-survey error. World
+    # yaw is what grasp_quat_for actually needs (it rotates the jaws about
+    # world +Z), so convert explicitly here rather than at the FusedDetection
+    # boundary -- and explicitly, not by relying on zone_yaw being 0.0 today,
+    # which would silently break the moment a zone is surveyed at an angle.
+    block_yaw_world = block.zyaw + detector.zone_yaw
+    grasp_yaw = reduce_yaw(block_yaw_world, block.symmetry)
     grasp_yaw_deg = math.degrees(grasp_yaw)
     print("\n[stage1] block: %.1f x %.1f mm %s, zone (%+.1f, %+.1f) mm, "
           "yaw %+.1f deg -> grasp yaw %+.1f deg (symmetry %d)"
           % (block.width * 1000, block.length * 1000, block.shape,
-             block.zx * 1000, block.zy * 1000, math.degrees(block.yaw),
+             block.zx * 1000, block.zy * 1000, math.degrees(block_yaw_world),
              grasp_yaw_deg, block.symmetry))
 
     usable = args.zone_size / 2.0 - args.tag_size / 2.0 - max(block.width, block.length) / 2.0

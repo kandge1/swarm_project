@@ -195,6 +195,31 @@ MIN_BLOCK_AREA_FRAC = 0.0018    # ~0.18% of a 6in zone square = a 6mm speck
 # and grabbed the mat itself rather than a block on it.
 MAX_BLOCK_AREA_FRAC = 0.60
 
+# SHAPE sanity, not just area. AREA ALONE IS NOT ENOUGH: a thin sliver spanning
+# most of the zone has plenty of area to clear MIN_BLOCK_AREA_FRAC while being
+# nothing like a physical block.
+#
+# Found 2026-07-31 on real hardware, not hypothesized: the mat is printed with
+# an inch-square reference grid, and Canny segmentation (the default method)
+# fires on printed grid lines exactly as readily as on a real block edge --
+# they are both genuine intensity edges, and nothing before this point
+# distinguishes "edge of an object" from "edge of a printed line." Detections
+# from that run included, verbatim:
+#     134.1 x  16.7 mm  aspect 8.0:1
+#     121.1 x  12.5 mm  aspect 9.7:1
+# against a zone that is 152.4 mm across -- these are grid lines nearly
+# spanning the mat, not blocks. No block in this project is shaped like that:
+# the largest Stage 3 entry is a 1in x 3in cuboid, 25.4 x 76.2 mm, aspect 3.0.
+#
+# 90 mm clears that largest legitimate block with real margin (76.2 -> 90) and
+# sits well under the ~121-134 mm the grid-line artifacts measured. 4.0 clears
+# the largest legitimate aspect ratio (3.0) with margin and sits well under the
+# artifacts' 8-10:1. Both must be measured tighter if a longer legitimate block
+# is ever added to blocks.yaml -- this is not a universal constant, it is sized
+# against the specific blocks this project currently has.
+MAX_BLOCK_LENGTH_M = 0.090      # m
+MAX_BLOCK_ASPECT = 4.0          # length / width
+
 # A detected object's CENTRE must land this far inside the zone edge. Only the
 # centre is tested, so a block whose corner overhangs the boundary is still
 # measured at full size -- see build_masks() on why clipping is not used here.
@@ -693,6 +718,12 @@ def find_blocks(gray, H_zone_to_px, H_px_to_zone, zone, search_mask, accept_mask
         else:
             length, width = side_b, side_a
             major = box_zone[2] - box_zone[1]
+
+        # SHAPE, not just area -- see MAX_BLOCK_LENGTH_M. A printed grid line
+        # closed into a contour by the morphological close in _segment() can
+        # easily clear the area filter above while being nothing like a block.
+        if length > MAX_BLOCK_LENGTH_M or (width > 0 and length / width > MAX_BLOCK_ASPECT):
+            continue
 
         # Contour area in metric terms, via the same box the sides came from --
         # cheaper and less perspective-sensitive than warping the whole contour.
