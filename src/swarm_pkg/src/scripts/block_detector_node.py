@@ -272,8 +272,26 @@ class BlockDetector(Node):
             self._write_debug_image(frame, result, zone, request.debug_image_path)
 
         elapsed = time.monotonic() - started
-        level = self.get_logger().info if result.success else self.get_logger().warn
-        level("[%s] %s (%.0f ms)" % (request.zone, result.message, elapsed * 1000.0))
+        # TWO call sites, not one variable-severity call. Found 2026-07-31 on
+        # hardware: every request after the first was silently abandoned mid-
+        # callback -- the debug image (logged the line before this) always
+        # wrote fine, but the result line right after it, and therefore the
+        # service RESPONSE, never arrived, so mars sat out its full timeout
+        # waiting for an answer the Pi had already computed and then dropped.
+        # Root cause matches a known rclpy/rcutils limitation: severity is
+        # cached PER CALL SITE, and `level = self.get_logger().info if ... else
+        # .warn; level(...)` makes ONE call site's effective severity flip
+        # between invocations depending on that call's result -- which is
+        # exactly what triggered the unretrieved exception seen in between,
+        # word for word: "Logger severity cannot be changed between calls."
+        # Splitting into two fixed call sites, each always the same severity,
+        # removes the only mechanism that could trip it.
+        summary = "[%s] %s (%.0f ms)" % (request.zone, result.message,
+                                         elapsed * 1000.0)
+        if result.success:
+            self.get_logger().info(summary)
+        else:
+            self.get_logger().warn(summary)
         for index, block in enumerate(result.blocks):
             self.get_logger().info(
                 "  [%d] zone (%+.1f, %+.1f) mm yaw %+.1f deg  %.1fx%.1f mm %s sym=%d"
