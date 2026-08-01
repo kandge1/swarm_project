@@ -85,17 +85,37 @@ import numpy as np
 # Side of the square joining the four TAG CENTRES. Not the tag size, and not
 # the ~4in working area a block actually gets to sit in.
 #
-# 6 in, not 4 in. Originally this was 4in with the tags AT the vertices of the
-# nominal 4in working square -- but a tag centred on a vertex reaches tag_size/2
-# INWARD from it, so a block near a corner sat on top of the tag. Usable area is
-#     zone_size/2 - tag_size/2 - block_size/2
-# which at 4in zone / 1in tag / 1.18in block was only +-23mm (1.82in) -- less
-# than half the intended working square, and a 3in Stage 3 block did not fit at
-# all. Moving the tags out to a 6in square around the same ~4in working area
-# gives +-48.5mm (3.8in), essentially the whole intended area. Decided
-# 2026-07-29; see APRIL_TAGS.md "Usable area" for the derivation and the
-# synthetic test that found it.
-DEFAULT_ZONE_SIZE = 0.1524      # m
+# 4 in. Two DIFFERENT measures of "working area" live here and conflating them
+# is what made the 2026-07-29 decision below look better than it was:
+#
+#   clear span between the tags' inner edges  =  S - tag_size
+#   range the block's CENTRE may occupy       =  S - tag_size - block_size
+#
+# The first is the physically clear square; the second is placement freedom and
+# is necessarily smaller. Reducing S by 1 in costs exactly 1 in of BOTH -- the
+# tag term is constant, it does not scale.
+#
+#     S      clear span      block-centre freedom (1.2in block)
+#     6in    5 in            3.8 in
+#     4in    3 in            1.8 in
+#
+# History: this was 4in originally, went to 6in on 2026-07-29 because a tag
+# centred on a vertex reaches tag_size/2 INWARD, so a block near a corner sat on
+# top of a tag -- and because a 3in Stage 3 cuboid needed the whole 6in square
+# (at 4in its centre freedom is 4 - 1 - 3 = 0, it fits only if perfectly
+# centred). Back to 4in on 2026-07-31: the 3in block was dropped from the
+# design, and with a 1.2in maximum block the 3in clear span is ample.
+#
+# The reason to come back down is framing, and it is measured rather than
+# assumed: at 6in the zone did not reliably fit the camera's view at the
+# detection standoff, costing tags out of frame on most stills. See
+# APRIL_TAGS.md "Usable area" for the original derivation and the synthetic
+# test, and the framing measurements that reversed it.
+#
+# CHANGING THIS REQUIRES RE-TAPING THE MAT. The tag centres must physically sit
+# on a square of this side, or the homography residual will climb and every
+# measured position is wrong by the mismatch.
+DEFAULT_ZONE_SIZE = 0.1016      # m
 # Printed side length of one AprilTag's black border. 1 in.
 DEFAULT_TAG_SIZE = 0.0254       # m
 
@@ -217,7 +237,19 @@ MAX_BLOCK_AREA_FRAC = 0.60
 # artifacts' 8-10:1. Both must be measured tighter if a longer legitimate block
 # is ever added to blocks.yaml -- this is not a universal constant, it is sized
 # against the specific blocks this project currently has.
-MAX_BLOCK_LENGTH_M = 0.090      # m
+# Was 0.090, sized for the 1in x 3in Stage 3 cuboid. That block was dropped
+# from the design 2026-07-31 and the largest block is now 1.2 in (30.5 mm), so
+# this could in principle come down to ~0.040.
+#
+# It deliberately does NOT. The detector currently over-reads block size by
+# roughly 50%: the real ~30 mm block measured 38.9-46.0 mm across eight stills
+# on 2026-07-31 (shadow at the tilted camera angle is the likely cause, not yet
+# fixed). A 0.040 cap would reject the real block on most frames. 0.060 is
+# still well under half the old value -- enough to reject the 121-134 mm grid
+# slivers this filter exists for -- while leaving headroom for that inflation.
+#
+# Tighten this once the size over-read is fixed, not before.
+MAX_BLOCK_LENGTH_M = 0.060      # m
 MAX_BLOCK_ASPECT = 4.0          # length / width
 
 # A detected object's CENTRE must land this far inside the zone edge. Only the

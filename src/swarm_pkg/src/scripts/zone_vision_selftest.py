@@ -252,15 +252,20 @@ def test_grid_line_rejected(method, failures):
 
     # The largest block actually in this project (Stage 3's 1x3in cuboid) must
     # NOT be caught by the same net that catches the sliver above.
+    # 1.2 in (30.5 mm) -- the largest block in the design as of 2026-07-31.
+    # This was a 1in x 3in cuboid; that block was dropped along with the 6in
+    # zone it needed, and MAX_BLOCK_LENGTH_M came down from 0.090 to 0.060 with
+    # it. Asserting the 3in block still passes would now be asserting the old
+    # design, so the fixture moves with it.
     rng2 = np.random.default_rng(29)
     largest_img = perspective_warp(
-        render_zone(zone, [(0.0, 0.0, 0.2, 0.0254, 0.0762)]), rng2, strength=0.04)
+        render_zone(zone, [(0.0, 0.0, 0.2, 0.0305, 0.0305)]), rng2, strength=0.04)
     res2 = zv.analyze(largest_img, zone, method=method)
     label2 = "largest real block accepted"
     if failures.check(res2.success and res2.blocks, label2, res2.message):
         d = res2.blocks[0]
-        failures.check(abs(d.length - 0.0762) < 0.004, label2,
-                       "measured length %.1fmm, expected ~76.2mm"
+        failures.check(abs(d.length - 0.0305) < 0.004, label2,
+                       "measured length %.1fmm, expected ~30.5mm"
                        % (d.length * 1000))
 
 

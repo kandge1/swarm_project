@@ -1982,7 +1982,8 @@ def _is_near_joint_limit(state, margin=0.15):
     return False, None, None, None, None
 
 
-def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw, block_yaw_deg=0.0):
+def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw, block_yaw_deg=0.0,
+                   ori_xy_tolerance=None):
     """Deterministic, downward-orientation IK for an OMPL goal state, using
     constraint-based IK (a small position sphere + orientation window) seeded
     from the robot's current state and then each IK_SEEDS entry in order.
@@ -2047,12 +2048,36 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw, block_yaw_deg=0.0):
     # can physically hold -- there is no torque/gravity model anywhere in
     # this project. If a chosen pose still stalls, that is a payload/reach
     # limit to be measured, not an IK bug.
+    # ori_xy_tolerance: how far off the REQUESTED orientation a solution may
+    # sit. Defaults to IK_ORI_XY_TOLERANCE (0.10 rad / 5.7 deg), which is the
+    # right answer for a grasp -- tilt there is error, and the whole project
+    # is trying to drive it out.
+    #
+    # It is the wrong answer for the camera-aiming poses, and this cost a
+    # night to see (hardware 2026-07-31). look_at_quat asks for an orientation
+    # that at the survey pose sits BETWEEN 5.7 and 8.6 deg from anything this
+    # arm can hold. So no seed can converge -- there is no solution inside the
+    # window -- and every still fell through to OMPL constraint sampling,
+    # whose own window is the make_orientation_constraint default of 0.15 rad
+    # (8.6 deg). Sampling then picked ARBITRARILY from that 3 deg band: two
+    # runs of identical code chose poses 0.371 rad apart and got 3 usable
+    # views against 1. Seeding cannot fix that, and adding seeds taken from
+    # poses the arm had physically reached did not (they all still failed).
+    #
+    # Passing the wider window here does not let the arm do anything it was
+    # not already doing -- the fallback was commanding poses in that band
+    # regardless. It makes the choice DETERMINISTIC and least-travel instead
+    # of random, which is what the framing needs to be reproducible.
+    xy_tol = (IK_ORI_XY_TOLERANCE if ori_xy_tolerance is None
+              else ori_xy_tolerance)
+
     best = None
     for label, seed in seeds:
         solution = io_client.compute_ik(
             x, y, z, qx, qy, qz, qw,
             seed_joint_names=joint_names,
             seed_positions=[seed[n] for n in joint_names],
+            xy_tolerance=xy_tol,
         )
         if solution is None:
             print(f"[ik] '{label}' seed: IK did not converge")
@@ -2244,7 +2269,8 @@ def go_home(io_client):
 
 
 def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
-                holding_block=False, orientation_override=None):
+                holding_block=False, orientation_override=None,
+                ori_xy_tolerance=None):
     """Joint-space plan to a target position. Uses deterministic seeded IK
     when possible; falls back to OMPL constraint sampling if all seeds fail.
 
@@ -2276,7 +2302,8 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
     ik_state = None
     if lock_orientation:
         ik_state = solve_ik_state(io_client, x, y, z, qx, qy, qz, qw,
-                                  block_yaw_deg=block_yaw_deg)
+                                  block_yaw_deg=block_yaw_deg,
+                                  ori_xy_tolerance=ori_xy_tolerance)
 
     if ik_state is not None:
         goal_constraints = [make_joint_goal_constraints(ik_state)]

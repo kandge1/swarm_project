@@ -149,7 +149,17 @@ SETTLE_AFTER_MOVE_SEC = 0.6          # let the arm stop ringing before a still
 #     orientation the arm cannot hold there. Verified end to end on hardware
 #     2026-07-31 at this exact height: IK converged on real seeds (not the
 #     fallback), and the detector decoded 2 tags at rms 4.4px.
-DETECT_HOVER_Z = 0.280
+# Lowered 0.280 -> 0.240 on 2026-07-31. At 0.280 the flange could not reach the
+# zone at all: measured ceiling ~0.245 m radial, against a zone centre at 0.254,
+# so grasp-hover hit "Planning FAILED" on three consecutive runs at radial
+# 0.2490 / 0.2498 / 0.2643. OMPL constraint sampling already had the wider
+# 8.6 deg window at those targets and still found nothing, so this was a genuine
+# reach limit, not a tolerance or seeding problem.
+#
+# 0.240 keeps focus: the lens sits ~16.5 mm below the flange at the detection
+# wrist yaw (flange 0.280 -> lens 0.2635, measured), so this puts the lens at
+# ~0.2235 -- still above the measured ~0.220 focus floor, with ~20 mm more reach.
+DETECT_HOVER_Z = 0.240
 
 # How far to pull the flange IN from the zone centre, toward the base, before
 # aiming with look_at_quat. MEASURED, from the exact pose verified on hardware
@@ -167,6 +177,48 @@ DETECT_HOVER_Z = 0.280
 # need a per-yaw lens offset at all -- it only needs to be somewhere reachable
 # near the zone, and this is the specific spot already proven to be that.
 DETECT_HOVER_PULLIN_M = 0.054
+
+# Hard floor on how close to the base the flange may be commanded, in the XY
+# plane. NOT a reachability limit -- IK converges happily inside it, and
+# move_group plans a clean trajectory to it. The arm then physically collides
+# with itself and stalls, because this URDF's collision geometry does not
+# describe the real gripper well enough for MoveIt to reject the state.
+#
+# Measured on hardware 2026-07-31, at DETECT_HOVER_Z:
+#     radial 0.2000 m -- survey pose, fine
+#     radial 0.1529 m -- grasp-hover start, fine (best still of the run, 4 tags)
+#     radial 0.1209 m -- COLLIDED, arm stalled 0.089 rad short and stayed there
+#
+# So the floor sits just under the deepest pose known to work, not at some
+# padded guess: 0.1529 m is worth keeping, it produced the best detection of the
+# whole run. Nothing between 0.121 and 0.153 has been tested, so treat the gap
+# as unknown rather than safe.
+#
+# This is enforced on the CORRECTION loop specifically. Each correction is
+# "flange += measured camera error", which has no notion of the workspace at
+# all: a large error near the inner edge of the reach walks the arm straight
+# into its own base, one correction at a time. Ask, do not assume, that a
+# vision-driven delta lands somewhere the arm can physically go.
+MIN_FLANGE_RADIUS_M = 0.150
+
+# Orientation window for the CAMERA-AIMING poses only, overriding
+# pick_place.IK_ORI_XY_TOLERANCE (0.10 rad / 5.7 deg) for these moves.
+#
+# Measured 2026-07-31: the orientation look_at_quat asks for at the survey
+# pose sits between 5.7 and 8.6 deg from anything this arm can hold, so the
+# tight grasp window admits NO solution and all 27 seeds fail on every still.
+# Each one then fell through to OMPL constraint sampling, whose window is the
+# make_orientation_constraint default of 0.15 rad -- so the arm was already
+# being commanded into that band, just at a randomly chosen point in it. Two
+# runs of identical code sampled poses 0.371 rad apart and returned 3 usable
+# views against 1.
+#
+# Matching the fallback's window here changes nothing about where the arm may
+# go; it only lets the deterministic, least-travel seeded solve claim those
+# poses instead of leaving them to random sampling. Deliberately NOT applied
+# to the descent or the grasp -- tilt there is the error this whole project
+# is trying to remove, and those keep the tight 0.10 rad window.
+DETECT_ORI_XY_TOLERANCE = 0.15
 
 
 def _pullin_toward_base(x, y, pullin_m):
@@ -206,10 +258,37 @@ def _pullin_toward_base(x, y, pullin_m):
 # is what makes this robust on a robot whose encoders disagree with its links by
 # degrees (APRIL_TAGS.md, ROOT CAUSE).
 #
-# Four offsets at 90 deg is the professor's suggestion and it is a good one: it
-# guarantees every tag is visible in at least one still regardless of which pair
-# the gripper starts out hiding.
-MULTIVIEW_YAW_OFFSETS_DEG = (0.0, 90.0, 180.0, 270.0)
+# Four offsets at 90 deg was the professor's suggestion and it is a good one in
+# principle: it guarantees every tag is visible in at least one still regardless
+# of which pair the gripper starts out hiding. It was measured on hardware
+# 2026-07-31 and it does not survive contact with THIS camera mount.
+#
+# The lens sits ~40 mm off the flange axis, so as the wrist turns, the lens
+# swings around a circle of that radius. The survey flange is pulled
+# DETECT_HOVER_PULLIN_M toward the base, so the two only cancel at one yaw.
+# Measured distance from the lens to the zone centre, at the survey flange:
+#
+#     yaw    0 deg -> 85.8 mm off centre, 18.9 deg of aiming tilt
+#     yaw   90 deg -> 62.2 mm off centre, 13.6 deg
+#     yaw  180 deg -> 13.2 mm off centre,  2.9 deg
+#     yaw  270 deg -> 61.9 mm off centre, 13.5 deg
+#
+# and the four debug stills from that run match exactly: yaw 180 framed all four
+# tags and decoded three, while yaw 90 and 270 clipped tags off the frame edge
+# and decoded one each. The 6 in zone is NOT too big -- the camera is simply not
+# over it at three of the four offsets.
+#
+# The fix cannot be to push the flange out to re-centre the lens: that needs
+# y ~ 0.286, and the same run had ALL 19 IK seeds fail at y = 0.245 already.
+# Reaching outward is not available at DETECT_HOVER_Z. So instead cluster the
+# offsets near 180, where the lens offset points TOWARD the zone and the flange
+# we can actually reach is the one that centres the camera.
+#
+# This keeps the property the design actually depends on -- see the note above:
+# the angles do not need to be accurate or known, they only have to CHANGE which
+# tags the gripper hides. A 90 deg spread still rotates the occlusion shadow by
+# 90 deg; it just does it without walking the lens off the mat.
+MULTIVIEW_YAW_OFFSETS_DEG = (180.0, 150.0, 210.0, 120.0)
 
 # Give up on the multi-view pass once this many stills have produced a usable
 # homography. 4 tags across >=2 views is already enough to fuse; the remaining
@@ -528,7 +607,8 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
         target = (detector.zone_x, detector.zone_y, detector.zone_z)
         q = look_at_quat((x, y, z), target, block_yaw_deg=yaw)
         if not move_arm_to(io_client, x, y, z, orientation_override=q,
-                           holding_block=holding_block):
+                           holding_block=holding_block,
+                           ori_xy_tolerance=DETECT_ORI_XY_TOLERANCE):
             print("[multiview]   move failed, skipping this view")
             continue
         time.sleep(SETTLE_AFTER_MOVE_SEC)
@@ -621,6 +701,19 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
     flange = _pullin_toward_base(target_world[0], target_world[1],
                                  DETECT_HOVER_PULLIN_M)
 
+    # The pull-in is a fixed 54 mm and takes no account of how far out the
+    # target started, so a block on the near side of the zone can land the
+    # STARTING pose inside the self-collision floor before a single correction
+    # has run. Clamp outward rather than refuse: from the floor the loop still
+    # gets a real detection, and it will report honestly if it cannot converge.
+    start_radius = math.hypot(flange[0], flange[1])
+    if start_radius < MIN_FLANGE_RADIUS_M and start_radius > 1e-6:
+        scale = MIN_FLANGE_RADIUS_M / start_radius
+        flange = (flange[0] * scale, flange[1] * scale)
+        print("\n[%s] starting flange was radial %.4f m, inside the %.4f m "
+              "self-collision floor -- clamped outward to (%.4f, %.4f)."
+              % (label, start_radius, MIN_FLANGE_RADIUS_M, flange[0], flange[1]))
+
     print("\n[%s] want camera at zone (%+.1f, %+.1f) mm -> world (%.4f, %.4f)"
           % (label, target_zone_xy[0] * 1000, target_zone_xy[1] * 1000,
              target_world[0], target_world[1]))
@@ -633,7 +726,8 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
         q = look_at_quat((flange[0], flange[1], hover_height), zone_centre_world,
                          block_yaw_deg=block_yaw_deg)
         if not move_arm_to(io_client, flange[0], flange[1], hover_height,
-                           orientation_override=q):
+                           orientation_override=q,
+                           ori_xy_tolerance=DETECT_ORI_XY_TOLERANCE):
             print("[%s] move failed" % label)
             return None, False, None
         time.sleep(SETTLE_AFTER_MOVE_SEC)
@@ -673,9 +767,31 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
             break
 
         delta = detector.zone_delta_to_world(*error_zone)
-        flange = (flange[0] + delta[0], flange[1] + delta[1])
-        print("[%s] correcting by (%+.1f, %+.1f) mm -> flange (%.4f, %.4f)"
-              % (label, delta[0] * 1000, delta[1] * 1000, flange[0], flange[1]))
+        proposed = (flange[0] + delta[0], flange[1] + delta[1])
+
+        # The correction is a raw "flange += camera error" step and knows nothing
+        # about the workspace -- see MIN_FLANGE_RADIUS_M. Check BEFORE commanding
+        # it: past this radius the arm collides with itself, and neither IK nor
+        # move_group will refuse the goal on our behalf.
+        radius = math.hypot(proposed[0], proposed[1])
+        if radius < MIN_FLANGE_RADIUS_M:
+            print("[%s] REFUSING this correction: it puts the flange at radial "
+                  "%.4f m, inside the %.4f m self-collision floor. The arm would "
+                  "stall against itself rather than reach it (measured "
+                  "2026-07-31 at 0.1209 m)."
+                  % (label, radius, MIN_FLANGE_RADIUS_M))
+            print("[%s] the camera cannot be brought over zone (%+.1f, %+.1f) mm "
+                  "from this approach -- that target is too close to the base. "
+                  "Not descending on a %.1f mm error."
+                  % (label, target_zone_xy[0] * 1000, target_zone_xy[1] * 1000,
+                     error * 1000))
+            return response, False, flange
+
+        flange = proposed
+        print("[%s] correcting by (%+.1f, %+.1f) mm -> flange (%.4f, %.4f, "
+              "radial %.4f m)"
+              % (label, delta[0] * 1000, delta[1] * 1000, flange[0], flange[1],
+                 radius))
 
     print("[%s] did NOT converge after %d corrections. Refusing to descend on "
           "a position this uncertain." % (label, MAX_CORRECTIONS))
@@ -767,7 +883,22 @@ def run_stage1(io_client, detector, args, log):
     # the camera gets there the flange -- and therefore the jaws -- is on the
     # block. Reusing the same converge-on-the-camera loop is the point: it is
     # the only thing here that measures the arm.
-    offset = camera_offset_world(grasp_yaw_deg, detector.zone_x, detector.zone_y)
+    # At the DETECTION yaw, not grasp_yaw_deg. The whole tool assembly rotates
+    # with the wrist, so the lens offset's lateral sign FLIPS across 180 deg:
+    # -38.9 mm at yaw 0 against +41.0 mm at yaw 180 (measured 2026-07-31). The
+    # detection below is commanded at grasp_yaw_deg + DETECT_WRIST_YAW_DEG, so
+    # computing the offset at grasp_yaw_deg described an orientation the arm is
+    # never actually in, and got the sign backwards.
+    #
+    # That is not a framing nicety -- it inverts which way the correction loop
+    # walks. Hardware 2026-07-31, block at zone (+13.1, +3.8) mm: this asked for
+    # the camera at zone y = -35.1 mm, 39 mm INWARD of the block, when the lens
+    # sits outward of the flange at yaw 180 and the correct target was +44.8 mm.
+    # Being 80 mm wrong toward the base drove the flange to radial 0.1209 m and
+    # the arm collided with itself. MIN_FLANGE_RADIUS_M now catches the symptom;
+    # this is the cause.
+    detect_yaw_deg = grasp_yaw_deg + DETECT_WRIST_YAW_DEG
+    offset = camera_offset_world(detect_yaw_deg, detector.zone_x, detector.zone_y)
     offset_zone = detector.world_to_zone(detector.zone_x + offset[0],
                                          detector.zone_y + offset[1])
     camera_target = (block.zx + offset_zone[0], block.zy + offset_zone[1])
@@ -778,7 +909,7 @@ def run_stage1(io_client, detector, args, log):
     # so the grasp is unaffected by having detected from the other side.
     response, converged, _ = hover_and_detect(
         io_client, detector, log, camera_target,
-        grasp_yaw_deg + DETECT_WRIST_YAW_DEG, hover, "grasp-hover",
+        detect_yaw_deg, hover, "grasp-hover",
         debug_image=args.debug_image)
     if response is None:
         return False
