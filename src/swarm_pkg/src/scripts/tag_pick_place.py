@@ -11,8 +11,8 @@ the network. See APRIL_TAGS.md for the whole design.
 
     # mars: planning, then this
     ros2 launch mycobot_280pi_camera_moveit2 real_robot_planning.launch.py
-    python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.0 --dry-run
-    python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.0
+    python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.050 --dry-run
+    python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.050
 
 Everything about arm motion is imported from pick_place.py rather than
 reimplemented -- same RobotIOClient, same seeded IK, same trapezoidal timing,
@@ -57,6 +57,7 @@ from pick_place import (  # noqa: E402
     GRASP_OFFSET_Z,
     GRIPPER_OPEN,
     HOME_RADIANS,
+    PICK_XYZ,
     PLACE_XYZ,
     ZONE_RADIUS_M,
     RobotIOClient,
@@ -74,6 +75,32 @@ from swarm_interfaces.srv import DetectBlock  # noqa: E402
 # ---------------------------------------------------------------------------
 # Stage 1 block: 1.18 in square, the thickness quoted in APRIL_TAGS.md.
 DEFAULT_BLOCK_THICKNESS = 0.030      # m
+
+# NOTHING IN THIS FILE COMPUTES THE GRASP HEIGHT. It is PICK_XYZ.z, unchanged.
+#
+# This is worth stating loudly because the obvious-looking alternative is wrong
+# and was briefly implemented: grasp_z = zone_z + block_thickness/2 +
+# GRASP_OFFSET_Z, reading --zone-origin's Z as the mat surface. That treats
+# PICK_XYZ.z as if it were geometry. It is not -- it was HAND-TUNED against the
+# real robot, so it already contains the arm's z error at the pick pose, and no
+# amount of mat-and-block arithmetic reproduces that term.
+#
+# The proof it is not geometry is sitting in the two constants. PICK_XYZ.z is a
+# block CENTRE (0.0650) and PLACE_XYZ.z a resting SURFACE (0.0750) on the same
+# flat mat, which as pure geometry would need the block to be -20 mm thick. They
+# differ because pick and place sit at opposite ends of the workspace (+Y vs -Y)
+# and the arm droops differently at each. Both numbers are right; neither is
+# derivable.
+#
+# So Stage 1 measures X, Y and yaw -- the things a top-down camera can actually
+# see -- and takes Z from the configuration that already picked this block off
+# this mat. The 2026-08-02 changes (zone in to 9 in, a sheet of paper under the
+# mat) moved neither the block nor the mat height.
+#
+# --zone-origin's Z is now cosmetic: ZoneSpec stores world_z and nothing reads
+# it, the homography being entirely in-plane. It is kept only because zone_z is
+# part of the DetectBlock service contract.
+GRASP_FLANGE_Z = PICK_XYZ[2] + GRASP_OFFSET_Z          # 0.1550, hover 0.1950
 
 # ---- MEASURED from TESTS.md Test 1, 2026-07-29 ----------------------------
 # 108 trials, 6 decorrelated postures, joints 0/1/2, both directions, 3 repeats.
@@ -234,6 +261,31 @@ DETECT_HOVER_PULLIN_M = 0.041
 # into its own base, one correction at a time. Ask, do not assume, that a
 # vision-driven delta lands somewhere the arm can physically go.
 MIN_FLANGE_RADIUS_M = 0.150
+
+# Outward companion to the floor above, and it exists because the failure is
+# WORSE than "the move fails".
+#
+# Hardware 2026-08-02, at DETECT_HOVER_Z: commanded flange radial 0.2271 m. All
+# 19 IK seeds failed. The OMPL fallback did NOT refuse -- it satisfied its 4 cm
+# position sphere by parking the arm short and low, and the homography scale
+# proves how far: 2891 px/m against the survey's 2466 puts the lens at 0.1906 m
+# instead of 0.2235, i.e. 33 mm low and below the 0.220 m focus floor. The next
+# detection then measured that shortfall as a 55 mm "position error", and the
+# correction loop dutifully pushed the flange FURTHER OUT, to 0.2770, where
+# planning finally failed outright.
+#
+# That is a runaway, not a miss: every correction makes the next reading worse,
+# because commanding an unreachable target produces a short pose, and a short
+# pose looks exactly like an error pointing outward. The loop has no way to tell
+# "I did not get there" from "the target moved", so it must be stopped from
+# asking in the first place.
+#
+# 0.245 m is the measured ceiling at DETECT_HOVER_Z's predecessor (0.280) and is
+# therefore CONSERVATIVE here -- 0.240 reaches at least as far. Deliberately not
+# raised without a fresh reach_probe.py sweep at 0.2286: an over-tight guard
+# refuses a reachable target and says why, which is recoverable, while an
+# over-loose one restores the runaway.
+MAX_FLANGE_RADIUS_M = 0.245
 
 # Orientation window for the CAMERA-AIMING poses only, overriding
 # pick_place.IK_ORI_XY_TOLERANCE (0.10 rad / 5.7 deg) for these moves.
@@ -549,8 +601,29 @@ def reduce_yaw(yaw_rad, symmetry):
     which _is_near_joint_limit() rejects outright -- an unreduced yaw is a way
     to make IK fail for reasons that look like nothing to do with yaw.
     """
-    if not symmetry:                 # 0 = continuous (a circle): any yaw works
-        return 0.0
+    if not symmetry:
+        # 0 = continuous, i.e. "the detector thinks this is round, so any yaw
+        # grasps it". Returning 0.0 here was the obvious reading and it is not
+        # safe, because symmetry 0 is not a measurement of roundness -- it is
+        # what _classify() returns for ANY un-elongated blob whose fill_ratio
+        # falls below CIRCLE_FILL_MAX (0.86). A square with slightly rounded
+        # corners, or one whose contour picked up its own shadow, lands there.
+        #
+        # Hardware 2026-08-02: the 30 mm SQUARE block was classified "circle" in
+        # two of three survey stills and "square" in the third, so its fill_ratio
+        # sits right on that threshold. The fused answer was "circle".
+        #
+        # The asymmetry of the mistake is the point. If it really is round, any
+        # yaw works, so folding mod 90 costs nothing. If it is actually a square,
+        # forcing yaw 0 on a block sitting at 45 deg drives the jaws at its
+        # DIAGONAL -- 1.41x the footprint, which for a 37 mm block is 52 mm and
+        # may not fit the jaws at all. Folding mod 90 is correct in that case and
+        # harmless in the other, so fold.
+        #
+        # Not folded to 0 and not left unreduced: mod 90 bounds the result to
+        # +/-45 deg, which keeps joint6output_to_joint6 clear of its -2.4434 rad
+        # limit exactly as the docstring above requires.
+        symmetry = 4
     period = 2.0 * math.pi / symmetry
     return (yaw_rad + period / 2.0) % period - period / 2.0
 
@@ -840,6 +913,19 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
         # it: past this radius the arm collides with itself, and neither IK nor
         # move_group will refuse the goal on our behalf.
         radius = math.hypot(proposed[0], proposed[1])
+        if radius > MAX_FLANGE_RADIUS_M:
+            print("[%s] REFUSING this correction: it puts the flange at radial "
+                  "%.4f m, past the %.4f m the arm can reach at this height. "
+                  "Commanding it does not fail cleanly -- IK finds no solution, "
+                  "constraint sampling parks the arm SHORT, and the next "
+                  "detection reads that shortfall as a still-larger error and "
+                  "corrects further out. The loop runs away from the target."
+                  % (label, radius, MAX_FLANGE_RADIUS_M))
+            print("[%s] hardware 2026-08-02: exactly this, 0.2271 -> 0.2770 -> "
+                  "planning FAILED. If the target really is out there, the fix "
+                  "is a lower hover or a closer zone, not more corrections."
+                  % label)
+            return response, False, flange
         if radius < MIN_FLANGE_RADIUS_M:
             print("[%s] REFUSING this correction: it puts the flange at radial "
                   "%.4f m, inside the %.4f m self-collision floor. The arm would "
@@ -1016,63 +1102,141 @@ def run_stage1(io_client, detector, args, log):
               "at which it starts covering a tag. See APRIL_TAGS.md 'Usable "
               "area'." % (max(abs(block.zx), abs(block.zy)) * 1000, usable * 1000))
 
-    # --- 2. hover with the GRIPPER over the block, at the block's yaw ------
-    # Target the camera at the block position PLUS the lens offset, so that when
-    # the camera gets there the flange -- and therefore the jaws -- is on the
-    # block. Reusing the same converge-on-the-camera loop is the point: it is
-    # the only thing here that measures the arm.
-    # At the DETECTION yaw, not grasp_yaw_deg. The whole tool assembly rotates
-    # with the wrist, so the lens offset's lateral sign FLIPS across 180 deg:
-    # -38.9 mm at yaw 0 against +41.0 mm at yaw 180 (measured 2026-07-31). The
-    # detection below is commanded at grasp_yaw_deg + DETECT_WRIST_YAW_DEG, so
-    # computing the offset at grasp_yaw_deg described an orientation the arm is
-    # never actually in, and got the sign backwards.
-    #
-    # That is not a framing nicety -- it inverts which way the correction loop
-    # walks. Hardware 2026-07-31, block at zone (+13.1, +3.8) mm: this asked for
-    # the camera at zone y = -35.1 mm, 39 mm INWARD of the block, when the lens
-    # sits outward of the flange at yaw 180 and the correct target was +44.8 mm.
-    # Being 80 mm wrong toward the base drove the flange to radial 0.1209 m and
-    # the arm collided with itself. MIN_FLANGE_RADIUS_M now catches the symptom;
-    # this is the cause.
-    detect_yaw_deg = grasp_yaw_deg + DETECT_WRIST_YAW_DEG
-    offset = camera_offset_world(detect_yaw_deg, detector.zone_x, detector.zone_y)
-    offset_zone = detector.world_to_zone(detector.zone_x + offset[0],
-                                         detector.zone_y + offset[1])
-    camera_target = (block.zx + offset_zone[0], block.zy + offset_zone[1])
-
-    # Detect at the flipped wrist yaw for the same reachability reason as the
-    # survey. The DESCENT below still uses grasp_yaw_deg -- rotating the wrist
-    # about its own axis changes the jaws' orientation, not the flange position,
-    # so the grasp is unaffected by having detected from the other side.
-    response, converged, _ = hover_and_detect(
-        io_client, detector, log, camera_target,
-        detect_yaw_deg, hover, "grasp-hover",
-        debug_image=args.debug_image)
-    if response is None:
-        return False
-    if not converged:
-        return False
-
+    # --- 2. work out where to put the JAWS --------------------------------
+    # The tags already answer this. The block's zone-local position came from
+    # the homography, the zone's world pose is surveyed, so the block's world
+    # position is known without the arm having measured anything. That is the
+    # whole point of the design, and it is why the default path below is
+    # open loop: it is the SAME thing pick_place.py did successfully for weeks
+    # against a hardcoded PICK_XYZ, with a measured target substituted for the
+    # hardcoded one.
     grasp_x, grasp_y = detector.zone_to_world(block.zx, block.zy)
-    grasp_z = args.zone_z + args.block_thickness / 2.0 + GRASP_OFFSET_Z
+    grasp_z = args.grasp_z              # PICK_XYZ.z + GRASP_OFFSET_Z, unchanged
+    grasp_hover = hover_z(grasp_z)
+    print("\n[stage1] block world position from the tags: (%.4f, %.4f)"
+          % (grasp_x, grasp_y))
+
+    # --- 2b. OPTIONAL camera-verified correction (--verify) ---------------
+    #
+    # OFF BY DEFAULT, and the reason is a real measurement, not caution.
+    #
+    # The survey commands the flange to a position that should put the lens
+    # exactly over the zone centre (DETECT_HOVER_PULLIN_M == the lens offset at
+    # the detection yaw). Hardware 2026-08-02: the detector then measured the
+    # camera at zone (+21.5, +4.3) mm. Something is ~22 mm out -- but the run
+    # cannot say WHICH of two things it is:
+    #
+    #   (a) the ARM is 22 mm from where it was told to go, in which case the
+    #       open-loop grasp below misses by 22 mm and this correction fixes it;
+    #   (b) the CAMERA MODEL is 22 mm out -- the 41 mm lens offset, the
+    #       uncalibrated principal point, or the optical axis not being normal
+    #       to the mat. zone_vision.camera_in_zone's own docstring flags all
+    #       three and says the absolute number is uncalibrated while the CHANGE
+    #       between hovers is not. In this case the open-loop grasp is fine and
+    #       applying the correction INJECTS 22 mm of error.
+    #
+    # Both produce the identical reading, so guessing has a 50% chance of making
+    # the grasp worse. Resolve it by measurement instead: --dry-run now parks
+    # the arm over its own answer at grasp height, so one photo says which it is.
+    # Until that photo exists, prefer the path with a track record.
+    if args.verify:
+        # Target the camera AT the block, not at block + lens offset.
+        #
+        # BUG this replaces, hardware 2026-08-02: the old target was
+        # block + camera_offset_world(), the idea being that when the camera
+        # arrived the FLANGE would be on the block. Arithmetically true, and
+        # unreachable -- it puts the flange at the block's own radius, 0.2271 m
+        # at DETECT_HOVER_Z, where all 19 IK seeds failed. Constraint sampling
+        # then satisfied its 4 cm position sphere by parking the arm 33 mm low
+        # (independently confirmed: 2891 px/m against the survey's 2466 puts the
+        # lens at 0.191 m, BELOW the 0.220 m focus floor), the loop read that
+        # shortfall as a 55 mm position error, and "corrected" outward to
+        # radial 0.2770 -- further out of reach -- until planning failed.
+        #
+        # Aiming the camera at the block instead puts the flange 41 mm inside it,
+        # ~0.187 m, which is the radius the survey already converges at on real
+        # seeds. Converging the camera over the block also kills the parallax
+        # bias for free: a point directly under the lens projects to its true
+        # position whatever its height, so the final detection is unbiased in a
+        # way the survey's fused answer is not.
+        detect_yaw_deg = grasp_yaw_deg + DETECT_WRIST_YAW_DEG
+        response, converged, conv_flange = hover_and_detect(
+            io_client, detector, log, (block.zx, block.zy),
+            detect_yaw_deg, hover, "grasp-hover",
+            debug_image=args.debug_image)
+        if response is None or not converged:
+            print("[stage1] --verify did not converge. NOT falling back to the "
+                  "open-loop target silently: the whole reason to ask for "
+                  "verification is that you did not want to trust it unchecked.")
+            return False
+
+        # The loop learned "commanding conv_flange puts the LENS on the block".
+        # The lens sits camera_offset_world() from the flange, so the true flange
+        # is at block - offset, and the arm's error is (block - offset) -
+        # conv_flange. Putting the true flange ON the block therefore means
+        # commanding block - error == conv_flange + offset.
+        offset = camera_offset_world(detect_yaw_deg, conv_flange[0], conv_flange[1])
+        corrected = (conv_flange[0] + offset[0], conv_flange[1] + offset[1])
+        print("[stage1] --verify: open-loop said (%.4f, %.4f), camera-corrected "
+              "says (%.4f, %.4f) -- a %.1f mm difference"
+              % (grasp_x, grasp_y, corrected[0], corrected[1],
+                 math.hypot(corrected[0] - grasp_x, corrected[1] - grasp_y) * 1000))
+        print("[stage1] NOTE: this correction is measured at the DETECTION pose "
+              "(z %.3f, wrist yaw %+.0f) and applied at the GRASP pose (z %.3f, "
+              "wrist yaw %+.0f). Sag and dead-zone are pose-dependent, so this "
+              "is an extrapolation, not a measurement of the grasp pose itself."
+              % (hover, detect_yaw_deg, grasp_hover, grasp_yaw_deg))
+        grasp_x, grasp_y = corrected
+
     print("\n[stage1] grasp target: world (%.4f, %.4f, %.4f), yaw %+.1f deg"
           % (grasp_x, grasp_y, grasp_z, grasp_yaw_deg))
+    print("[stage1] approach hover %.4f m, then a %.0f mm straight-down descent"
+          % (grasp_hover, (grasp_hover - grasp_z) * 1000))
+    print("[stage1] descent height is PICK_XYZ.z + GRASP_OFFSET_Z = %.4f, the "
+          "same flange height pick_place.py grasps this block at. Stage 1 "
+          "measures X, Y and yaw; Z is not measured and is not recomputed."
+          % GRASP_FLANGE_Z)
+
+    # --- 3. approach, descend, grasp, retreat -----------------------------
+    #
+    # move_arm_to the hover FIRST, then descend straight down. The descent used
+    # to run as a single cartesian_move_to from wherever the detection left the
+    # arm, which is 41 mm to the side and 100+ mm up -- a long diagonal through
+    # the workspace rather than the vertical approach GRASP_OFFSET_Z is defined
+    # against, and the one motion most likely to clip the block on the way in.
+    steps = [
+        ("Move over the block",
+         lambda: move_arm_to(io_client, grasp_x, grasp_y, grasp_hover,
+                             block_yaw_deg=grasp_yaw_deg)),
+    ]
 
     if args.dry_run:
-        print("[stage1] --dry-run: stopping before the descent. Measure where "
-              "the block actually is and compare against the numbers above.")
+        # Stop HERE, hovering over the answer, rather than before moving at all.
+        # A dry run that stops earlier prints numbers nobody can check; this one
+        # parks the jaws over the block at grasp height and grasp yaw, where the
+        # offset between jaws and block is directly visible. That photo is the
+        # measurement that settles the (a)-vs-(b) question above.
+        print("\n[stage1] --dry-run: moving to the grasp hover and STOPPING "
+              "there. No descent, no grasp.")
+        for name, action in steps:
+            print("\n=== %s ===" % name)
+            if not action():
+                print("[stage1] step FAILED: %s" % name)
+                return False
+        print("\n[stage1] --dry-run: parked over the block at grasp height and "
+              "grasp yaw. LOOK AT THE ARM. How far, and which way, are the jaws "
+              "off the block? That number is the arm's true error at the grasp "
+              "pose -- it is not derivable from anything in this log.")
         return True
 
-    # --- 3. descend, grasp, retreat ---------------------------------------
-    steps = [
+    steps += [
         ("Descend to grasp",
          lambda: cartesian_move_to(io_client, grasp_x, grasp_y, grasp_z,
                                    block_yaw_deg=grasp_yaw_deg)),
         ("Close gripper",
          lambda: gripper_close_until_contact(io_client)),
         ("Retreat after grasp",
-         lambda: cartesian_move_to(io_client, grasp_x, grasp_y, hover,
+         lambda: cartesian_move_to(io_client, grasp_x, grasp_y, grasp_hover,
                                    allow_fallback=True,
                                    block_yaw_deg=grasp_yaw_deg)),
     ]
@@ -1080,8 +1244,16 @@ def run_stage1(io_client, detector, args, log):
     # --- 4. place, unchanged from pick_place.py ---------------------------
     # Stage 1 places at the hardcoded PLACE_XYZ. Stage 2 replaces this with a
     # second detection at the place zone.
+    #
+    # PLACE_XYZ.z is used exactly as pick_place.py uses it, for the same reason
+    # the grasp height is not recomputed: it is hand-tuned, not geometric, and
+    # the place pose's droop is its own. It reads 25 mm above what the pick side
+    # implies for the same mat; that difference is the two poses' z error, not a
+    # stale constant, so it is left alone.
     place_x, place_y, place_surface_z = PLACE_XYZ
     place_z = place_surface_z + args.block_thickness / 2.0 + GRASP_OFFSET_Z
+    print("\n[stage1] place: surface z %.4f -> release flange z %.4f (PLACE_XYZ, "
+          "unchanged from pick_place.py)" % (place_surface_z, place_z))
     place_hover = hover_z(place_z)
     steps += [
         ("Move to pre-place",
@@ -1119,17 +1291,41 @@ def parse_args():
                         help="rotation of the tag square about world +Z, degrees")
     parser.add_argument("--zone-size", type=float, default=zv.DEFAULT_ZONE_SIZE,
                         help="side of the square joining the TAG CENTRES, metres "
-                             "(default: %(default)s = 6 in, around a ~4 in "
+                             "(default: %(default)s = 4 in, around a ~3 in "
                              "working area -- see APRIL_TAGS.md 'Usable area')")
     parser.add_argument("--tag-size", type=float, default=zv.DEFAULT_TAG_SIZE,
                         help="printed tag side, metres, for the usable-area "
                              "warning only (default: %(default)s = 1 in)")
     parser.add_argument("--block-thickness", type=float,
                         default=DEFAULT_BLOCK_THICKNESS,
-                        help="Stage 1 block thickness, metres (default: %(default)s)")
+                        help="Stage 1 block thickness, metres (default: "
+                             "%(default)s). Affects the RELEASE height only "
+                             "(place surface + thickness/2 + GRASP_OFFSET_Z); "
+                             "the grasp descent is --grasp-z and does not "
+                             "depend on it")
+    parser.add_argument("--grasp-z", type=float, default=GRASP_FLANGE_Z,
+                        help="FLANGE z to descend to for the grasp, metres. "
+                             "Defaults to PICK_XYZ.z + GRASP_OFFSET_Z "
+                             "(%%(default).4f) -- the height pick_place.py "
+                             "already grasps this block at. Not derived from a "
+                             "mat height or block thickness: PICK_XYZ.z is "
+                             "hand-tuned and carries the arm's z error, which "
+                             "no geometry reproduces")
     parser.add_argument("--dry-run", action="store_true",
-                        help="hover and detect and print the grasp pose, but do "
-                             "not descend or grasp")
+                        help="do everything up to and including the move that "
+                             "parks the jaws over the block at grasp height and "
+                             "grasp yaw, then STOP. No descent, no grasp. Look "
+                             "at the arm: the jaw-to-block offset you can see is "
+                             "the arm's true error, which nothing in the log "
+                             "measures")
+    parser.add_argument("--verify", action="store_true",
+                        help="before grasping, converge the camera over the "
+                             "block and correct the grasp target by what that "
+                             "measures. OFF by default: the correction and the "
+                             "camera model's own uncalibrated offset are "
+                             "indistinguishable in a single run, so this can "
+                             "just as easily inject error as remove it. Settle "
+                             "it with a --dry-run photo first")
     parser.add_argument("--debug-image", metavar="PATH",
                         help="path ON THE PI for the detector's annotated frame")
     parser.add_argument("--log", metavar="CSV",
