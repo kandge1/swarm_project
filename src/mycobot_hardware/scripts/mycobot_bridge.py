@@ -322,6 +322,161 @@ JOINT_LIMITS_RAD = [
     (-0.7400, 0.1500),   # gripper_controller
 ]
 
+# ============================================================================
+# GRAVITY FEEDFORWARD -- this is the JOINT_FF_BIAS_DEG the SETTLE_BIAS comment
+# above promised and nobody ever wrote. Added 2026-08-02.
+#
+# WHY FEEDFORWARD AND NOT FEEDBACK. Settled above: a stationary joint will not
+# move for a commanded delta smaller than its own dead band, and the dead band
+# on these joints is LARGER than the error being corrected, so no post-hoc
+# nudge works at any gain (SETTLE_BIAS_ENABLED = False, two failed hardware
+# runs). Applying the bias to every STREAMED setpoint sidesteps that entirely:
+# during a trajectory the joint is already moving, so the dead band never arms,
+# and the same deterministic error can be aimed past instead of corrected after.
+#
+# WHY IT IS NOW MEASURABLE. serial_rate_probe.py's POSTURES table used to store
+# gravity moment arms as unsigned magnitudes, which folded the one posture that
+# loads the arm the other way on top of the other five and destroyed the fit
+# (R^2 0.00-0.10). With the sign restored, and with the residual split into the
+# half that reverses with travel direction (friction/dead zone) and the half
+# that does not (gravity), the droop is clean:
+#
+#   test3_full.csv, 2026-08-02, 6 postures x 3 repeats x both directions
+#     joint 1 (joint3_to_joint2, shoulder)  sym = -0.072  -5.47 * arm   R^2 0.93
+#     joint 2 (joint4_to_joint3, elbow)     sym = +0.006  -4.59 * arm   R^2 0.90
+#     joint 3 (joint5_to_joint4)            sym = -0.062 -13.16 * arm   R^2 0.96
+#
+# Joint 3 is the largest single contributor at the grasp pose and had never
+# been measured -- it only entered the sweep once the table was extended past
+# three columns. Joints 0, 4 and 5 have a gravity moment arm of ~0 in every
+# posture AND at the grasp pose (joint 0's axis is vertical; 4 and 5 put the
+# tool essentially on their own axes), so there is nothing to feed forward.
+#
+# WHAT IT IS WORTH. At the IK solution actually chosen for the grasp
+# (pick_place.py:517), the model predicts 1.25 + 0.77 + 0.90 deg of droop,
+# which is 2.92 deg of flange tilt and 8.9 mm of jaw displacement -- 8.6 mm of
+# it straight DOWN. Measured tilt at that pose before any correction was
+# 4.19 deg, so this accounts for 70% of it.
+#
+# THE OTHER 30% IS NOT DROOP. Joints 4 and 5 are gravity-free at the grasp
+# pose, so there is no unmeasured pitch joint left to blame; the remaining
+# ~1.3 deg is a fixed mount/URDF offset, not a load effect, and it does not
+# belong here. See pick_place.py's SAG_PRECOMP_* -- which must be re-measured
+# against this, because it was fitted to cancel the WHOLE 4.19 deg empirically
+# and will now over-correct.
+GRAVITY_FF_ENABLED = True
+
+# joint index -> (intercept_deg, deg per metre of signed moment arm).
+# commanded = target + (intercept + slope * arm), because the fit is of
+# residual = target - settled, so settled = target - residual.
+GRAVITY_FF_COEFFS = {
+    1: (-0.072, -5.47),
+    2: (+0.006, -4.59),
+    3: (-0.062, -13.16),
+}
+
+# Hard cap per joint. The largest bias the model produces anywhere in the
+# tested envelope is ~1.6 deg (joint 3 at 'extended'), so 3.0 leaves headroom
+# for poses outside it while making a runaway impossible. A feedforward that
+# has silently grown to 10 deg because the pose left the fitted region is the
+# failure mode this exists to bound.
+GRAVITY_FF_MAX_DEG = 3.0
+
+# URDF chain, joint origins and axes, for the moment-arm calculation. Copied
+# from mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf so
+# the bridge stays dependency-free -- it must run before ROS is up and has no
+# access to the parameter server. (xyz, rpy, axis); axis None = fixed joint.
+#
+# Validated against the same FK used to recompute POSTURES: the signed arms it
+# produces reproduce serial_rate_probe.py's table to within 0.0001 m at all six
+# sweep postures. If the URDF's arm geometry ever changes, these must change
+# with it -- there is no runtime check that they still agree.
+_FK_CHAIN = [
+    ([0.0, 0.0, 0.13956], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0, -0.001], [0.0, 1.5708, -1.5708], [0.0, 0.0, 1.0]),
+    ([-0.1104, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([-0.096, 0.0, 0.06462], [0.0, 0.0, -1.5708], [0.0, 0.0, 1.0]),
+    ([0.0, -0.07318, -0.001], [1.5708, -1.5708, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0456, 0.0], [-1.5708, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0, 0.01], [1.579, 0.0, 2.3562], None),
+    ([0.0, 0.04, 0.0], [-0.0082, 1.5708, 0.0], None),
+]
+
+
+def _mat_mul(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4)]
+            for i in range(4)]
+
+
+def _origin_matrix(xyz, rpy):
+    r, p, y = rpy
+    cr, sr = math.cos(r), math.sin(r)
+    cp, sp = math.cos(p), math.sin(p)
+    cy, sy = math.cos(y), math.sin(y)
+    return [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, xyz[0]],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, xyz[1]],
+            [-sp,     cp * sr,                cp * cr,                xyz[2]],
+            [0.0, 0.0, 0.0, 1.0]]
+
+
+def _axis_rotation(axis, theta):
+    ax, ay, az = axis
+    c, s, t = math.cos(theta), math.sin(theta), 1.0 - math.cos(theta)
+    return [[t * ax * ax + c,      t * ax * ay - s * az, t * ax * az + s * ay, 0.0],
+            [t * ax * ay + s * az, t * ay * ay + c,      t * ay * az - s * ax, 0.0],
+            [t * ax * az - s * ay, t * ay * az + s * ax, t * az * az + c,      0.0],
+            [0.0, 0.0, 0.0, 1.0]]
+
+
+def gravity_moment_arms(positions_rad):
+    """Signed gravity moment arm (metres) about each arm joint's own axis, for
+    a vertical load at the tool: tau = axis . (r x -Z).
+
+    Positive means gravity drives that joint in its POSITIVE direction, so the
+    droop it causes is negative. The sign is the whole point -- taking the
+    magnitude is precisely the bug that hid this effect for two weeks."""
+    transform = [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
+    origins, axes = [], []
+    for index, (xyz, rpy, axis) in enumerate(_FK_CHAIN):
+        transform = _mat_mul(transform, _origin_matrix(xyz, rpy))
+        if axis is None:
+            continue
+        origins.append([transform[i][3] for i in range(3)])
+        axes.append([sum(transform[i][k] * axis[k] for k in range(3))
+                     for i in range(3)])
+        transform = _mat_mul(transform, _axis_rotation(axis, positions_rad[index]))
+    tool = [transform[i][3] for i in range(3)]
+
+    arms = []
+    for origin, axis in zip(origins, axes):
+        rx, ry, rz = (tool[i] - origin[i] for i in range(3))
+        # r x -Z, with -Z = (0, 0, -1): (ry * -1 - 0, 0 - rx * -1, 0)
+        torque = [-ry, rx, 0.0]
+        arms.append(sum(axis[i] * torque[i] for i in range(3)))
+    return arms
+
+
+def gravity_ff_degrees(positions_rad):
+    """The six arm angles in DEGREES, pre-compensated for gravity droop.
+
+    Takes the target the controller asked for and returns what to actually
+    send, so the arm's own sag brings it to the target rather than short of it.
+    Returns the plain conversion untouched when disabled."""
+    degrees = [math.degrees(p) for p in positions_rad[:6]]
+    if not GRAVITY_FF_ENABLED:
+        return degrees
+    arms = gravity_moment_arms(positions_rad)
+    for index, (intercept, slope) in GRAVITY_FF_COEFFS.items():
+        bias = intercept + slope * arms[index]
+        bias = max(-GRAVITY_FF_MAX_DEG, min(GRAVITY_FF_MAX_DEG, bias))
+        biased = degrees[index] + bias
+        # Clamp to the joint's own limit. Biasing commands the arm PAST its
+        # target, so a target already near a limit could otherwise be pushed
+        # through it -- the same hazard SETTLE_MAX_BIAS_RAD guards against.
+        lo, hi = JOINT_LIMITS_RAD[index]
+        degrees[index] = max(math.degrees(lo), min(math.degrees(hi), biased))
+    return degrees
+
 # ASYNC WRITES -- the fix for the 1.8Hz command rate (2026-07-26).
 #
 # pymycobot's send_angles() defaults to has_reply=True, i.e. it BLOCKS until
@@ -860,7 +1015,11 @@ class Bridge:
             last_sent_at = self.state.last_sent_monotonic
 
         t_now = time.monotonic()
-        arm_degrees = [math.degrees(p) for p in positions[:6]]
+        # Gravity pre-compensation goes HERE, on the streamed setpoint, and not
+        # in the settle path -- see GRAVITY_FF_ENABLED. Every command the arm
+        # receives during a trajectory is biased, so the joints are already
+        # moving when the correction arrives and the dead band never arms.
+        arm_degrees = gravity_ff_degrees(positions)
         gripper_value = gripper_rad_to_value(positions[6])
         speed = self._match_speed(positions, last_sent, last_sent_at)
 
@@ -1068,7 +1227,11 @@ class Bridge:
                 bias_applied.append(
                     f"{JOINT_ORDER[i]} {math.degrees(biased - command[i]):+.2f}deg")
 
-        arm_degrees = [math.degrees(p) for p in arm_target]
+        # Same pre-compensation as the streamed path. The settle re-send is a
+        # command for the SAME pose, so it must carry the same bias -- sending
+        # an unbiased target here would ask the arm to give back exactly the
+        # droop the trajectory just cancelled.
+        arm_degrees = gravity_ff_degrees(arm_target)
         settle_speed = SETTLE_SPEED if bias_applied else self.speed
         try:
             if arm_needs_settle:

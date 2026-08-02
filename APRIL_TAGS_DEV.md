@@ -389,14 +389,54 @@ self-check passes — J1, whose gravity arm is 0 by construction, comes out with
 symmetric term of −0.11° and an antisymmetric term of +0.90°, which is half its
 1.67° measured backlash, exactly as it must be.
 
-**Consequence for `SAG_PRECOMP_*`: do not delete it yet.** It corrects flange
-*tilt*, which is the sum of the droop of every pitch joint. The sweep only ever
-covered joints 0–2, and J2+J3 together account for only ~1.4° of the ~4.2°
-measured tilt. **Joint 3 (`joint5_to_joint4`) carries a gravity arm of ±0.119 m
-— as much as joint 2 — and has never been measured.** It is now in the default
-`--sweep-joints`. Measure it before replacing the empirical tilt hack with a
-joint-space feedforward, or the replacement will fix a third of the problem and
-over-correct the rest.
+**Joint 3 (`joint5_to_joint4`) was the missing term**, and it turned out to be
+the largest one. It carries a gravity arm of ±0.119 m — as much as joint 2 — and
+had never been measured, because the old table stopped at three columns and the
+default `--sweep-joints` stopped with it. `test3_full.csv` (2026-08-02, six
+postures × 3 repeats × both directions, 144/144 trials usable) closes it:
+
+| joint | | droop coefficient | R² |
+|---|---|---|---|
+| 1 | `joint3_to_joint2` shoulder | −5.47 °/m | 0.93 |
+| 2 | `joint4_to_joint3` elbow | −4.59 °/m | 0.90 |
+| 3 | `joint5_to_joint4` | **−13.16 °/m** | **0.96** |
+
+At the IK solution actually chosen for the grasp (`pick_place.py:517`) that
+predicts **1.25 + 0.77 + 0.90 = 2.92° of flange tilt and 8.9 mm of jaw
+displacement, 8.6 mm of it straight DOWN.** Measured tilt at that pose before
+any correction was 4.19°, so the model accounts for **70%** of it.
+
+**The other 30% is not droop.** Joints 4 and 5 have ~zero gravity arm at the
+grasp pose too, so there is no unmeasured pitch joint left to blame. The
+remaining ~1.3° is a fixed mount/URDF offset — a constant, not a load effect.
+
+### What is now implemented
+
+- `mycobot_bridge.py` — `GRAVITY_FF_ENABLED`, the `JOINT_FF_BIAS_DEG` the
+  `SETTLE_BIAS` comment promised and nobody ever wrote. Applies the measured
+  bias to **every streamed setpoint**, which is the whole trick: during a
+  trajectory the joint is already moving, so the dead band never arms and the
+  error can be aimed past instead of corrected after. Bias capped at 3.0°
+  (worst case anywhere in the tested envelope is 1.77°) and clamped to joint
+  limits. Its embedded FK reproduces the sweep table to 5×10⁻⁵ m.
+- `pick_place.py` — `SAG_PRECOMP_*` **zeroed**, old values preserved in the
+  comment for a one-line revert. Leaving both live would over-correct by ~3°.
+  Zeroed rather than scaled to 30% because two corrections for one effect
+  cannot be tuned simultaneously, and the leftover is a different *shape* than
+  this radial+tangential+payload model.
+
+### Not yet verified on hardware
+
+**None of this has moved the arm.** The next run must confirm the tilt actually
+improves, and measure what is left. If the remainder is a pose-independent
+constant, add it as a fixed offset; if it still varies with reach, the
+coefficients are wrong rather than incomplete.
+
+**J1 backlash is untouched and is now the largest single error**: 1.75° =
+7.6 mm at 250 mm reach, bigger than the droop's Cartesian effect. It is not
+correctable by feedforward *or* feedback — on a reversal the joint does not move
+at all (43/62 reversing corrections stalled in test3), so there is no error
+signal. The fix is a unidirectional final approach, still not implemented.
 
 ---
 

@@ -1,724 +1,1858 @@
-er@er:~/swarm_project$ source ~/swarm_project/install/setup.bash
-er@er:~/swarm_project$ python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py
-1785705967.545060 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
-1785705967.545147 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
-[INFO] [1785705967.957335420] [block_detector]: block_detector up: reading /dev/video0 directly, serving /detect_block
-[INFO] [1785705967.959621103] [block_detector]: tag_size=0.0254 m, default zone_size=0.1016 m, method=canny
-[INFO] [1785706034.789118124] [block_detector]: wrote debug image /tmp/zone_view0.png
-[INFO] [1785706034.791628969] [block_detector]: [pickup] 4 tag(s), rms 0.58 px, 1 block(s) (346 ms)
-[INFO] [1785706034.793932745] [block_detector]:   [0] zone (+3.9, -1.5) mm yaw +177.9 deg  35.2x35.3 mm circle sym=0
-[INFO] [1785706037.281996287] [block_detector]: wrote debug image /tmp/zone_view1.png
-[INFO] [1785706037.284168326] [block_detector]: [pickup] 2 tag(s), rms 0.49 px, 3 block(s) (225 ms)
-[INFO] [1785706037.286265440] [block_detector]:   [0] zone (+3.1, -5.2) mm yaw +87.8 deg  36.5x37.1 mm square sym=4
-[INFO] [1785706037.288391869] [block_detector]:   [1] zone (+44.1, -45.2) mm yaw +179.7 deg  11.9x14.1 mm rect sym=2
-[INFO] [1785706037.290475187] [block_detector]:   [2] zone (-44.6, -45.1) mm yaw +178.8 deg  12.4x12.9 mm circle sym=0
-[INFO] [1785706041.483414643] [block_detector]: wrote debug image /tmp/zone_view2.png
-[INFO] [1785706041.485724827] [block_detector]: [pickup] 2 tag(s), rms 0.48 px, 3 block(s) (286 ms)
-[INFO] [1785706041.487964623] [block_detector]:   [0] zone (+2.6, +0.9) mm yaw -93.4 deg  36.6x38.6 mm circle sym=0
-[INFO] [1785706041.490082607] [block_detector]:   [1] zone (-45.0, -44.5) mm yaw -86.2 deg  11.9x13.5 mm circle sym=0
-[INFO] [1785706041.492760189] [block_detector]:   [2] zone (-45.0, +44.1) mm yaw -89.9 deg  11.4x13.4 mm unknown sym=1
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-source ~/swarm_project/install/setup.bash
-python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-[INFO] [1785706210.827120952] [block_detector]: [pickup] 4 tag(s), rms 0.62 px, 1 block(s) (110 ms)
-[INFO] [1785706210.829589651] [block_detector]:   [0] zone (+4.1, -1.4) mm yaw -92.6 deg  35.5x35.8 mm circle sym=0
-[INFO] [1785706213.223198496] [block_detector]: [pickup] 2 tag(s), rms 0.52 px, 3 block(s) (132 ms)
-[INFO] [1785706213.225817599] [block_detector]:   [0] zone (+3.2, -5.3) mm yaw +87.8 deg  36.5x37.1 mm square sym=4
-[INFO] [1785706213.228176301] [block_detector]:   [1] zone (+44.1, -45.2) mm yaw +179.6 deg  11.8x14.3 mm rect sym=2
-[INFO] [1785706213.232095483] [block_detector]:   [2] zone (-44.4, -45.1) mm yaw +178.0 deg  12.3x12.5 mm circle sym=0
-[INFO] [1785706217.555254652] [block_detector]: [pickup] 3 tag(s), rms 0.70 px, 2 block(s) (116 ms)
-[INFO] [1785706217.558123490] [block_detector]:   [0] zone (+3.3, +1.1) mm yaw -93.1 deg  36.0x38.2 mm circle sym=0
-[INFO] [1785706217.560423693] [block_detector]:   [1] zone (-44.3, -44.2) mm yaw +178.8 deg  13.7x13.7 mm circle sym=0
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
-ewok@mars:~/swarm/swarm_project$ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/tag_pick_place.py --zone-origin 0.0 0.2286 0.050 --dry-run     --debug-image /tmp/zone.png --log /tmp/corrections.csv
-[WARN] [1785706023.672316121] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706023.672425357] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706023.672448779] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706023.697668024] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[joint_states] no data after 6s (0 publisher(s) visible) -- recreating the subscription to force a fresh DDS match (attempt 1)
-[WARN] [1785706026.077348931] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706026.077432507] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706026.077566639] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.077592900] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785706026.077616031] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785706026.077674592] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
-[WARN] [1785706026.077706101] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706026.077787797] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706026.077814329] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706026.085047762] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.085136334] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785706026.099987910] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706026.129976935] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.130292044] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706026.130516715] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.130552587] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785706026.130608760] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
-[WARN] [1785706026.130632334] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706026.130902557] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.130947079] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785706026.131012764] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785706026.131056958] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785706026.131135048] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706026.131228288] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.131264586] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785706026.131323031] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785706026.131346965] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785706026.131414097] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.131859076] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.132102707] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.132141575] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785706026.132364687] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706026.132415585] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[joint_states] recovered after 1 subscription recreate(s)
-[stage1] detect hover height 0.2400 m (measured focus floor is ~0.220m lens height; this clears it)
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': -0.0008, 'joint3_to_joint2': -0.0, 'joint4_to_joint3': -0.0006, 'joint5_to_joint4': 0.0006, 'joint6_to_joint5': 0.001, 'joint6output_to_joint6': -0.7844}
-[arm] trajectory: 2 waypoints, 0.453s total, ~0.113 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0183, 'joint3_to_joint2': -0.0168, 'joint4_to_joint3': -0.0199, 'joint5_to_joint4': -0.0506, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': -0.7669}  (max movement so far 0.0000 rad)
-[gripper] target joint positions: {'gripper_controller': 0.15}
-[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.1275}  (max movement so far 0.0000 rad)
-[stage1] survey flange (0.0000, 0.1876) -- 41mm pulled in from zone centre (0.0000, 0.2286)
-
-[multiview] still 1/4 at wrist yaw +180 deg (offset +180)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.919, -1.091, 1.038, -1.515, -0.009, -0.437]  (travel 2.887 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.919, -0.132, -1.039, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.919, -1.091, 1.039, -1.515, -0.009, -0.437]  (travel 2.887 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.919, -1.091, 1.038, -1.515, -0.009, -0.437]  (travel 2.887 rad)
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.919, -0.132, -1.039, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] 'all-zeros' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] 'deep-elbow-down' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.919, -0.132, -1.039, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] 'all-zeros-mirrored' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.247 rad)
-[ik] chose 'bearing-offset/elbow-down' (2.247 rad of joint travel): [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]
-Executing joint-space move to (0.0, 0.1876, 0.24)...
-[arm] target joint positions: {'joint2_to_joint1': 1.919, 'joint3_to_joint2': -0.1317, 'joint4_to_joint3': -1.0388, 'joint5_to_joint4': -0.3976, 'joint6_to_joint5': -0.0092, 'joint6output_to_joint6': -0.436}
-[arm] trajectory: 12 waypoints, 4.375s total, ~0.443 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0183, 'joint3_to_joint2': -0.0168, 'joint4_to_joint3': -0.0199, 'joint5_to_joint4': -0.0321, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': -0.7685}  (max movement so far 0.0000 rad)
-[detect] OK: 4 tag(s), rms 0.58 px, 1 block(s)
-[detect] tags [0, 1, 2, 3] | rms 0.58 px | 2482 px/m | camera at zone (+22.6, +4.9) mm
-[detect]   [0] zone (+3.9, -1.5) mm  yaw +177.9 deg  35.2 x 35.3 mm  circle sym=0
-
-[multiview] still 2/4 at wrist yaw +150 deg (offset +150)
-[ik] 'current-state' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.538 rad)
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.538 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.538 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.538 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.896, -1.136, 1.117, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'downward-confirmed' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.538 rad)
-[ik] 'home' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.538 rad)
-[ik] 'home-wrist-zeroed' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'deep-elbow-down' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.538 rad)
-[ik] 'home-mirrored' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] chose 'bearing/elbow-down' (0.538 rad of joint travel): [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]
-Executing joint-space move to (0.0, 0.1876, 0.24)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8951, 'joint3_to_joint2': -0.1061, 'joint4_to_joint3': -1.1169, 'joint5_to_joint4': -0.288, 'joint6_to_joint5': 0.0825, 'joint6output_to_joint6': 0.0627}
-[arm] trajectory: 4 waypoints, 1.524s total, ~0.336 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9005, 'joint3_to_joint2': -0.1395, 'joint4_to_joint3': -1.0475, 'joint5_to_joint4': -0.4126, 'joint6_to_joint5': 0.0075, 'joint6output_to_joint6': -0.4494}  (max movement so far 0.0000 rad)
-[detect] OK: 2 tag(s), rms 0.49 px, 3 block(s)
-[detect] tags [2, 3] | rms 0.49 px | 2566 px/m | camera at zone (+25.5, +7.1) mm
-[detect]   [0] zone (+3.1, -5.2) mm  yaw +87.8 deg  36.5 x 37.1 mm  square sym=4
-[detect]   [1] zone (+44.1, -45.2) mm  yaw +179.7 deg  11.9 x 14.1 mm  rect sym=2
-[detect]   [2] zone (-44.6, -45.1) mm  yaw +178.8 deg  12.4 x 12.9 mm  circle sym=0
-
-[multiview] still 3/4 at wrist yaw +210 deg (offset +210)
-[ik] 'current-state' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.947, -1.088, 1.049, -1.537, -0.116, -0.929]  (travel 2.842 rad)
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.947, -1.088, 1.049, -1.537, -0.116, -0.929]  (travel 2.842 rad)
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] 'home-mirrored' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [1.947, -1.088, 1.049, -1.537, -0.116, -0.929]  (travel 2.842 rad)
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] 'all-zeros-mirrored' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.999 rad)
-[ik] chose 'elbow-bent-wrist-zero' (0.999 rad of joint travel): [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]
-Executing joint-space move to (0.0, 0.1876, 0.24)...
-[arm] target joint positions: {'joint2_to_joint1': 1.9474, 'joint3_to_joint2': -0.119, 'joint4_to_joint3': -1.0488, 'joint5_to_joint4': -0.4065, 'joint6_to_joint5': -0.1158, 'joint6output_to_joint6': -0.9282}
-[arm] trajectory: 5 waypoints, 2.451s total, ~0.398 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9005, 'joint3_to_joint2': -0.141, 'joint4_to_joint3': -1.1259, 'joint5_to_joint4': -0.322, 'joint6_to_joint5': 0.0705, 'joint6output_to_joint6': 0.0475}  (max movement so far 0.0000 rad)
-[detect] OK: 2 tag(s), rms 0.48 px, 3 block(s)
-[detect] tags [1, 2] | rms 0.48 px | 2571 px/m | camera at zone (+29.3, +9.3) mm
-[detect]   [0] zone (+2.6, +0.9) mm  yaw -93.4 deg  36.6 x 38.6 mm  circle sym=0
-[detect]   [1] zone (-45.0, -44.5) mm  yaw -86.2 deg  11.9 x 13.5 mm  circle sym=0
-[detect]   [2] zone (-45.0, +44.1) mm  yaw -89.9 deg  11.4 x 13.4 mm  unknown sym=1
-[multiview] 3 usable views, skipping the remaining 1 still(s)
-
-[multiview] 3 usable view(s), tags seen across all of them: [0, 1, 2, 3]
-[multiview]   [0] zone (+3.1, -1.5) mm  yaw +0.0 deg  36.5 x 37.1 mm  circle  views=3 spread=3.7 mm/0.0 deg
-[multiview]   [1] zone (-44.8, -44.8) mm  yaw +0.0 deg  12.1 x 13.2 mm  circle  views=2 spread=0.4 mm/0.0 deg
-[multiview]   [2] zone (+44.1, -45.2) mm  yaw +179.7 deg  11.9 x 14.1 mm  rect  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
-[multiview]   [3] zone (-45.0, +44.1) mm  yaw +270.1 deg  11.4 x 13.4 mm  unknown  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
-[stage1] block confirmed across 3 views, spread 3.7 mm / 0.0 deg
-
-[stage1] block: 36.5 x 37.1 mm circle, zone (+3.1, -1.5) mm, yaw +0.0 deg -> grasp yaw +0.0 deg (symmetry 0)
-
-[stage1] block world position from the tags: (0.0031, 0.2271)
-
-[stage1] grasp target: world (0.0031, 0.2271, 0.1550), yaw +0.0 deg
-[stage1] approach hover 0.1950 m, then a 40 mm straight-down descent
-[stage1] descent height is PICK_XYZ.z + GRASP_OFFSET_Z = 0.1550, the same flange height pick_place.py grasps this block at. Stage 1 measures X, Y and yaw; Z is not measured and is not recomputed.
-
-[stage1] --dry-run: moving to the grasp hover and STOPPING there. No descent, no grasp.
-
-=== Move over the block ===
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]  (travel 3.590 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.84, -1.507, 1.167, -1.169, 0.006, 2.626]  (travel 4.470 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]  (travel 3.590 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.84, -1.507, 1.167, -1.169, 0.006, 2.626]  (travel 4.470 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]  (travel 3.590 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.84, -1.507, 1.167, -1.169, 0.006, 2.626]  (travel 4.470 rad)
-[ik] 'downward-confirmed' seed: OK -> [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]  (travel 3.590 rad)
-[ik] 'home' seed: OK -> [1.84, -1.507, 1.167, -1.169, 0.006, 2.626]  (travel 4.470 rad)
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]  (travel 3.590 rad)
-[ik] 'all-zeros' seed: OK -> [1.84, -1.507, 1.167, -1.169, 0.006, 2.626]  (travel 4.470 rad)
-[ik] 'deep-elbow-down' seed: OK -> [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]  (travel 3.590 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]  (travel 3.590 rad)
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]  (travel 3.590 rad)
-[ik] 'all-zeros-mirrored' seed: OK -> [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]  (travel 3.590 rad)
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] chose 'elbow-bent-wrist-zero' (3.590 rad of joint travel): [1.84, -0.433, -1.167, 0.09, 0.006, 2.626]
-Executing joint-space move to (0.003133018149411671, 0.22707646131457443, 0.195)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8394, 'joint3_to_joint2': -0.4326, 'joint4_to_joint3': -1.166, 'joint5_to_joint4': 0.089, 'joint6_to_joint5': 0.0067, 'joint6output_to_joint6': 2.6268}
-[arm] trajectory: 15 waypoints, 7.579s total, ~0.467 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9312, 'joint3_to_joint2': -0.1518, 'joint4_to_joint3': -1.0798, 'joint5_to_joint4': -0.4217, 'joint6_to_joint5': -0.0965, 'joint6output_to_joint6': -0.9126}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8928, 'joint3_to_joint2': -0.3405, 'joint4_to_joint3': -1.1442, 'joint5_to_joint4': -0.1257, 'joint6_to_joint5': -0.0199, 'joint6output_to_joint6': 1.1304}  (max movement so far 2.0431 rad)
-
-[stage1] --dry-run: parked over the block at grasp height and grasp yaw. LOOK AT THE ARM. How far, and which way, are the jaws off the block? That number is the arm's true error at the grasp pose -- it is not derivable from anything in this log.
-
-=== Returning home ===
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0009, 'joint3_to_joint2': -0.0006, 'joint4_to_joint3': -0.001, 'joint5_to_joint4': 0.0005, 'joint6_to_joint5': 0.0008, 'joint6output_to_joint6': -0.7847}
-[arm] trajectory: 21 waypoints, 7.282s total, ~0.466 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8607, 'joint3_to_joint2': -0.4447, 'joint4_to_joint3': -1.175, 'joint5_to_joint4': 0.0536, 'joint6_to_joint5': -0.0091, 'joint6output_to_joint6': 2.6061}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.681, 'joint3_to_joint2': -0.1901, 'joint4_to_joint3': -0.4433, 'joint5_to_joint4': 0.0, 'joint6_to_joint5': 0.0106, 'joint6output_to_joint6': 0.437}  (max movement so far 2.1691 rad)
-
-STAGE 1 COMPLETE
-Confirm the grasp VISUALLY. arm_group_controller reports 'Goal reached, success!' from elapsed time alone -- there is no constraints: block in ros2_controllers.yaml, so ROS logs are not evidence of physical motion on this setup.
-ewok@mars:~/swarm/swarm_project$ python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.050 --log /tmp/corrections.csv
-python3: can't open file '/home/ewok/swarm/swarm_project/tag_pick_place.py': [Errno 2] No such file or directory
-ewok@mars:~/swarm/swarm_project$ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/tag_pick_place.py --zone-origin 0.0 0.2286 0.050 --log /tmp/corrections.csv
-[WARN] [1785706199.677259157] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706199.677364102] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706199.677391377] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706199.678010382] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[joint_states] no data after 6s (0 publisher(s) visible) -- recreating the subscription to force a fresh DDS match (attempt 1)
-[WARN] [1785706202.079499604] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706202.079534608] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706202.079552967] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706202.079571636] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.087158035] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706202.087189134] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706202.089381511] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.089392572] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785706202.089396410] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785706202.089404043] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
-[WARN] [1785706202.089408437] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785706202.089452913] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.089466527] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785706202.106325398] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.108708871] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.108778778] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.108820193] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785706202.109049801] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.109086618] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785706202.114432106] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706202.114546109] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.114561822] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785706202.114611404] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
-[joint_states] recovered after 1 subscription recreate(s)
-[stage1] detect hover height 0.2400 m (measured focus floor is ~0.220m lens height; this clears it)
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0007, 'joint3_to_joint2': -0.0001, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': 0.0006, 'joint6_to_joint5': -0.0006, 'joint6output_to_joint6': -0.7863}
-[arm] trajectory: 2 waypoints, 0.279s total, ~0.070 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[WARN] [1785706202.419443414] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706202.419505176] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.419511552] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785706202.419547409] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785706202.419556251] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785706202.419563307] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785706202.419574558] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785706202.419577849] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785706202.419586228] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785706202.419589977] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': -0.0168, 'joint4_to_joint3': -0.0183, 'joint5_to_joint4': -0.0168, 'joint6_to_joint5': 0.0106, 'joint6output_to_joint6': -0.7669}  (max movement so far 0.0000 rad)
-[gripper] target joint positions: {'gripper_controller': 0.15}
-[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
-[stage1] survey flange (0.0000, 0.1876) -- 41mm pulled in from zone centre (0.0000, 0.2286)
-
-[multiview] still 1/4 at wrist yaw +180 deg (offset +180)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.919, -1.091, 1.038, -1.515, -0.009, -0.437]  (travel 2.864 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.919, -0.132, -1.039, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.919, -1.091, 1.039, -1.515, -0.009, -0.437]  (travel 2.864 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.919, -1.091, 1.038, -1.515, -0.009, -0.437]  (travel 2.864 rad)
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: OK -> [1.919, -0.132, -1.039, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.919, -0.132, -1.039, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] 'home-mirrored' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.919, -0.132, -1.039, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]  (travel 2.217 rad)
-[ik] chose 'bearing-offset/elbow-down' (2.217 rad of joint travel): [1.919, -0.132, -1.038, -0.397, -0.009, -0.437]
-Executing joint-space move to (0.0, 0.1876, 0.24)...
-[arm] target joint positions: {'joint2_to_joint1': 1.9182, 'joint3_to_joint2': -0.1319, 'joint4_to_joint3': -1.038, 'joint5_to_joint4': -0.3962, 'joint6_to_joint5': -0.0097, 'joint6output_to_joint6': -0.4372}
-[arm] trajectory: 12 waypoints, 4.303s total, ~0.442 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': -0.0168, 'joint4_to_joint3': -0.0199, 'joint5_to_joint4': -0.0321, 'joint6_to_joint5': 0.0106, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
-[detect] OK: 4 tag(s), rms 0.62 px, 1 block(s)
-[detect] tags [0, 1, 2, 3] | rms 0.62 px | 2495 px/m | camera at zone (+22.8, +5.2) mm
-[detect]   [0] zone (+4.1, -1.4) mm  yaw -92.6 deg  35.5 x 35.8 mm  circle sym=0
-
-[multiview] still 2/4 at wrist yaw +150 deg (offset +150)
-[ik] 'current-state' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.540 rad)
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.540 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.665 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.540 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.665 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.540 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.896, -1.136, 1.117, -1.492, 0.082, 0.063]  (travel 2.666 rad)
-[ik] 'downward-confirmed' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.540 rad)
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.665 rad)
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.540 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.540 rad)
-[ik] 'home-mirrored' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.665 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]  (travel 0.540 rad)
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.896, -1.136, 1.116, -1.492, 0.082, 0.063]  (travel 2.665 rad)
-[ik] chose 'bearing/elbow-down' (0.540 rad of joint travel): [1.896, -0.107, -1.116, -0.288, 0.082, 0.063]
-Executing joint-space move to (0.0, 0.1876, 0.24)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8948, 'joint3_to_joint2': -0.1064, 'joint4_to_joint3': -1.1158, 'joint5_to_joint4': -0.2887, 'joint6_to_joint5': 0.0814, 'joint6output_to_joint6': 0.0625}
-[arm] trajectory: 4 waypoints, 1.527s total, ~0.336 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9005, 'joint3_to_joint2': -0.1426, 'joint4_to_joint3': -1.0475, 'joint5_to_joint4': -0.4126, 'joint6_to_joint5': 0.0061, 'joint6output_to_joint6': -0.4508}  (max movement so far 0.0000 rad)
-[detect] OK: 2 tag(s), rms 0.52 px, 3 block(s)
-[detect] tags [2, 3] | rms 0.52 px | 2570 px/m | camera at zone (+25.5, +7.6) mm
-[detect]   [0] zone (+3.2, -5.3) mm  yaw +87.8 deg  36.5 x 37.1 mm  square sym=4
-[detect]   [1] zone (+44.1, -45.2) mm  yaw +179.6 deg  11.8 x 14.3 mm  rect sym=2
-[detect]   [2] zone (-44.4, -45.1) mm  yaw +178.0 deg  12.3 x 12.5 mm  circle sym=0
-
-[multiview] still 3/4 at wrist yaw +210 deg (offset +210)
-[ik] 'current-state' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.947, -1.088, 1.049, -1.537, -0.116, -0.929]  (travel 2.842 rad)
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] 'home' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] 'all-zeros' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] 'deep-elbow-down' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]  (travel 0.997 rad)
-[ik] chose 'elbow-bent-wrist-zero' (0.997 rad of joint travel): [1.947, -0.12, -1.049, -0.407, -0.116, -0.929]
-Executing joint-space move to (0.0, 0.1876, 0.24)...
-[arm] target joint positions: {'joint2_to_joint1': 1.946, 'joint3_to_joint2': -0.1203, 'joint4_to_joint3': -1.0493, 'joint5_to_joint4': -0.4067, 'joint6_to_joint5': -0.1161, 'joint6output_to_joint6': -0.9295}
-[arm] trajectory: 5 waypoints, 2.445s total, ~0.398 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9005, 'joint3_to_joint2': -0.141, 'joint4_to_joint3': -1.1243, 'joint5_to_joint4': -0.3236, 'joint6_to_joint5': 0.0674, 'joint6output_to_joint6': 0.0429}  (max movement so far 0.0000 rad)
-[detect] OK: 3 tag(s), rms 0.70 px, 2 block(s)
-[detect] tags [1, 2, 3] | rms 0.70 px | 2629 px/m | camera at zone (+29.9, +10.5) mm
-[detect]   [0] zone (+3.3, +1.1) mm  yaw -93.1 deg  36.0 x 38.2 mm  circle sym=0
-[detect]   [1] zone (-44.3, -44.2) mm  yaw +178.8 deg  13.7 x 13.7 mm  circle sym=0
-[multiview] 3 usable views, skipping the remaining 1 still(s)
-
-[multiview] 3 usable view(s), tags seen across all of them: [0, 1, 2, 3]
-[multiview]   [0] zone (+3.3, -1.4) mm  yaw +0.0 deg  36.0 x 37.1 mm  circle  views=3 spread=3.9 mm/0.0 deg
-[multiview]   [1] zone (-44.4, -44.7) mm  yaw +0.0 deg  13.0 x 13.1 mm  circle  views=2 spread=0.5 mm/0.0 deg
-[multiview]   [2] zone (+44.1, -45.2) mm  yaw +179.6 deg  11.8 x 14.3 mm  rect  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
-[stage1] block confirmed across 3 views, spread 3.9 mm / 0.0 deg
-
-[stage1] block: 36.0 x 37.1 mm circle, zone (+3.3, -1.4) mm, yaw +0.0 deg -> grasp yaw +0.0 deg (symmetry 0)
-
-[stage1] block world position from the tags: (0.0033, 0.2272)
-
-[stage1] grasp target: world (0.0033, 0.2272, 0.1550), yaw +0.0 deg
-[stage1] approach hover 0.1950 m, then a 40 mm straight-down descent
-[stage1] descent height is PICK_XYZ.z + GRASP_OFFSET_Z = 0.1550, the same flange height pick_place.py grasps this block at. Stage 1 measures X, Y and yaw; Z is not measured and is not recomputed.
-
-[stage1] place: surface z 0.0750 -> release flange z 0.1800 (PLACE_XYZ, unchanged from pick_place.py)
-[pick_place] hover 0.220 exceeds the reachable ceiling 0.205 -- clamping (descent shortens to 0.025m)
-
-=== Move over the block ===
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.839, -0.434, -1.165, 0.089, 0.006, 2.625]  (travel 3.591 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.839, -1.507, 1.165, -1.168, 0.006, 2.625]  (travel 4.469 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.839, -0.434, -1.165, 0.089, 0.006, 2.625]  (travel 3.591 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.839, -1.507, 1.165, -1.168, 0.006, 2.625]  (travel 4.469 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.839, -0.434, -1.165, 0.089, 0.006, 2.625]  (travel 3.591 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.839, -1.507, 1.165, -1.168, 0.006, 2.625]  (travel 4.469 rad)
-[ik] 'downward-confirmed' seed: OK -> [1.839, -0.434, -1.165, 0.089, 0.006, 2.625]  (travel 3.591 rad)
-[ik] 'home' seed: OK -> [1.839, -1.507, 1.165, -1.168, 0.006, 2.625]  (travel 4.469 rad)
-[ik] 'home-wrist-zeroed' seed: OK -> [1.839, -0.434, -1.165, 0.089, 0.006, 2.625]  (travel 3.591 rad)
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.839, -0.434, -1.165, 0.089, 0.006, 2.625]  (travel 3.591 rad)
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.839, -0.434, -1.165, 0.089, 0.006, 2.625]  (travel 3.591 rad)
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] chose 'elbow-bent-wrist-zero' (3.591 rad of joint travel): [1.839, -0.434, -1.165, 0.089, 0.006, 2.625]
-Executing joint-space move to (0.003291582680938633, 0.22718619790850225, 0.195)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8386, 'joint3_to_joint2': -0.4339, 'joint4_to_joint3': -1.1659, 'joint5_to_joint4': 0.0887, 'joint6_to_joint5': 0.0066, 'joint6output_to_joint6': 2.6251}
-[arm] trajectory: 15 waypoints, 7.579s total, ~0.467 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9251, 'joint3_to_joint2': -0.1518, 'joint4_to_joint3': -1.0798, 'joint5_to_joint4': -0.4232, 'joint6_to_joint5': -0.0965, 'joint6output_to_joint6': -0.9142}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8944, 'joint3_to_joint2': -0.3281, 'joint4_to_joint3': -1.135, 'joint5_to_joint4': -0.1487, 'joint6_to_joint5': -0.026, 'joint6output_to_joint6': 1.158}  (max movement so far 2.0722 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8912, 'joint3_to_joint2': -0.3482, 'joint4_to_joint3': -1.135, 'joint5_to_joint4': -0.1196, 'joint6_to_joint5': -0.0229, 'joint6output_to_joint6': 1.3668}  (max movement so far 2.2810 rad)
-
-=== Descend to grasp ===
-[cartesian] joints at start: [1.8544, -0.4494, -1.1765, 0.0567, -0.0045, 2.6077]
-[cartesian] planned fraction: 1.00
-Executing Cartesian move to (0.003291582680938633, 0.22718619790850225, 0.155) (fraction=1.00)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8389, 'joint3_to_joint2': -0.5158, 'joint4_to_joint3': -1.4683, 'joint5_to_joint4': 0.4744, 'joint6_to_joint5': 0.0058, 'joint6output_to_joint6': 2.6251}
-[arm] trajectory: 14 waypoints, 1.293s total, ~0.625 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8544, 'joint3_to_joint2': -0.4494, 'joint4_to_joint3': -1.1765, 'joint5_to_joint4': 0.0567, 'joint6_to_joint5': -0.0045, 'joint6output_to_joint6': 2.6077}  (max movement so far 0.0000 rad)
-
-=== Close gripper ===
-[gripper] target joint positions: {'gripper_controller': 0.12}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
-[gripper] target=0.120 (coarse)  pos=0.1350  lag=+0.0150  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': 0.09}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
-[gripper] target=0.090 (coarse)  pos=0.1350  lag=+0.0450  stalled=2/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': 0.06}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
-[gripper] target=0.060 (coarse)  pos=0.0750  lag=+0.0150  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': 0.03}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.075}  (max movement so far 0.0000 rad)
-[gripper] target=0.030 (coarse)  pos=0.0750  lag=+0.0450  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': 0.0}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.075}  (max movement so far 0.0000 rad)
-[gripper] target=0.000 (coarse)  pos=0.0075  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.03}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.0075}  (max movement so far 0.0000 rad)
-[gripper] target=-0.030 (coarse)  pos=0.0075  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.06}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.0075}  (max movement so far 0.0000 rad)
-[gripper] target=-0.060 (coarse)  pos=-0.0525  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.09}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.0525}  (max movement so far 0.0000 rad)
-[gripper] target=-0.090 (coarse)  pos=-0.0525  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.12}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.0525}  (max movement so far 0.0000 rad)
-[gripper] target=-0.120 (coarse)  pos=-0.1125  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.15}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.1125}  (max movement so far 0.0000 rad)
-[gripper] target=-0.150 (coarse)  pos=-0.1125  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.18}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.1125}  (max movement so far 0.0000 rad)
-[gripper] target=-0.180 (coarse)  pos=-0.1725  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.21}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.1725}  (max movement so far 0.0000 rad)
-[gripper] target=-0.210 (coarse)  pos=-0.1725  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.24}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.1725}  (max movement so far 0.0000 rad)
-[gripper] target=-0.240 (coarse)  pos=-0.2325  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.27}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.2325}  (max movement so far 0.0000 rad)
-[gripper] target=-0.270 (coarse)  pos=-0.2325  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.3}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.2325}  (max movement so far 0.0000 rad)
-[gripper] target=-0.300 (coarse)  pos=-0.2925  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.33}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.2925}  (max movement so far 0.0000 rad)
-[gripper] target=-0.330 (coarse)  pos=-0.2925  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.36}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.2925}  (max movement so far 0.0000 rad)
-[gripper] target=-0.360 (coarse)  pos=-0.3525  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.39}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.3525}  (max movement so far 0.0000 rad)
-[gripper] target=-0.390 (coarse)  pos=-0.3525  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.42}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.3525}  (max movement so far 0.0000 rad)
-[gripper] target=-0.420 (coarse)  pos=-0.4125  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.45}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.4125}  (max movement so far 0.0000 rad)
-[gripper] target=-0.450 (coarse)  pos=-0.4125  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.48}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.4125}  (max movement so far 0.0000 rad)
-[gripper] target=-0.480 (coarse)  pos=-0.4725  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.51}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.4725}  (max movement so far 0.0000 rad)
-[gripper] target=-0.510 (coarse)  pos=-0.4725  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.54}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.4725}  (max movement so far 0.0000 rad)
-[gripper] target=-0.540 (coarse)  pos=-0.5325  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.57}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.5325}  (max movement so far 0.0000 rad)
-[gripper] target=-0.570 (coarse)  pos=-0.5325  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.6}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.5325}  (max movement so far 0.0000 rad)
-[gripper] target=-0.600 (coarse)  pos=-0.5850  lag=+0.0150  stalled=0/3  effort=0.000
-[gripper] reached fully-closed position -0.600 without detecting contact -- nothing between the fingers. (Effort readings were all 0.0, as expected on this hardware: contact detection here is stall-based, see gripper_close_until_contact.)
-
-=== Retreat after grasp ===
-[cartesian] joints at start: [1.8544, -0.5245, -1.4649, 0.4892, -0.0045, 2.6077]
-[cartesian] planned fraction: 1.00
-Executing Cartesian move to (0.003291582680938633, 0.22718619790850225, 0.195) (fraction=1.00)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8389, 'joint3_to_joint2': -0.4338, 'joint4_to_joint3': -1.165, 'joint5_to_joint4': 0.0892, 'joint6_to_joint5': 0.0058, 'joint6output_to_joint6': 2.6251}
-[arm] trajectory: 14 waypoints, 1.268s total, ~0.620 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.856, 'joint3_to_joint2': -0.5215, 'joint4_to_joint3': -1.4649, 'joint5_to_joint4': 0.4908, 'joint6_to_joint5': -0.0045, 'joint6output_to_joint6': 2.6077}  (max movement so far 0.0000 rad)
-
-=== Move to pre-place ===
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: OK -> [-1.29, -0.451, -1.035, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [-1.29, -1.407, 1.035, -1.138, 0.006, -0.504]  (travel 5.185 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [-1.29, -1.407, 1.034, -1.138, 0.006, -0.504]  (travel 5.185 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [-1.29, -1.407, 1.034, -1.138, 0.006, -0.504]  (travel 5.185 rad)
-[ik] 'downward-confirmed' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'all-zeros' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'deep-elbow-down' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'home-mirrored' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'all-zeros-mirrored' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [-1.29, -0.451, -1.034, -0.024, 0.006, -0.504]  (travel 4.429 rad)
-[ik] chose 'bearing+offset/elbow-down' (4.429 rad of joint travel): [-1.29, -0.451, -1.035, -0.024, 0.006, -0.504]
-Executing joint-space move to (0.0, -0.2286, 0.205)...
-[arm] target joint positions: {'joint2_to_joint1': -1.2895, 'joint3_to_joint2': -0.4515, 'joint4_to_joint3': -1.0342, 'joint5_to_joint4': -0.0238, 'joint6_to_joint5': 0.0065, 'joint6output_to_joint6': -0.504}
-[arm] trajectory: 20 waypoints, 6.791s total, ~0.463 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.856, 'joint3_to_joint2': -0.4601, 'joint4_to_joint3': -1.1903, 'joint5_to_joint4': 0.0721, 'joint6_to_joint5': -0.0061, 'joint6output_to_joint6': 2.6077}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.6429, 'joint3_to_joint2': -0.4754, 'joint4_to_joint3': -1.1919, 'joint5_to_joint4': 0.049, 'joint6_to_joint5': -0.0014, 'joint6output_to_joint6': 2.3592}  (max movement so far 0.2485 rad)
-
-=== Descend to place ===
-[cartesian] joints at start: [-1.2701, -0.4754, -1.0584, -0.0414, -0.003, -0.4892]
-[cartesian] planned fraction: 1.00
-Executing Cartesian move to (0.0, -0.2286, 0.18) (fraction=1.00)...
-[arm] target joint positions: {'joint2_to_joint1': -1.29, 'joint3_to_joint2': -0.4621, 'joint4_to_joint3': -1.2797, 'joint5_to_joint4': 0.2321, 'joint6_to_joint5': 0.0059, 'joint6output_to_joint6': -0.5038}
-[arm] trajectory: 12 waypoints, 1.046s total, ~0.516 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -1.2716, 'joint3_to_joint2': -0.4754, 'joint4_to_joint3': -1.0584, 'joint5_to_joint4': -0.0414, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -0.4892}  (max movement so far 0.0000 rad)
-
-=== Open gripper (release) ===
-[gripper] target joint positions: {'gripper_controller': 0.15}
-[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.585}  (max movement so far 0.0000 rad)
-
-=== Retreat after release ===
-[cartesian] joints at start: [-1.2716, -0.4924, -1.29, 0.1963, 0.0152, -0.4892]
-[cartesian] planned fraction: 1.00
-Executing Cartesian move to (0.0, -0.2286, 0.205) (fraction=1.00)...
-[arm] target joint positions: {'joint2_to_joint1': -1.29, 'joint3_to_joint2': -0.4515, 'joint4_to_joint3': -1.0344, 'joint5_to_joint4': -0.0238, 'joint6_to_joint5': 0.0059, 'joint6output_to_joint6': -0.5038}
-[arm] trajectory: 12 waypoints, 1.013s total, ~0.501 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -1.2716, 'joint3_to_joint2': -0.4924, 'joint4_to_joint3': -1.29, 'joint5_to_joint4': 0.1963, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': -0.4892}  (max movement so far 0.0000 rad)
-
-=== Returning home ===
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': -0.0, 'joint3_to_joint2': 0.0005, 'joint4_to_joint3': 0.0008, 'joint5_to_joint4': -0.0008, 'joint6_to_joint5': 0.0008, 'joint6output_to_joint6': -0.7849}
-[arm] trajectory: 11 waypoints, 3.043s total, ~0.418 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -1.2716, 'joint3_to_joint2': -0.4953, 'joint4_to_joint3': -1.0676, 'joint5_to_joint4': -0.0398, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': -0.4892}  (max movement so far 0.0000 rad)
-
-STAGE 1 COMPLETE
-Confirm the grasp VISUALLY. arm_group_controller reports 'Goal reached, success!' from elapsed time alone -- there is no constraints: block in ros2_controllers.yaml, so ROS logs are not evidence of physical motion on this setup.
-ewok@mars:~/swarm/swarm_project$ 
-
-############################
+er@er:~$ ./swarm_project/src/mycobot_hardware/scripts/serial_rate_probe.py --deadzone-sweep --repeats 3 --out test3_full.csv
+[probe] connecting to /dev/ttyAMA0 @ 1000000...
+[probe] connected.
+[probe] read timeout capped at 0.06s per attempt
+
+[probe] === TEST 1 SWEEP PLAN ===
+[probe] postures : vertical, tucked, folded, reach, compact, extended
+[probe] joints   : 0, 1, 2, 3 (0-based)
+[probe] amplitude: +30/-30 deg   staircase steps: 3   repeats: 3
+[probe] backlash : 24 trials (same target approached from both sides)
+[probe] 144 trials, ~840 settling moves, roughly 14-35 min
+
+[probe]   vertical  [0, 0, 30, 0, 0, -45]
+[probe]             gravity arm J1..J6 = +0.000/+0.002/+0.002/-0.046/-0.000/+0.000
+[probe]             inertia lever      = 0.064/0.305/0.194/0.120/0.096/0.000   clearance 0.249m
+[probe]   tucked    [0, -15, 30, -60, 0, -45]
+[probe]             gravity arm J1..J6 = +0.000/-0.123/-0.095/-0.119/+0.000/+0.000
+[probe]             inertia lever      = 0.139/0.221/0.122/0.120/0.096/0.000   clearance 0.245m
+[probe]   folded    [0, -90, 60, 90, 0, -45]
+[probe]             gravity arm J1..J6 = +0.000/-0.143/-0.032/+0.016/-0.000/+0.000
+[probe]             inertia lever      = 0.157/0.248/0.205/0.120/0.096/0.000   clearance 0.139m
+[probe]   reach     [0, -30, 0, 45, 0, -45]
+[probe]             gravity arm J1..J6 = +0.000/-0.177/-0.121/-0.073/-0.000/+0.000
+[probe]             inertia lever      = 0.188/0.326/0.216/0.120/0.096/0.000   clearance 0.234m
+[probe]   compact   [0, -60, 45, -60, 0, -45]
+[probe]             gravity arm J1..J6 = +0.000/-0.216/-0.120/-0.095/+0.000/+0.000
+[probe]             inertia lever      = 0.225/0.228/0.122/0.120/0.096/0.000   clearance 0.194m
+[probe]   extended  [0, 45, 15, 75, 0, -45]
+[probe]             gravity arm J1..J6 = +0.000/+0.281/+0.203/+0.119/-0.000/-0.000
+[probe]             inertia lever      = 0.288/0.314/0.212/0.120/0.096/0.000   clearance 0.213m
+
+[probe] THE ARM WILL MOVE THROUGH ALL OF THESE UNATTENDED. Clear the
+[probe] workspace, remove any block or fixture, and make sure the
+[probe] gripper is empty. Clearances above are from the URDF and do
+[probe] NOT model the table, cables, or anything you left nearby.
+
+[probe] press Enter to start, Ctrl-C to abort: 
+
+[probe] ==============================================================
+[probe] POSTURE 'vertical'
+[probe] ==============================================================
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 2 is 30.52 deg off (-0.52 vs 30.00), retrying
+[probe] --- 'vertical' joint 0 (gravity 0.0000m, inertia 0.0640m) amp +30 deg  rep 1/3 ---
+[probe]   move did not execute (joint 0 moved 0.00 deg), retrying 2/3
+[probe] commanded 29.830 deg, settled at 29.000 deg
+[probe] residual e = +0.8300 deg (+0.01449 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.660       29.880      -0.0500       0.06
+[probe]   2       31.490       30.580      -0.7500       0.90
+[probe]   3       32.320       31.460      -1.6300       1.96
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 0 (gravity 0.0000m, inertia 0.0640m) amp -30 deg  rep 1/3 ---
+[probe] commanded -29.040 deg, settled at -28.120 deg
+[probe] residual e = -0.9200 deg (-0.01606 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.960      -29.090      +0.0500       0.05
+[probe]   2      -30.880      -29.880      +0.8400       0.91
+[probe]   3      -31.800      -30.840      +1.8000       1.96
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.960 -> -1.750 from below, 0.080 from above, lost motion -1.830 deg (20.8 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 0 (gravity 0.0000m, inertia 0.0640m) amp +30 deg  rep 2/3 ---
+[probe] commanded 30.080 deg, settled at 29.350 deg
+[probe] residual e = +0.7300 deg (+0.01274 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.810       29.880      +0.2000       0.27
+[probe]   2       31.540       30.580      -0.5000       0.68
+[probe]   3       32.270       31.460      -1.3800       1.89
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 0 is 31.46 deg off (31.46 vs 0.00), retrying
+[probe] --- 'vertical' joint 0 (gravity 0.0000m, inertia 0.0640m) amp -30 deg  rep 2/3 ---
+[probe] commanded -29.040 deg, settled at -28.120 deg
+[probe] residual e = -0.9200 deg (-0.01606 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.960      -29.090      +0.0500       0.05
+[probe]   2      -30.880      -29.880      +0.8400       0.91
+[probe]   3      -31.800      -30.840      +1.8000       1.96
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.960 -> -1.750 from below, -0.080 from above, lost motion -1.670 deg (19.0 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 0 (gravity 0.0000m, inertia 0.0640m) amp +30 deg  rep 3/3 ---
+[probe] commanded 29.920 deg, settled at 29.000 deg
+[probe] residual e = +0.9200 deg (+0.01606 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.840       29.880      +0.0400       0.04
+[probe]   2       31.760       31.020      -1.1000       1.20
+[probe]   3       32.680       31.810      -1.8900       2.05
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 0 (gravity 0.0000m, inertia 0.0640m) amp -30 deg  rep 3/3 ---
+[probe] commanded -29.040 deg, settled at -28.120 deg
+[probe] residual e = -0.9200 deg (-0.01606 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.960      -29.090      +0.0500       0.05
+[probe]   2      -30.880      -29.880      +0.8400       0.91
+[probe]   3      -31.800      -29.880      +0.8400       0.91
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.870 -> -1.750 from below, 0.080 from above, lost motion -1.830 deg (20.8 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 1 (gravity 0.0018m, inertia 0.3047m) amp +30 deg  rep 1/3 ---
+[probe] commanded 29.920 deg, settled at 31.020 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       28.820       30.930      -1.0100       0.92
+[probe]   2       27.720       29.530      +0.3900       0.35
+[probe]   3       26.620       28.300      +1.6200       1.47
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 1 (gravity 0.0018m, inertia 0.3047m) amp -30 deg  rep 1/3 ---
+[probe]   move did not execute (joint 1 moved 0.00 deg), retrying 2/3
+[probe] commanded -29.480 deg, settled at -30.230 deg
+[probe] residual e = +0.7500 deg (+0.01309 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -28.730      -30.230      +0.7500       1.00
+[probe]   2      -27.980      -30.230      +0.7500       1.00
+[probe]   3      -27.230      -28.470      -1.0100       1.35
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target 0.080 -> 0.700 from below, 0.700 from above, lost motion +0.000 deg (0.0 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 1 (gravity 0.0018m, inertia 0.3047m) amp +30 deg  rep 2/3 ---
+[probe] commanded 30.700 deg, settled at 31.900 deg
+[probe] residual e = -1.2000 deg (-0.02094 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       29.500       31.900      -1.2000       1.00
+[probe]   2       28.300       30.050      +0.6500       0.54
+[probe]   3       27.100       29.000      +1.7000       1.42
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 1 (gravity 0.0018m, inertia 0.3047m) amp -30 deg  rep 2/3 ---
+[probe] commanded -29.480 deg, settled at -30.230 deg
+[probe] residual e = +0.7500 deg (+0.01309 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -28.730      -30.230      +0.7500       1.00
+[probe]   2      -27.980      -29.700      +0.2200       0.29
+[probe]   3      -27.230      -28.740      -0.7400       0.99
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target 0.350 -> 1.050 from below, 1.050 from above, lost motion +0.000 deg (0.0 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 1 (gravity 0.0018m, inertia 0.3047m) amp +30 deg  rep 3/3 ---
+[probe] commanded 30.960 deg, settled at 32.080 deg
+[probe] residual e = -1.1200 deg (-0.01955 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       29.840       32.080      -1.1200       1.00
+[probe]   2       28.720       30.760      +0.2000       0.18
+[probe]   3       27.600       29.700      +1.2600       1.13
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 1 (gravity 0.0018m, inertia 0.3047m) amp -30 deg  rep 3/3 ---
+[probe] commanded -29.480 deg, settled at -30.230 deg
+[probe] residual e = +0.7500 deg (+0.01309 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -28.730      -30.230      +0.7500       1.00
+[probe]   2      -27.980      -29.610      +0.1300       0.17
+[probe]   3      -27.230      -29.610      +0.1300       0.17
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target 0.350 -> 0.960 from below, 1.050 from above, lost motion -0.090 deg (1.0 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 2 (gravity 0.0018m, inertia 0.1943m) amp +30 deg  rep 1/3 ---
+[probe] commanded 60.930 deg, settled at 61.340 deg
+[probe] residual e = -0.4100 deg (-0.00716 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       60.520       61.340      -0.4100       1.00
+[probe]   2       60.110       61.340      -0.4100       1.00
+[probe]   3       59.700       61.250      -0.3200       0.78
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 2 (gravity 0.0018m, inertia 0.1943m) amp -30 deg  rep 1/3 ---
+[probe] commanded 0.670 deg, settled at 0.870 deg
+[probe] residual e = -0.2000 deg (-0.00349 rad)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 29.700 -> 29.530 from below, 30.230 from above, lost motion -0.700 deg (8.0 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 2 (gravity 0.0018m, inertia 0.1943m) amp +30 deg  rep 2/3 ---
+[probe] commanded 60.320 deg, settled at 60.640 deg
+[probe] residual e = -0.3200 deg (-0.00559 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       60.000       60.640      -0.3200       1.00
+[probe]   2       59.680       60.640      -0.3200       1.00
+[probe]   3       59.360       60.640      -0.3200       1.00
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 2 is 30.64 deg off (60.64 vs 30.00), retrying
+[probe] --- 'vertical' joint 2 (gravity 0.0018m, inertia 0.1943m) amp -30 deg  rep 2/3 ---
+[probe] commanded 0.670 deg, settled at 0.870 deg
+[probe] residual e = -0.2000 deg (-0.00349 rad)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 29.700 -> 29.530 from below, 30.320 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 2 (gravity 0.0018m, inertia 0.1943m) amp +30 deg  rep 3/3 ---
+[probe] commanded 60.320 deg, settled at 60.460 deg
+[probe] residual e = -0.1400 deg (-0.00244 rad)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 2 (gravity 0.0018m, inertia 0.1943m) amp -30 deg  rep 3/3 ---
+[probe] commanded 0.670 deg, settled at 0.870 deg
+[probe] residual e = -0.2000 deg (-0.00349 rad)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 29.700 -> 29.530 from below, 30.230 from above, lost motion -0.700 deg (8.0 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 3 (gravity -0.0462m, inertia 0.1204m) amp +30 deg  rep 1/3 ---
+[probe] commanded 29.210 deg, settled at 30.050 deg
+[probe] residual e = -0.8400 deg (-0.01466 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       28.370       29.610      -0.4000       0.48
+[probe]   2       27.530       28.740      +0.4700       0.56
+[probe]   3       26.690       27.770      +1.4400       1.71
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 3 (gravity -0.0462m, inertia 0.1204m) amp -30 deg  rep 1/3 ---
+[probe] commanded -30.700 deg, settled at -31.720 deg
+[probe] residual e = +1.0200 deg (+0.01780 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.680      -31.200      +0.5000       0.49
+[probe]   2      -28.660      -30.140      -0.5600       0.55
+[probe]   3      -27.640      -29.090      -1.6100       1.58
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.700 -> -1.310 from below, -1.310 from above, lost motion +0.000 deg (0.0 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 3 (gravity -0.0462m, inertia 0.1204m) amp +30 deg  rep 2/3 ---
+[probe] commanded 29.210 deg, settled at 30.050 deg
+[probe] residual e = -0.8400 deg (-0.01466 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       28.370       29.610      -0.4000       0.48
+[probe]   2       27.530       29.610      -0.4000       0.48
+[probe]   3       26.690       27.680      +1.5300       1.82
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 3 (gravity -0.0462m, inertia 0.1204m) amp -30 deg  rep 2/3 ---
+[probe] commanded -30.700 deg, settled at -31.720 deg
+[probe] residual e = +1.0200 deg (+0.01780 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.680      -31.200      +0.5000       0.49
+[probe]   2      -28.660      -30.230      -0.4700       0.46
+[probe]   3      -27.640      -29.090      -1.6100       1.58
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.700 -> -1.310 from below, -1.310 from above, lost motion +0.000 deg (0.0 counts)
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 3 (gravity -0.0462m, inertia 0.1204m) amp +30 deg  rep 3/3 ---
+[probe] commanded 29.210 deg, settled at 30.050 deg
+[probe] residual e = -0.8400 deg (-0.01466 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       28.370       29.610      -0.4000       0.48
+[probe]   2       27.530       28.740      +0.4700       0.56
+[probe]   3       26.690       27.770      +1.4400       1.71
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 3 (gravity -0.0462m, inertia 0.1204m) amp -30 deg  rep 3/3 ---
+[probe] commanded -30.700 deg, settled at -31.720 deg
+[probe] residual e = +1.0200 deg (+0.01780 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.680      -31.200      +0.5000       0.49
+[probe]   2      -28.660      -30.140      -0.5600       0.55
+[probe]   3      -27.640      -29.090      -1.6100       1.58
+
+[probe] moving to posture 'vertical': [0, 0, 30, 0, 0, -45]
+[probe] --- 'vertical' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.790 -> -1.400 from below, -1.400 from above, lost motion +0.000 deg (0.0 counts)
+
+[probe] ==============================================================
+[probe] POSTURE 'tucked'
+[probe] ==============================================================
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 0 (gravity 0.0000m, inertia 0.1387m) amp +30 deg  rep 1/3 ---
+[probe] commanded 29.920 deg, settled at 28.910 deg
+[probe] residual e = +1.0100 deg (+0.01763 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.930       30.050      -0.1300       0.13
+[probe]   2       31.940       31.110      -1.1900       1.18
+[probe]   3       32.950       32.080      -2.1600       2.14
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 0 (gravity 0.0000m, inertia 0.1387m) amp -30 deg  rep 1/3 ---
+[probe] commanded -29.040 deg, settled at -27.940 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.140      -29.090      +0.0500       0.05
+[probe]   2      -31.240      -30.320      +1.2800       1.16
+[probe]   3      -32.340      -31.280      +2.2400       2.04
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.870 -> -1.660 from below, 0.080 from above, lost motion -1.740 deg (19.8 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 0 (gravity 0.0000m, inertia 0.1387m) amp +30 deg  rep 2/3 ---
+[probe]   move did not execute (joint 0 moved 0.00 deg), retrying 2/3
+[probe] commanded 30.170 deg, settled at 29.260 deg
+[probe] residual e = +0.9100 deg (+0.01588 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       31.080       30.230      -0.0600       0.07
+[probe]   2       31.990       31.110      -0.9400       1.03
+[probe]   3       32.900       32.160      -1.9900       2.19
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 0 (gravity 0.0000m, inertia 0.1387m) amp -30 deg  rep 2/3 ---
+[probe] commanded -29.040 deg, settled at -27.940 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.140      -29.090      +0.0500       0.05
+[probe]   2      -31.240      -29.090      +0.0500       0.05
+[probe]   3      -32.340      -31.280      +2.2400       2.04
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.870 -> -1.660 from below, 0.080 from above, lost motion -1.740 deg (19.8 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 0 (gravity 0.0000m, inertia 0.1387m) amp +30 deg  rep 3/3 ---
+[probe] commanded 30.080 deg, settled at 29.260 deg
+[probe] residual e = +0.8200 deg (+0.01431 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.900       30.140      -0.0600       0.07
+[probe]   2       31.720       30.140      -0.0600       0.07
+[probe]   3       32.540       31.720      -1.6400       2.00
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 0 (gravity 0.0000m, inertia 0.1387m) amp -30 deg  rep 3/3 ---
+[probe] commanded -29.040 deg, settled at -27.940 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.140      -29.170      +0.1300       0.12
+[probe]   2      -31.240      -30.320      +1.2800       1.16
+[probe]   3      -32.340      -31.280      +2.2400       2.04
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 0 is 31.28 deg off (-31.28 vs 0.00), retrying
+[probe] --- 'tucked' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.870 -> -1.660 from below, 0.170 from above, lost motion -1.830 deg (20.8 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 1 (gravity -0.1231m, inertia 0.2210m) amp +30 deg  rep 1/3 ---
+[probe] commanded 14.620 deg, settled at 15.460 deg
+[probe] residual e = -0.8400 deg (-0.01466 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       13.780       14.940      -0.3200       0.38
+[probe]   2       12.940       14.060      +0.5600       0.67
+[probe]   3       12.100       13.180      +1.4400       1.71
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 1 (gravity -0.1231m, inertia 0.2210m) amp -30 deg  rep 1/3 ---
+[probe] commanded -45.380 deg, settled at -46.310 deg
+[probe] residual e = +0.9300 deg (+0.01623 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -44.450      -46.310      +0.9300       1.00
+[probe]   2      -43.520      -45.870      +0.4900       0.53
+[probe]   3      -42.590      -44.640      -0.7400       0.80
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 1 is 29.64 deg off (-44.64 vs -15.00), retrying
+[probe] --- 'tucked' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -15.820 -> -16.610 from below, -16.250 from above, lost motion -0.360 deg (4.1 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 1 (gravity -0.1231m, inertia 0.2210m) amp +30 deg  rep 2/3 ---
+[probe] commanded 13.750 deg, settled at 14.410 deg
+[probe] residual e = -0.6600 deg (-0.01152 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       13.090       14.410      -0.6600       1.00
+[probe]   2       12.430       13.530      +0.2200       0.33
+[probe]   3       11.770       12.830      +0.9200       1.39
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 1 (gravity -0.1231m, inertia 0.2210m) amp -30 deg  rep 2/3 ---
+[probe] commanded -45.380 deg, settled at -46.310 deg
+[probe] residual e = +0.9300 deg (+0.01623 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -44.450      -46.310      +0.9300       1.00
+[probe]   2      -43.520      -46.310      +0.9300       1.00
+[probe]   3      -42.590      -44.560      -0.8200       0.88
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -15.820 -> -16.610 from below, -16.250 from above, lost motion -0.360 deg (4.1 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 1 (gravity -0.1231m, inertia 0.2210m) amp +30 deg  rep 3/3 ---
+[probe]   move did not execute (joint 1 moved 0.00 deg), retrying 2/3
+[probe] commanded 13.750 deg, settled at 14.230 deg
+[probe] residual e = -0.4800 deg (-0.00838 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       13.270       14.230      -0.4800       1.00
+[probe]   2       12.790       14.230      -0.4800       1.00
+[probe]   3       12.310       13.350      +0.4000       0.83
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 1 (gravity -0.1231m, inertia 0.2210m) amp -30 deg  rep 3/3 ---
+[probe] commanded -45.380 deg, settled at -46.310 deg
+[probe] residual e = +0.9300 deg (+0.01623 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -44.450      -46.310      +0.9300       1.00
+[probe]   2      -43.520      -45.870      +0.4900       0.53
+[probe]   3      -42.590      -44.640      -0.7400       0.80
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -15.820 -> -16.610 from below, -16.250 from above, lost motion -0.360 deg (4.1 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 2 (gravity -0.0945m, inertia 0.1218m) amp +30 deg  rep 1/3 ---
+[probe] commanded 59.970 deg, settled at 59.670 deg
+[probe] residual e = +0.3000 deg (+0.00524 rad)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 2 (gravity -0.0945m, inertia 0.1218m) amp -30 deg  rep 1/3 ---
+[probe] commanded 0.140 deg, settled at 0.000 deg
+[probe] residual e = +0.1400 deg (+0.00244 rad)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 29.260 -> 28.470 from below, 29.440 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 2 (gravity -0.0945m, inertia 0.1218m) amp +30 deg  rep 2/3 ---
+[probe] commanded 59.440 deg, settled at 59.060 deg
+[probe] residual e = +0.3800 deg (+0.00663 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       59.820       59.150      +0.2900       0.76
+[probe]   2       60.200       59.670      -0.2300       0.61
+[probe]   3       60.580       60.200      -0.7600       2.00
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 2 (gravity -0.0945m, inertia 0.1218m) amp -30 deg  rep 2/3 ---
+[probe] commanded 0.140 deg, settled at 0.000 deg
+[probe] residual e = +0.1400 deg (+0.00244 rad)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 29.260 -> 28.470 from below, 29.440 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 2 (gravity -0.0945m, inertia 0.1218m) amp +30 deg  rep 3/3 ---
+[probe] commanded 59.440 deg, settled at 59.060 deg
+[probe] residual e = +0.3800 deg (+0.00663 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       59.820       59.150      +0.2900       0.76
+[probe]   2       60.200       59.670      -0.2300       0.61
+[probe]   3       60.580       60.200      -0.7600       2.00
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 2 (gravity -0.0945m, inertia 0.1218m) amp -30 deg  rep 3/3 ---
+[probe] commanded 0.140 deg, settled at 0.000 deg
+[probe] residual e = +0.1400 deg (+0.00244 rad)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 29.260 -> 28.470 from below, 29.440 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 3 (gravity -0.1193m, inertia 0.1204m) amp +30 deg  rep 1/3 ---
+[probe] commanded -33.190 deg, settled at -35.060 deg
+[probe] residual e = +1.8700 deg (+0.03264 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -31.320      -33.310      +0.1200       0.06
+[probe]   2      -29.450      -31.280      -1.9100       1.02
+[probe]   3      -27.580      -29.440      -3.7500       2.01
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 3 is 30.56 deg off (-29.44 vs -60.00), retrying
+[probe] --- 'tucked' joint 3 (gravity -0.1193m, inertia 0.1204m) amp -30 deg  rep 1/3 ---
+[probe] commanded -91.250 deg, settled at -92.370 deg
+[probe] residual e = +1.1200 deg (+0.01955 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -90.130      -92.370      +1.1200       1.00
+[probe]   2      -89.010      -90.700      -0.5500       0.49
+[probe]   3      -87.890      -89.560      -1.6900       1.51
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target -61.960 -> -63.980 from below, -63.280 from above, lost motion -0.700 deg (8.0 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 3 (gravity -0.1193m, inertia 0.1204m) amp +30 deg  rep 2/3 ---
+[probe] commanded -32.050 deg, settled at -33.920 deg
+[probe] residual e = +1.8700 deg (+0.03264 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.180      -32.160      +0.1100       0.06
+[probe]   2      -28.310      -32.160      +0.1100       0.06
+[probe]   3      -26.440      -28.120      -3.9300       2.10
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 3 is 31.88 deg off (-28.12 vs -60.00), retrying
+[probe] --- 'tucked' joint 3 (gravity -0.1193m, inertia 0.1204m) amp -30 deg  rep 2/3 ---
+[probe] commanded -91.250 deg, settled at -92.370 deg
+[probe] residual e = +1.1200 deg (+0.01955 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -90.130      -92.370      +1.1200       1.00
+[probe]   2      -89.010      -90.700      -0.5500       0.49
+[probe]   3      -87.890      -89.560      -1.6900       1.51
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target -61.960 -> -63.980 from below, -63.190 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 3 (gravity -0.1193m, inertia 0.1204m) amp +30 deg  rep 3/3 ---
+[probe] commanded -32.130 deg, settled at -34.010 deg
+[probe] residual e = +1.8800 deg (+0.03281 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.250      -32.250      +0.1200       0.06
+[probe]   2      -28.370      -30.230      -1.9000       1.01
+[probe]   3      -26.490      -28.470      -3.6600       1.95
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 3 (gravity -0.1193m, inertia 0.1204m) amp -30 deg  rep 3/3 ---
+[probe] commanded -91.250 deg, settled at -92.370 deg
+[probe] residual e = +1.1200 deg (+0.01955 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -90.130      -92.370      +1.1200       1.00
+[probe]   2      -89.010      -90.700      -0.5500       0.49
+[probe]   3      -87.890      -89.640      -1.6100       1.44
+
+[probe] moving to posture 'tucked': [0, -15, 30, -60, 0, -45]
+[probe] --- 'tucked' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target -61.960 -> -64.070 from below, -63.280 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] ==============================================================
+[probe] POSTURE 'folded'
+[probe] ==============================================================
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 3 is 153.28 deg off (-63.28 vs 90.00), retrying
+[probe]   attempt 2: did not arrive -- joint 3 is 153.28 deg off (-63.28 vs 90.00), retrying
+[probe] --- 'folded' joint 0 (gravity 0.0000m, inertia 0.1565m) amp +30 deg  rep 1/3 ---
+[probe]   move did not execute (joint 0 moved 0.00 deg), retrying 2/3
+[probe] commanded 30.170 deg, settled at 29.350 deg
+[probe] residual e = +0.8200 deg (+0.01431 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.990       30.230      -0.0600       0.07
+[probe]   2       31.810       31.020      -0.8500       1.04
+[probe]   3       32.630       31.900      -1.7300       2.11
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 0 (gravity 0.0000m, inertia 0.1565m) amp -30 deg  rep 1/3 ---
+[probe] commanded -29.040 deg, settled at -27.940 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.140      -29.170      +0.1300       0.12
+[probe]   2      -31.240      -30.320      +1.2800       1.16
+[probe]   3      -32.340      -31.280      +2.2400       2.04
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.790 -> -1.580 from below, 0.170 from above, lost motion -1.750 deg (19.9 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 0 (gravity 0.0000m, inertia 0.1565m) amp +30 deg  rep 2/3 ---
+[probe] commanded 30.260 deg, settled at 29.440 deg
+[probe] residual e = +0.8200 deg (+0.01431 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       31.080       30.230      +0.0300       0.04
+[probe]   2       31.900       31.020      -0.7600       0.93
+[probe]   3       32.720       31.990      -1.7300       2.11
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 0 (gravity 0.0000m, inertia 0.1565m) amp -30 deg  rep 2/3 ---
+[probe] commanded -29.130 deg, settled at -28.030 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.230      -29.260      +0.1300       0.12
+[probe]   2      -31.330      -30.320      +1.1900       1.08
+[probe]   3      -32.430      -30.320      +1.1900       1.08
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.790 -> -1.490 from below, 0.260 from above, lost motion -1.750 deg (19.9 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 0 (gravity 0.0000m, inertia 0.1565m) amp +30 deg  rep 3/3 ---
+[probe] commanded 30.350 deg, settled at 29.440 deg
+[probe] residual e = +0.9100 deg (+0.01588 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       31.260       29.440      +0.9100       1.00
+[probe]   2       32.170       31.370      -1.0200       1.12
+[probe]   3       33.080       32.340      -1.9900       2.19
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 0 (gravity 0.0000m, inertia 0.1565m) amp -30 deg  rep 3/3 ---
+[probe] commanded -29.040 deg, settled at -27.940 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.140      -29.260      +0.2200       0.20
+[probe]   2      -31.240      -30.320      +1.2800       1.16
+[probe]   3      -32.340      -31.280      +2.2400       2.04
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.790 -> -1.490 from below, 0.260 from above, lost motion -1.750 deg (19.9 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 1 (gravity -0.1428m, inertia 0.2478m) amp +30 deg  rep 1/3 ---
+[probe] commanded -62.280 deg, settled at -63.450 deg
+[probe] residual e = +1.1700 deg (+0.02042 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -61.110      -62.570      +0.2900       0.25
+[probe]   2      -59.940      -61.170      -1.1100       0.95
+[probe]   3      -58.770      -60.020      -2.2600       1.93
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 1 (gravity -0.1428m, inertia 0.2478m) amp -30 deg  rep 1/3 ---
+[probe] commanded -121.050 deg, settled at -122.080 deg
+[probe] residual e = +1.0300 deg (+0.01798 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1     -120.020     -122.080      +1.0300       1.00
+[probe]   2     -118.990     -121.640      +0.5900       0.57
+[probe]   3     -117.960     -120.410      -0.6400       0.62
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -91.840 -> -93.600 from below, -92.810 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 1 (gravity -0.1428m, inertia 0.2478m) amp +30 deg  rep 2/3 ---
+[probe] commanded -62.370 deg, settled at -63.450 deg
+[probe] residual e = +1.0800 deg (+0.01885 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -61.290      -63.100      +0.7300       0.68
+[probe]   2      -60.210      -61.430      -0.9400       0.87
+[probe]   3      -59.130      -60.380      -1.9900       1.84
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 1 (gravity -0.1428m, inertia 0.2478m) amp -30 deg  rep 2/3 ---
+[probe]   move did not execute (joint 1 moved 0.00 deg), retrying 2/3
+[probe] commanded -120.960 deg, settled at -121.990 deg
+[probe] residual e = +1.0300 deg (+0.01798 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1     -119.930     -121.990      +1.0300       1.00
+[probe]   2     -118.900     -121.550      +0.5900       0.57
+[probe]   3     -117.870     -119.970      -0.9900       0.96
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -91.840 -> -93.600 from below, -92.810 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 1 (gravity -0.1428m, inertia 0.2478m) amp +30 deg  rep 3/3 ---
+[probe] commanded -62.370 deg, settled at -63.450 deg
+[probe] residual e = +1.0800 deg (+0.01885 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -61.290      -63.100      +0.7300       0.68
+[probe]   2      -60.210      -61.430      -0.9400       0.87
+[probe]   3      -59.130      -60.380      -1.9900       1.84
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 1 (gravity -0.1428m, inertia 0.2478m) amp -30 deg  rep 3/3 ---
+[probe] commanded -120.870 deg, settled at -121.900 deg
+[probe] residual e = +1.0300 deg (+0.01798 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1     -119.840     -121.900      +1.0300       1.00
+[probe]   2     -118.810     -121.550      +0.6800       0.66
+[probe]   3     -117.780     -119.970      -0.9000       0.87
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -91.750 -> -93.420 from below, -92.630 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 2 (gravity -0.0324m, inertia 0.2051m) amp +30 deg  rep 1/3 ---
+[probe] commanded 89.230 deg, settled at 88.850 deg
+[probe] residual e = +0.3800 deg (+0.00663 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       89.610       89.030      +0.2000       0.53
+[probe]   2       89.990       89.560      -0.3300       0.87
+[probe]   3       90.370       89.910      -0.6800       1.79
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 2 (gravity -0.0324m, inertia 0.2051m) amp -30 deg  rep 1/3 ---
+[probe] commanded 30.020 deg, settled at 29.530 deg
+[probe] residual e = +0.4900 deg (+0.00855 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.510       29.530      +0.4900       1.00
+[probe]   2       31.000       29.530      +0.4900       1.00
+[probe]   3       31.490       29.970      +0.0500       0.10
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 59.230 -> 58.530 from below, 59.150 from above, lost motion -0.620 deg (7.1 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 2 (gravity -0.0324m, inertia 0.2051m) amp +30 deg  rep 2/3 ---
+[probe] commanded 89.150 deg, settled at 88.850 deg
+[probe] residual e = +0.3000 deg (+0.00524 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       89.450       88.850      +0.3000       1.00
+[probe]   2       89.750       89.380      -0.2300       0.77
+[probe]   3       90.050       89.380      -0.2300       0.77
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 2 is 29.38 deg off (89.38 vs 60.00), retrying
+[probe] --- 'folded' joint 2 (gravity -0.0324m, inertia 0.2051m) amp -30 deg  rep 2/3 ---
+[probe] commanded 30.020 deg, settled at 29.530 deg
+[probe] residual e = +0.4900 deg (+0.00855 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.510       29.530      +0.4900       1.00
+[probe]   2       31.000       29.530      +0.4900       1.00
+[probe]   3       31.490       29.970      +0.0500       0.10
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 59.230 -> 58.530 from below, 59.320 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 2 (gravity -0.0324m, inertia 0.2051m) amp +30 deg  rep 3/3 ---
+[probe] commanded 89.320 deg, settled at 89.030 deg
+[probe] residual e = +0.2900 deg (+0.00506 rad)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 2 (gravity -0.0324m, inertia 0.2051m) amp -30 deg  rep 3/3 ---
+[probe] commanded 30.020 deg, settled at 29.530 deg
+[probe] residual e = +0.4900 deg (+0.00855 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.510       29.530      +0.4900       1.00
+[probe]   2       31.000       29.530      +0.4900       1.00
+[probe]   3       31.490       29.970      +0.0500       0.10
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 59.230 -> 58.530 from below, 59.320 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 3 (gravity 0.0156m, inertia 0.1204m) amp +30 deg  rep 1/3 ---
+[probe] commanded 120.700 deg, settled at 121.640 deg
+[probe] residual e = -0.9400 deg (-0.01641 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      119.760      121.280      -0.5800       0.62
+[probe]   2      118.820      120.320      +0.3800       0.40
+[probe]   3      117.880      119.440      +1.2600       1.34
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 3 (gravity 0.0156m, inertia 0.1204m) amp -30 deg  rep 1/3 ---
+[probe] commanded 60.790 deg, settled at 60.020 deg
+[probe] residual e = +0.7700 deg (+0.01344 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       61.560       60.550      +0.2400       0.31
+[probe]   2       62.330       61.430      -0.6400       0.83
+[probe]   3       63.100       61.430      -0.6400       0.83
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target 90.610 -> 91.310 from below, 91.310 from above, lost motion +0.000 deg (0.0 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 3 (gravity 0.0156m, inertia 0.1204m) amp +30 deg  rep 2/3 ---
+[probe] commanded 120.700 deg, settled at 121.640 deg
+[probe] residual e = -0.9400 deg (-0.01641 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      119.760      121.370      -0.6700       0.71
+[probe]   2      118.820      120.320      +0.3800       0.40
+[probe]   3      117.880      119.440      +1.2600       1.34
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 3 is 29.44 deg off (119.44 vs 90.00), retrying
+[probe] --- 'folded' joint 3 (gravity 0.0156m, inertia 0.1204m) amp -30 deg  rep 2/3 ---
+[probe]   move did not execute (joint 3 moved 0.00 deg), retrying 2/3
+[probe]   move did not execute (joint 3 moved 0.00 deg), retrying 3/3
+[probe] commanded 60.790 deg, settled at 60.020 deg
+[probe] residual e = +0.7700 deg (+0.01344 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       61.560       60.550      +0.2400       0.31
+[probe]   2       62.330       61.430      -0.6400       0.83
+[probe]   3       63.100       62.130      -1.3400       1.74
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target 90.610 -> 91.310 from below, 91.310 from above, lost motion +0.000 deg (0.0 counts)
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 3 (gravity 0.0156m, inertia 0.1204m) amp +30 deg  rep 3/3 ---
+[probe] commanded 121.310 deg, settled at 122.250 deg
+[probe] residual e = -0.9400 deg (-0.01641 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      120.370      121.990      -0.6800       0.72
+[probe]   2      119.430      120.930      +0.3800       0.40
+[probe]   3      118.490      120.050      +1.2600       1.34
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 3 (gravity 0.0156m, inertia 0.1204m) amp -30 deg  rep 3/3 ---
+[probe] commanded 60.790 deg, settled at 60.020 deg
+[probe] residual e = +0.7700 deg (+0.01344 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       61.560       60.550      +0.2400       0.31
+[probe]   2       62.330       61.430      -0.6400       0.83
+[probe]   3       63.100       62.130      -1.3400       1.74
+
+[probe] moving to posture 'folded': [0, -90, 60, 90, 0, -45]
+[probe] --- 'folded' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target 90.610 -> 91.310 from below, 91.310 from above, lost motion +0.000 deg (0.0 counts)
+
+[probe] ==============================================================
+[probe] POSTURE 'reach'
+[probe] ==============================================================
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 0 (gravity 0.0000m, inertia 0.1878m) amp +30 deg  rep 1/3 ---
+[probe] commanded 30.260 deg, settled at 29.440 deg
+[probe] residual e = +0.8200 deg (+0.01431 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       31.080       30.230      +0.0300       0.04
+[probe]   2       31.900       31.020      -0.7600       0.93
+[probe]   3       32.720       31.020      -0.7600       0.93
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 0 (gravity 0.0000m, inertia 0.1878m) amp -30 deg  rep 1/3 ---
+[probe] commanded -29.130 deg, settled at -28.030 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.230      -29.260      +0.1300       0.12
+[probe]   2      -31.330      -30.320      +1.1900       1.08
+[probe]   3      -32.430      -31.370      +2.2400       2.04
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.960 -> -1.840 from below, 0.170 from above, lost motion -2.010 deg (22.9 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 0 (gravity 0.0000m, inertia 0.1878m) amp +30 deg  rep 2/3 ---
+[probe]   move did not execute (joint 0 moved 0.00 deg), retrying 2/3
+[probe] commanded 30.170 deg, settled at 29.350 deg
+[probe] residual e = +0.8200 deg (+0.01431 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.990       30.140      +0.0300       0.04
+[probe]   2       31.810       31.020      -0.8500       1.04
+[probe]   3       32.630       31.810      -1.6400       2.00
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 0 is 31.81 deg off (31.81 vs 0.00), retrying
+[probe]   attempt 2: did not arrive -- joint 0 is 31.81 deg off (31.81 vs 0.00), retrying
+[probe] --- 'reach' joint 0 (gravity 0.0000m, inertia 0.1878m) amp -30 deg  rep 2/3 ---
+[probe] commanded -29.130 deg, settled at -28.030 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.230      -29.260      +0.1300       0.12
+[probe]   2      -31.330      -30.320      +1.1900       1.08
+[probe]   3      -32.430      -31.370      +2.2400       2.04
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.960 -> -1.840 from below, 0.000 from above, lost motion -1.840 deg (20.9 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 0 (gravity 0.0000m, inertia 0.1878m) amp +30 deg  rep 3/3 ---
+[probe] commanded 30.000 deg, settled at 29.090 deg
+[probe] residual e = +0.9100 deg (+0.01588 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.910       30.050      -0.0500       0.05
+[probe]   2       31.820       31.020      -1.0200       1.12
+[probe]   3       32.730       32.080      -2.0800       2.29
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 0 (gravity 0.0000m, inertia 0.1878m) amp -30 deg  rep 3/3 ---
+[probe] commanded -29.130 deg, settled at -28.030 deg
+[probe] residual e = -1.1000 deg (-0.01920 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.230      -28.030      -1.1000       1.00
+[probe]   2      -31.330      -30.320      +1.1900       1.08
+[probe]   3      -32.430      -31.370      +2.2400       2.04
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.960 -> -1.660 from below, 0.000 from above, lost motion -1.660 deg (18.9 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 1 (gravity -0.1766m, inertia 0.3261m) amp +30 deg  rep 1/3 ---
+[probe] commanded -2.870 deg, settled at -3.250 deg
+[probe] residual e = +0.3800 deg (+0.00663 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       -2.490       -3.250      +0.3800       1.00
+[probe]   2       -2.110       -3.070      +0.2000       0.53
+[probe]   3       -1.730       -2.370      -0.5000       1.32
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 1 (gravity -0.1766m, inertia 0.3261m) amp -30 deg  rep 1/3 ---
+[probe] commanded -61.020 deg, settled at -62.400 deg
+[probe] residual e = +1.3800 deg (+0.02409 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -59.640      -62.400      +1.3800       1.00
+[probe]   2      -58.260      -61.080      +0.0600       0.04
+[probe]   3      -56.880      -59.580      -1.4400       1.04
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -31.550 -> -32.780 from below, -32.690 from above, lost motion -0.090 deg (1.0 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 1 (gravity -0.1766m, inertia 0.3261m) amp +30 deg  rep 2/3 ---
+[probe] commanded -2.600 deg, settled at -3.070 deg
+[probe] residual e = +0.4700 deg (+0.00820 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       -2.130       -2.980      +0.3800       0.81
+[probe]   2       -1.660       -2.980      +0.3800       0.81
+[probe]   3       -1.190       -1.750      -0.8500       1.81
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 1 (gravity -0.1766m, inertia 0.3261m) amp -30 deg  rep 2/3 ---
+[probe] commanded -60.930 deg, settled at -62.310 deg
+[probe] residual e = +1.3800 deg (+0.02409 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -59.550      -62.310      +1.3800       1.00
+[probe]   2      -58.170      -61.170      +0.2400       0.17
+[probe]   3      -56.790      -59.500      -1.4300       1.04
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -31.550 -> -32.690 from below, -32.600 from above, lost motion -0.090 deg (1.0 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 1 (gravity -0.1766m, inertia 0.3261m) amp +30 deg  rep 3/3 ---
+[probe] commanded -2.600 deg, settled at -3.070 deg
+[probe] residual e = +0.4700 deg (+0.00820 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       -2.130       -3.070      +0.4700       1.00
+[probe]   2       -1.660       -2.280      -0.3200       0.68
+[probe]   3       -1.190       -2.100      -0.5000       1.06
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 1 (gravity -0.1766m, inertia 0.3261m) amp -30 deg  rep 3/3 ---
+[probe] commanded -60.930 deg, settled at -62.220 deg
+[probe] residual e = +1.2900 deg (+0.02251 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -59.640      -62.220      +1.2900       1.00
+[probe]   2      -58.350      -61.170      +0.2400       0.19
+[probe]   3      -57.060      -59.670      -1.2600       0.98
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 1 is 29.67 deg off (-59.67 vs -30.00), retrying
+[probe] --- 'reach' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -31.550 -> -32.600 from below, -32.510 from above, lost motion -0.090 deg (1.0 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 2 (gravity -0.1214m, inertia 0.2159m) amp +30 deg  rep 1/3 ---
+[probe] commanded 28.510 deg, settled at 27.940 deg
+[probe] residual e = +0.5700 deg (+0.00995 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       29.080       28.120      +0.3900       0.68
+[probe]   2       29.650       28.820      -0.3100       0.54
+[probe]   3       30.220       29.350      -0.8400       1.47
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 2 (gravity -0.1214m, inertia 0.2159m) amp -30 deg  rep 1/3 ---
+[probe] commanded -30.350 deg, settled at -31.020 deg
+[probe] residual e = +0.6700 deg (+0.01169 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.680      -31.020      +0.6700       1.00
+[probe]   2      -29.010      -31.020      +0.6700       1.00
+[probe]   3      -28.340      -30.320      -0.0300       0.04
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target -1.050 -> -2.190 from below, -1.490 from above, lost motion -0.700 deg (8.0 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 2 (gravity -0.1214m, inertia 0.2159m) amp +30 deg  rep 2/3 ---
+[probe] commanded 28.510 deg, settled at 27.940 deg
+[probe] residual e = +0.5700 deg (+0.00995 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       29.080       28.120      +0.3900       0.68
+[probe]   2       29.650       28.820      -0.3100       0.54
+[probe]   3       30.220       29.350      -0.8400       1.47
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 2 (gravity -0.1214m, inertia 0.2159m) amp -30 deg  rep 2/3 ---
+[probe] commanded -30.520 deg, settled at -31.200 deg
+[probe] residual e = +0.6800 deg (+0.01187 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.840      -31.200      +0.6800       1.00
+[probe]   2      -29.160      -31.200      +0.6800       1.00
+[probe]   3      -28.480      -30.320      -0.2000       0.29
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target -1.050 -> -2.190 from below, -1.580 from above, lost motion -0.610 deg (6.9 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 2 (gravity -0.1214m, inertia 0.2159m) amp +30 deg  rep 3/3 ---
+[probe]   move did not execute (joint 2 moved 0.00 deg), retrying 2/3
+[probe] commanded 28.510 deg, settled at 28.030 deg
+[probe] residual e = +0.4800 deg (+0.00838 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       28.990       28.030      +0.4800       1.00
+[probe]   2       29.470       28.650      -0.1400       0.29
+[probe]   3       29.950       29.170      -0.6600       1.37
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 2 (gravity -0.1214m, inertia 0.2159m) amp -30 deg  rep 3/3 ---
+[probe] commanded -30.430 deg, settled at -31.110 deg
+[probe] residual e = +0.6800 deg (+0.01187 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.750      -31.110      +0.6800       1.00
+[probe]   2      -29.070      -31.110      +0.6800       1.00
+[probe]   3      -28.390      -30.320      -0.1100       0.16
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target -1.050 -> -2.190 from below, -1.490 from above, lost motion -0.700 deg (8.0 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 3 (gravity -0.0734m, inertia 0.1204m) amp +30 deg  rep 1/3 ---
+[probe]   move did not execute (joint 3 moved 0.09 deg), retrying 2/3
+[probe] commanded 73.760 deg, settled at 73.030 deg
+[probe] residual e = +0.7300 deg (+0.01274 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       74.490       73.740      +0.0200       0.03
+[probe]   2       75.220       74.440      -0.6800       0.93
+[probe]   3       75.950       75.230      -1.4700       2.01
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 3 (gravity -0.0734m, inertia 0.1204m) amp -30 deg  rep 1/3 ---
+[probe] commanded 14.030 deg, settled at 12.830 deg
+[probe] residual e = +1.2000 deg (+0.02094 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       15.230       13.090      +0.9400       0.78
+[probe]   2       16.430       14.500      -0.4700       0.39
+[probe]   3       17.630       15.640      -1.6100       1.34
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 3 is 29.36 deg off (15.64 vs 45.00), retrying
+[probe] --- 'reach' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target 43.590 -> 42.010 from below, 42.620 from above, lost motion -0.610 deg (6.9 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 3 (gravity -0.0734m, inertia 0.1204m) amp +30 deg  rep 2/3 ---
+[probe] commanded 73.680 deg, settled at 72.940 deg
+[probe] residual e = +0.7400 deg (+0.01292 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       74.420       73.650      +0.0300       0.04
+[probe]   2       75.160       74.440      -0.7600       1.03
+[probe]   3       75.900       75.140      -1.4600       1.97
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 3 (gravity -0.0734m, inertia 0.1204m) amp -30 deg  rep 2/3 ---
+[probe] commanded 14.030 deg, settled at 12.830 deg
+[probe] residual e = +1.2000 deg (+0.02094 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       15.230       13.090      +0.9400       0.78
+[probe]   2       16.430       14.500      -0.4700       0.39
+[probe]   3       17.630       15.640      -1.6100       1.34
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target 43.590 -> 42.090 from below, 42.620 from above, lost motion -0.530 deg (6.0 counts)
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 3 (gravity -0.0734m, inertia 0.1204m) amp +30 deg  rep 3/3 ---
+[probe] commanded 73.680 deg, settled at 72.940 deg
+[probe] residual e = +0.7400 deg (+0.01292 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       74.420       73.650      +0.0300       0.04
+[probe]   2       75.160       74.440      -0.7600       1.03
+[probe]   3       75.900       75.140      -1.4600       1.97
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 3 (gravity -0.0734m, inertia 0.1204m) amp -30 deg  rep 3/3 ---
+[probe] commanded 14.030 deg, settled at 12.830 deg
+[probe] residual e = +1.2000 deg (+0.02094 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       15.230       13.090      +0.9400       0.78
+[probe]   2       16.430       14.500      -0.4700       0.39
+[probe]   3       17.630       15.640      -1.6100       1.34
+
+[probe] moving to posture 'reach': [0, -30, 0, 45, 0, -45]
+[probe] --- 'reach' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target 43.590 -> 42.010 from below, 42.620 from above, lost motion -0.610 deg (6.9 counts)
+
+[probe] ==============================================================
+[probe] POSTURE 'compact'
+[probe] ==============================================================
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 0 (gravity 0.0000m, inertia 0.2252m) amp +30 deg  rep 1/3 ---
+[probe] commanded 30.000 deg, settled at 29.260 deg
+[probe] residual e = +0.7400 deg (+0.01292 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.740       29.880      +0.1200       0.16
+[probe]   2       31.480       30.670      -0.6700       0.91
+[probe]   3       32.220       31.460      -1.4600       1.97
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 0 (gravity 0.0000m, inertia 0.2252m) amp -30 deg  rep 1/3 ---
+[probe] commanded -29.130 deg, settled at -28.120 deg
+[probe] residual e = -1.0100 deg (-0.01763 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.140      -28.120      -1.0100       1.00
+[probe]   2      -31.150      -30.140      +1.0100       1.00
+[probe]   3      -32.160      -31.200      +2.0700       2.05
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 0 is 31.20 deg off (-31.20 vs 0.00), retrying
+[probe] --- 'compact' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.790 -> -1.490 from below, 0.170 from above, lost motion -1.660 deg (18.9 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 0 (gravity 0.0000m, inertia 0.2252m) amp +30 deg  rep 2/3 ---
+[probe] commanded 30.170 deg, settled at 29.350 deg
+[probe] residual e = +0.8200 deg (+0.01431 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.990       30.140      +0.0300       0.04
+[probe]   2       31.810       30.930      -0.7600       0.93
+[probe]   3       32.630       30.930      -0.7600       0.93
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 0 (gravity 0.0000m, inertia 0.2252m) amp -30 deg  rep 2/3 ---
+[probe] commanded -29.130 deg, settled at -28.120 deg
+[probe] residual e = -1.0100 deg (-0.01763 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.140      -29.090      -0.0400       0.04
+[probe]   2      -31.150      -30.320      +1.1900       1.18
+[probe]   3      -32.160      -31.200      +2.0700       2.05
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.700 -> -1.310 from below, 0.260 from above, lost motion -1.570 deg (17.9 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 0 (gravity 0.0000m, inertia 0.2252m) amp +30 deg  rep 3/3 ---
+[probe] commanded 30.350 deg, settled at 29.610 deg
+[probe] residual e = +0.7400 deg (+0.01292 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       31.090       30.230      +0.1200       0.16
+[probe]   2       31.830       31.020      -0.6700       0.91
+[probe]   3       32.570       31.720      -1.3700       1.85
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 0 (gravity 0.0000m, inertia 0.2252m) amp -30 deg  rep 3/3 ---
+[probe] commanded -29.130 deg, settled at -28.120 deg
+[probe] residual e = -1.0100 deg (-0.01763 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.140      -29.170      +0.0400       0.04
+[probe]   2      -31.150      -30.320      +1.1900       1.18
+[probe]   3      -32.160      -31.200      +2.0700       2.05
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.790 -> -1.490 from below, 0.260 from above, lost motion -1.750 deg (19.9 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 1 (gravity -0.2159m, inertia 0.2284m) amp +30 deg  rep 1/3 ---
+[probe]   move did not execute (joint 1 moved 0.00 deg), retrying 2/3
+[probe] commanded -32.310 deg, settled at -33.660 deg
+[probe] residual e = +1.3500 deg (+0.02356 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.960      -32.690      +0.3800       0.28
+[probe]   2      -29.610      -31.200      -1.1100       0.82
+[probe]   3      -28.260      -29.790      -2.5200       1.87
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 1 (gravity -0.2159m, inertia 0.2284m) amp -30 deg  rep 1/3 ---
+[probe] commanded -91.170 deg, settled at -92.370 deg
+[probe] residual e = +1.2000 deg (+0.02094 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -89.970      -92.370      +1.2000       1.00
+[probe]   2      -88.770      -92.280      +1.1100       0.92
+[probe]   3      -87.570      -90.170      -1.0000       0.83
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -62.130 -> -64.240 from below, -63.190 from above, lost motion -1.050 deg (11.9 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 1 (gravity -0.2159m, inertia 0.2284m) amp +30 deg  rep 2/3 ---
+[probe] commanded -32.660 deg, settled at -33.920 deg
+[probe] residual e = +1.2600 deg (+0.02199 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -31.400      -33.310      +0.6500       0.52
+[probe]   2      -30.140      -31.550      -1.1100       0.88
+[probe]   3      -28.880      -30.410      -2.2500       1.79
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 1 (gravity -0.2159m, inertia 0.2284m) amp -30 deg  rep 2/3 ---
+[probe] commanded -91.080 deg, settled at -92.280 deg
+[probe] residual e = +1.2000 deg (+0.02094 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -89.880      -92.280      +1.2000       1.00
+[probe]   2      -88.680      -91.400      +0.3200       0.27
+[probe]   3      -87.480      -90.170      -0.9100       0.76
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -62.130 -> -64.160 from below, -63.190 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 1 (gravity -0.2159m, inertia 0.2284m) amp +30 deg  rep 3/3 ---
+[probe] commanded -32.490 deg, settled at -33.750 deg
+[probe] residual e = +1.2600 deg (+0.02199 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -31.230      -32.950      +0.4600       0.37
+[probe]   2      -29.970      -31.460      -1.0300       0.82
+[probe]   3      -28.710      -30.230      -2.2600       1.79
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 1 (gravity -0.2159m, inertia 0.2284m) amp -30 deg  rep 3/3 ---
+[probe] commanded -91.080 deg, settled at -92.280 deg
+[probe] residual e = +1.2000 deg (+0.02094 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -89.880      -92.280      +1.2000       1.00
+[probe]   2      -88.680      -91.400      +0.3200       0.27
+[probe]   3      -87.480      -90.170      -0.9100       0.76
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target -62.130 -> -64.160 from below, -63.190 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 2 (gravity -0.1203m, inertia 0.1218m) amp +30 deg  rep 1/3 ---
+[probe] commanded 74.290 deg, settled at 73.470 deg
+[probe] residual e = +0.8200 deg (+0.01431 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       75.110       74.090      +0.2000       0.24
+[probe]   2       75.930       74.970      -0.6800       0.83
+[probe]   3       76.750       75.840      -1.5500       1.89
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 2 is 30.84 deg off (75.84 vs 45.00), retrying
+[probe] --- 'compact' joint 2 (gravity -0.1203m, inertia 0.1218m) amp -30 deg  rep 1/3 ---
+[probe] commanded 14.640 deg, settled at 14.150 deg
+[probe] residual e = +0.4900 deg (+0.00855 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       15.130       14.150      +0.4900       1.00
+[probe]   2       15.620       14.150      +0.4900       1.00
+[probe]   3       16.110       14.670      -0.0300       0.06
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 2 is 30.33 deg off (14.67 vs 45.00), retrying
+[probe] --- 'compact' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 43.850 -> 42.620 from below, 43.410 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 2 (gravity -0.1203m, inertia 0.1218m) amp +30 deg  rep 2/3 ---
+[probe] commanded 73.680 deg, settled at 72.860 deg
+[probe] residual e = +0.8200 deg (+0.01431 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       74.500       73.470      +0.2100       0.26
+[probe]   2       75.320       74.440      -0.7600       0.93
+[probe]   3       76.140       75.140      -1.4600       1.78
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 2 (gravity -0.1203m, inertia 0.1218m) amp -30 deg  rep 2/3 ---
+[probe] commanded 14.820 deg, settled at 14.320 deg
+[probe] residual e = +0.5000 deg (+0.00873 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       15.320       14.320      +0.5000       1.00
+[probe]   2       15.820       14.320      +0.5000       1.00
+[probe]   3       16.320       14.670      +0.1500       0.30
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 43.850 -> 42.620 from below, 43.410 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 2 (gravity -0.1203m, inertia 0.1218m) amp +30 deg  rep 3/3 ---
+[probe] commanded 73.590 deg, settled at 72.770 deg
+[probe] residual e = +0.8200 deg (+0.01431 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       74.410       73.470      +0.1200       0.15
+[probe]   2       75.230       74.260      -0.6700       0.82
+[probe]   3       76.050       75.140      -1.5500       1.89
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 2 (gravity -0.1203m, inertia 0.1218m) amp -30 deg  rep 3/3 ---
+[probe] commanded 14.820 deg, settled at 14.320 deg
+[probe] residual e = +0.5000 deg (+0.00873 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       15.320       14.320      +0.5000       1.00
+[probe]   2       15.820       14.320      +0.5000       1.00
+[probe]   3       16.320       14.670      +0.1500       0.30
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 2 is 30.33 deg off (14.67 vs 45.00), retrying
+[probe] --- 'compact' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 43.850 -> 42.620 from below, 43.410 from above, lost motion -0.790 deg (9.0 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 3 (gravity -0.0954m, inertia 0.1204m) amp +30 deg  rep 1/3 ---
+[probe] commanded -32.130 deg, settled at -34.100 deg
+[probe] residual e = +1.9700 deg (+0.03438 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.160      -32.340      +0.2100       0.11
+[probe]   2      -28.190      -30.230      -1.9000       0.96
+[probe]   3      -26.220      -28.380      -3.7500       1.90
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 3 (gravity -0.0954m, inertia 0.1204m) amp -30 deg  rep 1/3 ---
+[probe] commanded -91.080 deg, settled at -91.930 deg
+[probe] residual e = +0.8500 deg (+0.01484 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -90.230      -91.230      +0.1500       0.18
+[probe]   2      -89.380      -90.350      -0.7300       0.86
+[probe]   3      -88.530      -89.640      -1.4400       1.69
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target -61.690 -> -63.360 from below, -62.750 from above, lost motion -0.610 deg (6.9 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 3 (gravity -0.0954m, inertia 0.1204m) amp +30 deg  rep 2/3 ---
+[probe] commanded -31.690 deg, settled at -33.660 deg
+[probe] residual e = +1.9700 deg (+0.03438 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.720      -31.990      +0.3000       0.15
+[probe]   2      -27.750      -29.790      -1.9000       0.96
+[probe]   3      -25.780      -28.030      -3.6600       1.86
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 3 (gravity -0.0954m, inertia 0.1204m) amp -30 deg  rep 2/3 ---
+[probe] commanded -91.080 deg, settled at -91.930 deg
+[probe] residual e = +0.8500 deg (+0.01484 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -90.230      -91.230      +0.1500       0.18
+[probe]   2      -89.380      -91.230      +0.1500       0.18
+[probe]   3      -88.530      -89.560      -1.5200       1.79
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target -61.690 -> -63.360 from below, -62.750 from above, lost motion -0.610 deg (6.9 counts)
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 3 (gravity -0.0954m, inertia 0.1204m) amp +30 deg  rep 3/3 ---
+[probe] commanded -31.780 deg, settled at -33.750 deg
+[probe] residual e = +1.9700 deg (+0.03438 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -29.810      -32.080      +0.3000       0.15
+[probe]   2      -27.840      -29.790      -1.9900       1.01
+[probe]   3      -25.870      -28.030      -3.7500       1.90
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 3 (gravity -0.0954m, inertia 0.1204m) amp -30 deg  rep 3/3 ---
+[probe] commanded -91.080 deg, settled at -91.930 deg
+[probe] residual e = +0.8500 deg (+0.01484 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -90.230      -91.310      +0.2300       0.27
+[probe]   2      -89.380      -90.350      -0.7300       0.86
+[probe]   3      -88.530      -89.640      -1.4400       1.69
+
+[probe] moving to posture 'compact': [0, -60, 45, -60, 0, -45]
+[probe] --- 'compact' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target -61.690 -> -63.360 from below, -62.750 from above, lost motion -0.610 deg (6.9 counts)
+
+[probe] ==============================================================
+[probe] POSTURE 'extended'
+[probe] ==============================================================
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 0 (gravity 0.0000m, inertia 0.2877m) amp +30 deg  rep 1/3 ---
+[probe] commanded 30.000 deg, settled at 29.260 deg
+[probe] residual e = +0.7400 deg (+0.01292 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.740       29.880      +0.1200       0.16
+[probe]   2       31.480       30.670      -0.6700       0.91
+[probe]   3       32.220       31.280      -1.2800       1.73
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 0 (gravity 0.0000m, inertia 0.2877m) amp -30 deg  rep 1/3 ---
+[probe]   move did not execute (joint 0 moved 0.00 deg), retrying 2/3
+[probe] commanded -29.130 deg, settled at -28.210 deg
+[probe] residual e = -0.9200 deg (-0.01606 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.050      -29.090      -0.0400       0.04
+[probe]   2      -30.970      -30.050      +0.9200       1.00
+[probe]   3      -31.890      -30.840      +1.7100       1.86
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.790 -> -1.490 from below, -0.080 from above, lost motion -1.410 deg (16.0 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 0 (gravity 0.0000m, inertia 0.2877m) amp +30 deg  rep 2/3 ---
+[probe] commanded 29.920 deg, settled at 29.090 deg
+[probe] residual e = +0.8300 deg (+0.01449 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.750       29.970      -0.0500       0.06
+[probe]   2       31.580       30.840      -0.9200       1.11
+[probe]   3       32.410       31.550      -1.6300       1.96
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 0 (gravity 0.0000m, inertia 0.2877m) amp -30 deg  rep 2/3 ---
+[probe] commanded -29.130 deg, settled at -28.210 deg
+[probe] residual e = -0.9200 deg (-0.01606 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.050      -29.090      -0.0400       0.04
+[probe]   2      -30.970      -30.050      +0.9200       1.00
+[probe]   3      -31.890      -30.840      +1.7100       1.86
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.790 -> -1.490 from below, -0.080 from above, lost motion -1.410 deg (16.0 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 0 (gravity 0.0000m, inertia 0.2877m) amp +30 deg  rep 3/3 ---
+[probe] commanded 29.920 deg, settled at 29.170 deg
+[probe] residual e = +0.7500 deg (+0.01309 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       30.670       29.880      +0.0400       0.05
+[probe]   2       31.420       30.670      -0.7500       1.00
+[probe]   3       32.170       31.370      -1.4500       1.93
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 0 (gravity 0.0000m, inertia 0.2877m) amp -30 deg  rep 3/3 ---
+[probe] commanded -29.040 deg, settled at -28.030 deg
+[probe] residual e = -1.0100 deg (-0.01763 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -30.050      -29.090      +0.0500       0.05
+[probe]   2      -31.060      -30.140      +1.1000       1.09
+[probe]   3      -32.070      -31.200      +2.1600       2.14
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 0 BACKLASH (same target from both sides) ---
+[probe] backlash: target -0.790 -> -1.490 from below, -0.080 from above, lost motion -1.410 deg (16.0 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 1 (gravity 0.2805m, inertia 0.3144m) amp +30 deg  rep 1/3 ---
+[probe] commanded 79.040 deg, settled at 80.680 deg
+[probe] residual e = -1.6400 deg (-0.02862 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       77.400       80.500      -1.4600       0.89
+[probe]   2       75.760       78.750      +0.2900       0.18
+[probe]   3       74.120       77.160      +1.8800       1.15
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 1 (gravity 0.2805m, inertia 0.3144m) amp -30 deg  rep 1/3 ---
+[probe] commanded 17.370 deg, settled at 18.890 deg
+[probe] residual e = -1.5200 deg (-0.02653 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       15.850       17.660      -0.2900       0.19
+[probe]   2       14.330       16.080      +1.2900       0.85
+[probe]   3       12.810       14.500      +2.8700       1.89
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target 46.400 -> 47.980 from below, 48.420 from above, lost motion -0.440 deg (5.0 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 1 (gravity 0.2805m, inertia 0.3144m) amp +30 deg  rep 2/3 ---
+[probe] commanded 78.070 deg, settled at 79.620 deg
+[probe] residual e = -1.5500 deg (-0.02705 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       76.520       79.620      -1.5500       1.00
+[probe]   2       74.970       77.870      +0.2000       0.13
+[probe]   3       73.420       76.370      +1.7000       1.10
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 1 (gravity 0.2805m, inertia 0.3144m) amp -30 deg  rep 2/3 ---
+[probe] commanded 17.280 deg, settled at 18.720 deg
+[probe] residual e = -1.4400 deg (-0.02513 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       15.840       17.750      -0.4700       0.33
+[probe]   2       14.400       16.080      +1.2000       0.83
+[probe]   3       12.960       14.850      +2.4300       1.69
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target 46.400 -> 47.810 from below, 48.330 from above, lost motion -0.520 deg (5.9 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 1 (gravity 0.2805m, inertia 0.3144m) amp +30 deg  rep 3/3 ---
+[probe] commanded 78.070 deg, settled at 79.620 deg
+[probe] residual e = -1.5500 deg (-0.02705 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       76.520       79.620      -1.5500       1.00
+[probe]   2       74.970       77.870      +0.2000       0.13
+[probe]   3       73.420       76.370      +1.7000       1.10
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 1 (gravity 0.2805m, inertia 0.3144m) amp -30 deg  rep 3/3 ---
+[probe] commanded 17.190 deg, settled at 18.630 deg
+[probe] residual e = -1.4400 deg (-0.02513 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       15.750       17.660      -0.4700       0.33
+[probe]   2       14.310       15.900      +1.2900       0.90
+[probe]   3       12.870       14.580      +2.6100       1.81
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 1 BACKLASH (same target from both sides) ---
+[probe] backlash: target 46.310 -> 47.810 from below, 48.250 from above, lost motion -0.440 deg (5.0 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 2 (gravity 0.2025m, inertia 0.2123m) amp +30 deg  rep 1/3 ---
+[probe]   move did not execute (joint 2 moved 0.00 deg), retrying 2/3
+[probe] commanded 46.610 deg, settled at 47.190 deg
+[probe] residual e = -0.5800 deg (-0.01012 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       46.030       47.190      -0.5800       1.00
+[probe]   2       45.450       47.190      -0.5800       1.00
+[probe]   3       44.870       46.580      +0.0300       0.05
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 2 (gravity 0.2025m, inertia 0.2123m) amp -30 deg  rep 1/3 ---
+[probe] commanded -13.570 deg, settled at -12.210 deg
+[probe] residual e = -1.3600 deg (-0.02374 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -14.930      -13.530      -0.0400       0.03
+[probe]   2      -16.290      -15.020      +1.4500       1.07
+[probe]   3      -17.650      -16.250      +2.6800       1.97
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 15.460 -> 15.990 from below, 16.960 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 2 (gravity 0.2025m, inertia 0.2123m) amp +30 deg  rep 2/3 ---
+[probe] commanded 46.520 deg, settled at 46.930 deg
+[probe] residual e = -0.4100 deg (-0.00716 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       46.110       46.930      -0.4100       1.00
+[probe]   2       45.700       46.930      -0.4100       1.00
+[probe]   3       45.290       46.930      -0.4100       1.00
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 2 (gravity 0.2025m, inertia 0.2123m) amp -30 deg  rep 2/3 ---
+[probe] commanded -13.570 deg, settled at -12.300 deg
+[probe] residual e = -1.2700 deg (-0.02217 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -14.840      -13.440      -0.1300       0.10
+[probe]   2      -16.110      -14.760      +1.1900       0.94
+[probe]   3      -17.380      -16.080      +2.5100       1.98
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 15.460 -> 15.900 from below, 16.960 from above, lost motion -1.060 deg (12.1 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 2 (gravity 0.2025m, inertia 0.2123m) amp +30 deg  rep 3/3 ---
+[probe] commanded 46.610 deg, settled at 47.020 deg
+[probe] residual e = -0.4100 deg (-0.00716 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       46.200       47.020      -0.4100       1.00
+[probe]   2       45.790       47.020      -0.4100       1.00
+[probe]   3       45.380       47.020      -0.4100       1.00
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 2 (gravity 0.2025m, inertia 0.2123m) amp -30 deg  rep 3/3 ---
+[probe] commanded -13.570 deg, settled at -12.300 deg
+[probe] residual e = -1.2700 deg (-0.02217 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      -14.840      -13.530      -0.0400       0.03
+[probe]   2      -16.110      -14.760      +1.1900       0.94
+[probe]   3      -17.380      -16.080      +2.5100       1.98
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 2 BACKLASH (same target from both sides) ---
+[probe] backlash: target 15.460 -> 15.990 from below, 16.960 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 3 (gravity 0.1193m, inertia 0.1204m) amp +30 deg  rep 1/3 ---
+[probe] commanded 107.160 deg, settled at 108.100 deg
+[probe] residual e = -0.9400 deg (-0.01641 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      106.220      107.920      -0.7600       0.81
+[probe]   2      105.280      106.960      +0.2000       0.21
+[probe]   3      104.340      106.870      +0.2900       0.31
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 3 (gravity 0.1193m, inertia 0.1204m) amp -30 deg  rep 1/3 ---
+[probe] commanded 47.160 deg, settled at 49.480 deg
+[probe] residual e = -2.3200 deg (-0.04049 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       44.840       47.020      +0.1400       0.06
+[probe]   2       42.520       44.730      +2.4300       1.05
+[probe]   3       40.200       42.450      +4.7100       2.03
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target 76.200 -> 77.340 from below, 78.310 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 3 (gravity 0.1193m, inertia 0.1204m) amp +30 deg  rep 2/3 ---
+[probe] commanded 107.250 deg, settled at 108.190 deg
+[probe] residual e = -0.9400 deg (-0.01641 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      106.310      108.010      -0.7600       0.81
+[probe]   2      105.370      106.960      +0.2900       0.31
+[probe]   3      104.430      106.080      +1.1700       1.24
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 3 (gravity 0.1193m, inertia 0.1204m) amp -30 deg  rep 2/3 ---
+[probe] commanded 47.160 deg, settled at 49.480 deg
+[probe] residual e = -2.3200 deg (-0.04049 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       44.840       47.100      +0.0600       0.03
+[probe]   2       42.520       44.820      +2.3400       1.01
+[probe]   3       40.200       42.360      +4.8000       2.07
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 3 is 32.64 deg off (42.36 vs 75.00), retrying
+[probe] --- 'extended' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target 76.200 -> 77.340 from below, 78.310 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 3 (gravity 0.1193m, inertia 0.1204m) amp +30 deg  rep 3/3 ---
+[probe] commanded 107.510 deg, settled at 108.450 deg
+[probe] residual e = -0.9400 deg (-0.01641 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1      106.570      108.280      -0.7700       0.82
+[probe]   2      105.630      107.220      +0.2900       0.31
+[probe]   3      104.690      107.220      +0.2900       0.31
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe]   attempt 1: did not arrive -- joint 3 is 32.22 deg off (107.22 vs 75.00), retrying
+[probe] --- 'extended' joint 3 (gravity 0.1193m, inertia 0.1204m) amp -30 deg  rep 3/3 ---
+[probe] commanded 47.160 deg, settled at 49.480 deg
+[probe] residual e = -2.3200 deg (-0.04049 rad)
+[probe] --- overshoot staircase: commanding target + k*e ---
+[probe]   k    commanded      settled        error  |err|/|e|
+[probe]   1       44.840       47.100      +0.0600       0.03
+[probe]   2       42.520       44.730      +2.4300       1.05
+[probe]   3       40.200       42.360      +4.8000       2.07
+
+[probe] moving to posture 'extended': [0, 45, 15, 75, 0, -45]
+[probe] --- 'extended' joint 3 BACKLASH (same target from both sides) ---
+[probe] backlash: target 76.200 -> 77.340 from below, 78.310 from above, lost motion -0.970 deg (11.0 counts)
+
+[probe] returning to the pose the sweep started from...
+
+[probe] ==============================================================================
+[probe] TEST 1 SUMMARY -- 144 trials, 144 usable, 0 never moved
+[probe] ==============================================================================
+
+[probe] --- 1. GO/NO-GO: does a biased command move the joint? ---
+[probe]   SAME direction as the move   n=73   responded 65/73  k=1 ratio min 0.03 / median 0.12 / max 1.00
+[probe]   REVERSING the move           n=62   responded 19/62  k=1 ratio min 0.18 / median 1.00 / max 1.00
+[probe]   VERDICT: GO. A same-direction corrective command removes 88% of the error in one step, 89% of the time. An outer-loop integrator or disturbance observer can close this.
+[probe]   CONDITION: 43/62 reversing corrections STALLED. Approach every target from one side, or feed backlash forward -- an integrator cannot fix this, the joint does not move at all.
+
+[probe] --- 2. BACKLASH (lost motion, same target from both sides) ---
+[probe]   joint 0: n=18  median 1.750 deg (19.9 counts) = 7.64 mm at 250mm reach   [range 1.410..2.010]
+[probe]   joint 1: n=18  median 0.440 deg (5.0 counts) = 1.92 mm at 250mm reach   [range 0.000..1.050]
+[probe]   joint 2: n=18  median 0.790 deg (9.0 counts) = 3.45 mm at 250mm reach   [range 0.610..1.060]
+[probe]   joint 3: n=18  median 0.610 deg (6.9 counts) = 2.66 mm at 250mm reach   [range 0.000..0.970]
+[probe]   Overall median 0.790 deg = 3.45 mm. This is NOT correctable by feedback: on a reversal the joint does not move, so the error carries no information the loop can act on.
+
+[probe] --- 3. Residual split into its gravity and friction halves ---
+
+[probe] JOINT 0  (6 postures with both directions)
+[probe]   posture      grav_arm       SYM      ANTI
+[probe]   vertical      +0.0000     -0.05     +0.87
+[probe]   tucked        +0.0000     -0.09     +1.01
+[probe]   folded        +0.0000     -0.12     +0.97
+[probe]   reach         +0.0000     -0.12     +0.97
+[probe]   compact       +0.0000     -0.12     +0.89
+[probe]   extended      +0.0000     -0.09     +0.86
+[probe]   friction/dead-zone term: +0.93 deg mean, 0.14 deg spread (1.6 counts)
+[probe]   Gravity arm is 0.0000 in every posture -- gravity CANNOT load this joint, and the symmetric term is -0.10 deg as it must be. This is the control.
+[probe]   Its ANTI term is the pure dead-zone floor, and should be about half this joint's backlash.
+
+[probe] JOINT 1  (6 postures with both directions)
+[probe]   posture      grav_arm       SYM      ANTI
+[probe]   compact       -0.2159     +1.25     +0.04
+[probe]   reach         -0.1766     +0.90     -0.46
+[probe]   folded        -0.1428     +1.07     +0.04
+[probe]   tucked        -0.1231     +0.13     -0.80
+[probe]   vertical      +0.0018     -0.19     -0.94
+[probe]   extended      +0.2805     -1.52     -0.06
+[probe]   friction/dead-zone term: -0.36 deg mean, 0.99 deg spread (11.3 counts)
+[probe]   GRAVITY: sym_residual = -0.072 -5.47 * arm     R^2 = 0.93
+[probe]   -> FEEDFORWARD THIS. Command joint 1 to target -5.47*arm(pose) -0.072 degrees and the droop cancels. Applies to every pose in the workspace, not just the ones tested.
+
+[probe] JOINT 2  (6 postures with both directions)
+[probe]   posture      grav_arm       SYM      ANTI
+[probe]   reach         -0.1214     +0.61     -0.07
+[probe]   compact       -0.1203     +0.66     +0.16
+[probe]   tucked        -0.0945     +0.25     +0.11
+[probe]   folded        -0.0324     +0.41     -0.08
+[probe]   vertical      +0.0018     -0.24     -0.05
+[probe]   extended      +0.2025     -0.88     +0.42
+[probe]   friction/dead-zone term: +0.08 deg mean, 0.50 deg spread (5.7 counts)
+[probe]   GRAVITY: sym_residual = +0.006 -4.59 * arm     R^2 = 0.90
+[probe]   -> FEEDFORWARD THIS. Command joint 2 to target -4.59*arm(pose) +0.006 degrees and the droop cancels. Applies to every pose in the workspace, not just the ones tested.
+
+[probe] JOINT 3  (6 postures with both directions)
+[probe]   posture      grav_arm       SYM      ANTI
+[probe]   tucked        -0.1193     +1.50     +0.38
+[probe]   compact       -0.0954     +1.41     +0.56
+[probe]   reach         -0.0734     +0.97     -0.23
+[probe]   vertical      -0.0462     +0.09     -0.93
+[probe]   folded        +0.0156     -0.08     -0.86
+[probe]   extended      +0.1193     -1.63     +0.69
+[probe]   friction/dead-zone term: -0.07 deg mean, 1.62 deg spread (18.4 counts)
+[probe]   GRAVITY: sym_residual = -0.062 -13.16 * arm     R^2 = 0.96
+[probe]   -> FEEDFORWARD THIS. Command joint 3 to target -13.16*arm(pose) -0.062 degrees and the droop cancels. Applies to every pose in the workspace, not just the ones tested.
+
+[probe] --- 4. Gravity vs inertia, on the symmetric term only ---
+[probe]   JOINT 1: sym = -0.394 -5.62*gravity_arm +1.14*inertia_lever   R^2 = 0.93
+[probe]     across the tested range: 2.79 deg from gravity, 0.12 deg from inertia (96% / 4%)
+[probe]   JOINT 2: sym = -0.267 -4.86*gravity_arm +1.49*inertia_lever   R^2 = 0.91
+[probe]     across the tested range: 1.57 deg from gravity, 0.14 deg from inertia (92% / 8%)
+[probe]   JOINT 3: rank deficient -- the two regressors are collinear in these postures.
+
+[probe] wrote 144 trials + 72 backlash measurements to test3_full.csv
 

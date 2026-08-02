@@ -458,11 +458,65 @@ GRASP_QW = 0.0
 # assuming the commanded degree lands as a degree.
 #
 # Set both EMPTY values to 0.0 to disable entirely and recover prior behaviour.
-SAG_PRECOMP_RADIAL_DEG = 3.27          # empty gripper
-SAG_PRECOMP_TANGENTIAL_DEG = 1.30      # empty gripper
+#
+# ZEROED 2026-08-02, BECAUSE THE DROOP IS NOW CORRECTED AT SOURCE.
+# The previous values are kept immediately below; restoring them is a
+# copy-paste and nothing else depends on them being zero.
+#
+#   SAG_PRECOMP_RADIAL_DEG = 3.27
+#   SAG_PRECOMP_TANGENTIAL_DEG = 1.30
+#   SAG_PRECOMP_PAYLOAD_RADIAL_DEG = 1.97
+#   SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG = 0.95
+#
+# mycobot_bridge.py now applies a measured gravity feedforward in JOINT space
+# on every streamed setpoint (see GRAVITY_FF_ENABLED there). At this pose that
+# cancels 2.92 deg of the 4.19 deg tilt these constants were fitted to cancel
+# empirically. Leaving both corrections live would over-correct by roughly the
+# amount the feedforward removes, i.e. tilt the jaws ~3 deg the OTHER way.
+#
+# ZEROED RATHER THAN SCALED TO 30%, DELIBERATELY. Two corrections for one
+# effect cannot be tuned at the same time -- any residual could belong to
+# either.
+#
+# BE HONEST ABOUT WHAT THIS TRADES AWAY. These constants were VERIFIED to take
+# the tilt from 4.19 to 0.50 deg at the grasp (see the note above, 2026-07-29).
+# The feedforward is predicted to remove 2.92 of that 4.19 deg, so on tilt
+# ALONE this is very likely a step backwards, to something like 1.3 deg.
+#
+# It is still the right trade, because the two corrections do not fix the same
+# thing:
+#
+#   SAG_PRECOMP_* rotates the TARGET ORIENTATION only. It aims the flange off
+#       vertical so sag brings it back. It never moves the target position, so
+#       the ~8.6 mm the arm sags DOWNWARD at the grasp is completely
+#       uncorrected by it -- and that is the error that makes the jaws close
+#       on nothing. Tilt was never the thing breaking the grasp.
+#   The feedforward corrects the JOINT ANGLES, so it fixes position and
+#       orientation together, at every pose, not at two fitted ones.
+#
+# 1 deg of residual tilt is 1.0 mm of jaw offset over the 0.056 m flange-to-jaw
+# lever. Giving up ~0.8 deg of tilt (0.8 mm) to recover 8.6 mm of height is
+# worth it by an order of magnitude.
+#
+# WHAT THE LEFTOVER PROBABLY IS -- and this is a guess, not a measurement. The
+# feedforward corrects only the SYMMETRIC half of the joint error, the half
+# that does not reverse with travel direction. The ANTISYMMETRIC half
+# (friction, dead zone, lost motion) runs 0.4-0.9 deg per pitch joint and is
+# untouched by any feedforward. That is the right order of magnitude for the
+# missing ~1.3 deg, and unlike a mount offset it depends on which way the arm
+# drove in.
+#
+# NEXT STEP, and it needs the arm: ff_verify.py, run twice with the feedforward
+# toggled. If the remainder is a pose-independent constant, add it as a fixed
+# offset here. If it flips sign with approach direction, it is the
+# antisymmetric term and belongs in the unidirectional-approach work instead.
+# If it still varies with reach, the feedforward coefficients are wrong rather
+# than incomplete.
+SAG_PRECOMP_RADIAL_DEG = 0.0           # empty gripper
+SAG_PRECOMP_TANGENTIAL_DEG = 0.0       # empty gripper
 # Added ON TOP of the above while a block is held.
-SAG_PRECOMP_PAYLOAD_RADIAL_DEG = 1.97
-SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG = 0.95
+SAG_PRECOMP_PAYLOAD_RADIAL_DEG = 0.0
+SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG = 0.0
 
 # HONEST LIMITS OF THIS MODEL, because the goal is ~1 mm and this will not get
 # there on its own:
