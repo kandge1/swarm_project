@@ -48,6 +48,19 @@ A4_MM = (210.0, 297.0)          # portrait, (width, height)
 MARGIN_MM = 10.0
 RULER_LENGTH_MM = 150.0
 
+# Some printers (campus ones in particular) apply a fixed "fit to page" shrink
+# with no way to disable it, regardless of the image's DPI metadata or an
+# "Actual Size" setting that simply isn't offered. Measured on the lab's
+# printer: a nominal 1.000 in tag came out 14/16 in (0.875 in), and the 4.000
+# in zone square came out 3.500 in -- the SAME 0.875 ratio, confirming it is a
+# uniform page scale, not a tag-specific artifact. Pre-scaling every mm
+# dimension by the inverse (1/0.875 = 16/14) before rendering cancels that
+# shrink, so the page draws "too big" on screen but comes out correct on
+# paper. If your printer's shrink differs, recalibrate with
+# --print-correction = (nominal size) / (actual measured size) using the
+# CURRENT default (1.0 == no correction) print.
+DEFAULT_PRINT_CORRECTION = 16.0 / 14.0
+
 # White border around each tag's black square. AprilTag detection REQUIRES a
 # quiet zone -- a tag cut flush to its black edge is substantially harder to
 # detect and can fail outright against a dark mat. One module of a 36h11 tag is
@@ -77,7 +90,7 @@ def _marker_bitmap(dictionary, tag_id, side_px):
     return cv2.aruco.drawMarker(dictionary, tag_id, side_px)
 
 
-def render_minimal(dpi, tag_size_mm):
+def render_minimal(dpi, tag_size_mm, print_correction=1.0):
     """Tags and cut outlines only. Nothing else on the page.
 
     For printers whose UI hides or ignores "Actual Size": stripping the sheet to
@@ -98,7 +111,7 @@ def render_minimal(dpi, tag_size_mm):
     turned 90 degrees. A random scramble blows up the RMS and is caught; a
     consistent rotation is not.
     """
-    px_per_mm = dpi / 25.4
+    px_per_mm = dpi / 25.4 * print_correction
 
     def mm(v):
         return int(round(v * px_per_mm))
@@ -144,8 +157,8 @@ def render_minimal(dpi, tag_size_mm):
     return page, x0_mm, y0_mm
 
 
-def render_sheet(dpi, tag_size_mm, zone_size_mm):
-    px_per_mm = dpi / 25.4
+def render_sheet(dpi, tag_size_mm, zone_size_mm, print_correction=1.0):
+    px_per_mm = dpi / 25.4 * print_correction
 
     def mm(v):
         return int(round(v * px_per_mm))
@@ -186,6 +199,12 @@ def render_sheet(dpi, tag_size_mm, zone_size_mm):
     cv2.putText(page,
                 "Every arrow must point the SAME way (zone +Y) once placed.",
                 mm_to_px(MARGIN_MM, MARGIN_MM + 21), font, 0.38, 0, 1, cv2.LINE_AA)
+    if print_correction != 1.0:
+        cv2.putText(page,
+                    "Pre-scaled by %.4fx (--print-correction) to cancel a known "
+                    "printer shrink. The ruler below MUST still read %.0f mm."
+                    % (print_correction, RULER_LENGTH_MM),
+                    mm_to_px(MARGIN_MM, MARGIN_MM + 26), font, 0.38, 0, 1, cv2.LINE_AA)
 
     all_ids = list(zv.PICKUP_TAG_IDS) + list(zv.PLACE_TAG_IDS)
     for index, tag_id in enumerate(all_ids):
@@ -297,22 +316,30 @@ def main():
     parser.add_argument("--minimal", action="store_true",
                         help="tags and cut outlines ONLY, two centred columns, "
                              "nothing near a page edge")
+    parser.add_argument("--print-correction", type=float,
+                        default=DEFAULT_PRINT_CORRECTION,
+                        help="pre-scale factor to cancel a printer's fixed "
+                             "shrink: (nominal size) / (actual measured size) "
+                             "from a print made with --print-correction 1.0. "
+                             "Default %(default).4f is calibrated for a 1.000 "
+                             "in tag coming out 14/16 in.")
     args = parser.parse_args()
 
     edges = None
     if args.minimal:
-        page, x0, y0 = render_minimal(args.dpi, args.tag_size * 1000.0)
+        page, x0, y0 = render_minimal(args.dpi, args.tag_size * 1000.0,
+                                       args.print_correction)
         edges = (x0, y0)
     else:
         page = render_sheet(args.dpi, args.tag_size * 1000.0,
-                            args.zone_size * 1000.0)
+                            args.zone_size * 1000.0, args.print_correction)
 
     out = os.path.abspath(args.out)
     os.makedirs(os.path.dirname(out), exist_ok=True)
     if not cv2.imwrite(out, page):
         raise SystemExit("could not write %s" % out)
-    print("wrote %s  (%dx%d px at %.0f dpi = A4)" % (out, page.shape[1],
-                                                     page.shape[0], args.dpi))
+    print("wrote %s  (%dx%d px at %.0f dpi, print-correction %.4fx)"
+          % (out, page.shape[1], page.shape[0], args.dpi, args.print_correction))
     print("tag %.1f mm" % (args.tag_size * 1000))
     if edges:
         print("edge clearance: %.1f mm horizontal, %.1f mm vertical" % edges)
@@ -321,7 +348,16 @@ def main():
         print("Pencil the id on the BACK of each square as you cut.")
     else:
         print("zone square %.1f mm" % (args.zone_size * 1000))
-    print("Print at 100%% / Actual Size if you can -- then measure a tag anyway.")
+    if args.print_correction != 1.0:
+        print("This page is intentionally LARGER than A4 (%.4fx) so that a "
+              "printer's fixed fit-to-page shrink lands back on the nominal "
+              "size. Print on A4 letting it scale to fit -- do NOT print at "
+              "100%%. Then measure the ruler/tag; it must read the nominal "
+              "size. If it doesn't, recompute --print-correction = %.4f x "
+              "(nominal / actual measured)." % (args.print_correction,
+                                                 args.print_correction))
+    else:
+        print("Print at 100%% / Actual Size if you can -- then measure a tag anyway.")
 
 
 if __name__ == "__main__":

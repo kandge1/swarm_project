@@ -1,16 +1,49 @@
+r@er:~/swarm_project$ python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py
+1785684142.286038 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
+1785684142.286137 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
+
+>>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+This error state is being overwritten:
+
+  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+
+with this new error message:
+
+  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+
+rcutils_reset_error() should be called after error handling to avoid this.
+<<<
+[INFO] [1785684142.835084330] [block_detector]: block_detector up: reading /dev/video0 directly, serving /detect_block
+[INFO] [1785684142.837653774] [block_detector]: tag_size=0.0254 m, default zone_size=0.1016 m, method=canny
+
+>>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+This error state is being overwritten:
+
+  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
+
+with this new error message:
+
   'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
 
 rcutils_reset_error() should be called after error handling to avoid this.
 <<<
-[INFO] [1785548933.437108233] [block_detector]: wrote debug image /tmp/zone_view0.png
-[WARN] [1785548933.440416101] [block_detector]: [pickup] saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. (401 ms)
-[INFO] [1785548935.971049160] [block_detector]: wrote debug image /tmp/zone_view1.png
-[WARN] [1785548935.973993370] [block_detector]: [pickup] saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. (139 ms)
-[INFO] [1785548940.534308459] [block_detector]: wrote debug image /tmp/zone_view2.png
-[WARN] [1785548940.537233151] [block_detector]: [pickup] saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. (144 ms)
-[INFO] [1785548946.370654573] [block_detector]: wrote debug image /tmp/zone_view3.png
-[INFO] [1785548946.373073462] [block_detector]: [pickup] 2 tag(s), rms 4.00 px, 1 block(s) (391 ms)
-[INFO] [1785548946.375711513] [block_detector]:   [0] zone (+14.1, +23.2) mm yaw -89.3 deg  40.0x43.7 mm circle sym=0
+[INFO] [1785684223.069854366] [block_detector]: wrote debug image /tmp/zone_view0.png
+[WARN] [1785684223.072844267] [block_detector]: [pickup] homography RMS 7.23 px exceeds 6.00. The tag->zone mapping is not trustworthy, so no position from this frame is either. Likely a misdetected tag, a tag printed rotated, or PICKUP/PLACE_TAG_IDS not matching the physical mat. (196 ms)
+[INFO] [1785684270.518148617] [block_detector]: wrote debug image /tmp/zone_view1.png
+[INFO] [1785684270.521166092] [block_detector]: [pickup] 2 tag(s), rms 5.10 px, 3 block(s) (320 ms)
+[INFO] [1785684270.525081294] [block_detector]:   [0] zone (+32.6, -39.3) mm yaw -92.2 deg  9.2x23.4 mm unknown sym=1
+[INFO] [1785684270.528946460] [block_detector]:   [1] zone (-36.6, +47.2) mm yaw -0.4 deg  8.6x12.8 mm unknown sym=1
+[INFO] [1785684270.533011808] [block_detector]:   [2] zone (-32.4, -42.7) mm yaw -90.5 deg  4.5x15.7 mm rect sym=2
+The following exception was never retrieved: failed to send response: error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/service.c:287
+[INFO] [1785684319.516721810] [block_detector]: wrote debug image /tmp/zone_view2.png
+[INFO] [1785684319.519271847] [block_detector]: [pickup] 2 tag(s), rms 5.53 px, 5 block(s) (402 ms)
+[INFO] [1785684319.521449908] [block_detector]:   [0] zone (+9.2, +1.7) mm yaw -0.9 deg  37.3x42.2 mm circle sym=0
+[INFO] [1785684319.523553488] [block_detector]:   [1] zone (-29.1, +38.2) mm yaw +82.4 deg  14.1x26.8 mm unknown sym=1
+[INFO] [1785684319.525689346] [block_detector]:   [2] zone (+43.6, -40.0) mm yaw +68.5 deg  6.5x22.0 mm unknown sym=1
+[INFO] [1785684319.528321141] [block_detector]:   [3] zone (-30.3, -43.8) mm yaw +88.6 deg  9.6x14.5 mm unknown sym=1
+[INFO] [1785684319.530848974] [block_detector]:   [4] zone (+46.7, +42.3) mm yaw +99.9 deg  5.1x17.0 mm unknown sym=1
+[INFO] [1785684369.461889401] [block_detector]: wrote debug image /tmp/zone_view3.png
+[WARN] [1785684369.464619250] [block_detector]: [pickup] homography RMS 7.55 px exceeds 6.00. The tag->zone mapping is not trustworthy, so no position from this frame is either. Likely a misdetected tag, a tag printed rotated, or PICKUP/PLACE_TAG_IDS not matching the physical mat. (169 ms)
 
 >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
 This error state is being overwritten:
@@ -48,911 +81,360 @@ with this new error message:
 rcutils_reset_error() should be called after error handling to avoid this.
 <<<
 
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-[INFO] [1785549570.899690029] [block_detector]: wrote debug image /tmp/zone_view0.png
-[INFO] [1785549570.902678440] [block_detector]: [pickup] 2 tag(s), rms 3.95 px, 1 block(s) (682 ms)
-[INFO] [1785549570.908869275] [block_detector]:   [0] zone (+13.7, +20.4) mm yaw -88.8 deg  39.5x42.6 mm circle sym=0
-[INFO] [1785549573.624672676] [block_detector]: wrote debug image /tmp/zone_view1.png
-[INFO] [1785549573.627242763] [block_detector]: [pickup] 2 tag(s), rms 4.28 px, 1 block(s) (273 ms)
-[INFO] [1785549573.629373435] [block_detector]:   [0] zone (+12.2, +26.2) mm yaw -89.8 deg  37.0x48.4 mm unknown sym=1
-[INFO] [1785549579.546514820] [block_detector]: wrote debug image /tmp/zone_view2.png
-[INFO] [1785549579.548899689] [block_detector]: [pickup] 2 tag(s), rms 4.47 px, 1 block(s) (265 ms)
-[INFO] [1785549579.551190913] [block_detector]:   [0] zone (+12.8, -10.8) mm yaw +91.5 deg  38.4x44.1 mm unknown sym=1
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-[INFO] [1785549612.972537500] [block_detector]: wrote debug image /tmp/zone_view0.png
-[WARN] [1785549612.979738496] [block_detector]: [pickup] saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. (167 ms)
-[INFO] [1785549617.153231843] [block_detector]: wrote debug image /tmp/zone_view1.png
-[WARN] [1785549617.156225476] [block_detector]: [pickup] saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. (149 ms)
-[INFO] [1785549621.255440814] [block_detector]: wrote debug image /tmp/zone_view2.png
-[WARN] [1785549621.258230156] [block_detector]: [pickup] saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. (150 ms)
-[INFO] [1785549625.751241818] [block_detector]: wrote debug image /tmp/zone_view3.png
-[INFO] [1785549625.753997789] [block_detector]: [pickup] 2 tag(s), rms 5.07 px, 1 block(s) (259 ms)
-[INFO] [1785549625.756571951] [block_detector]:   [0] zone (+29.6, +8.5) mm yaw +0.7 deg  36.7x47.5 mm unknown sym=1
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-[INFO] [1785549701.000910591] [block_detector]: wrote debug image /tmp/zone_view0.png
-[INFO] [1785549701.003542010] [block_detector]: [pickup] 2 tag(s), rms 4.40 px, 1 block(s) (278 ms)
-[INFO] [1785549701.006131097] [block_detector]:   [0] zone (-1.8, +8.0) mm yaw -0.1 deg  36.2x42.4 mm unknown sym=1
-[INFO] [1785549705.115003288] [block_detector]: wrote debug image /tmp/zone_view1.png
-[WARN] [1785549705.117970644] [block_detector]: [pickup] saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. (195 ms)
-[INFO] [1785549709.316713342] [block_detector]: wrote debug image /tmp/zone_view2.png
-[WARN] [1785549709.319446406] [block_detector]: [pickup] saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. (144 ms)
-[WARN] [1785549714.697755734] [block_detector]: diagnostics: | frame 640x480, mean 138 (range 1-192), focus 73 | NO AprilTag of any id anywhere in the frame -- focus metric is very low, suspect defocus/blur
-[INFO] [1785549714.773103611] [block_detector]: wrote debug image /tmp/zone_view3.png
-[WARN] [1785549714.786874432] [block_detector]: [pickup] saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. (224 ms)
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
-ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ python3 tag_pick_place.py --zone-origin 0.0 0.254 0.0 --dry-run \
+ewok@mars:~/swarm/swarm_project$ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/tag_pick_place.py --zone-origin 0.0 0.254 0.0 --dry-run \
     --debug-image /tmp/zone.png --log /tmp/corrections.csv
-[WARN] [1785549556.328001287] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549556.328105496] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549556.328151329] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.328163480] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785549556.328172960] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785549556.328186216] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
-[WARN] [1785549556.332273117] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549556.338155317] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.338183142] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785549556.411942010] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549556.412023336] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549556.416608469] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549556.423362229] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.423779934] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.426092613] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.426132198] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785549556.426269813] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.426441862] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.426491944] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785549556.435055836] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549556.435190821] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.435207873] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785549556.435291579] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785549556.435308268] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785549556.435326281] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549556.465260372] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.465319903] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785549556.465354567] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
-[WARN] [1785549556.465370227] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549556.465440647] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549556.465455472] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785549556.465564563] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785549556.465596872] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785549560.725042396] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549560.725113345] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549560.725127771] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549560.725635934] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[stage1] detect hover height 0.2800 m (measured focus floor is ~0.220m lens height; this clears it)
+[WARN] [1785684214.394077362] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.394188998] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.394214111] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.399342204] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.562166145] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.562335136] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.566819654] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.566867735] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.581449165] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.581614758] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.581906629] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.581934619] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1785684214.581982869] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
+[WARN] [1785684214.582002473] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.582182353] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.582199042] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[stage1] detect hover height 0.2400 m (measured focus floor is ~0.220m lens height; this clears it)
+[WARN] [1785684214.610593596] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785684214.610621454] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1785684214.610829001] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.610899893] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.611022513] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1785684214.611467677] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785684214.611525771] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1785684214.611601040] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.611833610] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.611860609] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1785684214.612162032] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.612204115] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
 Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0005, 'joint3_to_joint2': 0.0009, 'joint4_to_joint3': -0.0001, 'joint5_to_joint4': 0.0003, 'joint6_to_joint5': -0.0003, 'joint6output_to_joint6': -0.7847}
-[arm] trajectory: 2 waypoints, 0.351s total, ~0.088 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] target joint positions: {'joint2_to_joint1': 0.0003, 'joint3_to_joint2': 0.0002, 'joint4_to_joint3': 0.0004, 'joint5_to_joint4': 0.0005, 'joint6_to_joint5': -0.0009, 'joint6output_to_joint6': -0.7859}
+[arm] trajectory: 2 waypoints, 0.370s total, ~0.092 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[WARN] [1785684214.664657291] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.664711235] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.664817105] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.664844991] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785684214.664857389] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785684214.664872017] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1785684214.664905511] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.702266775] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.702306764] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': -0.0168, 'joint4_to_joint3': 0.0061, 'joint5_to_joint4': -0.0305, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0199, 'joint3_to_joint2': -0.0138, 'joint4_to_joint3': 0.0061, 'joint5_to_joint4': -0.0337, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
 [gripper] target joint positions: {'gripper_controller': 0.15}
 [gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
 [gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
+[gripper] waiting... current joint positions: {'gripper_controller': 0.1275}  (max movement so far 0.0000 rad)
 [stage1] survey flange (0.0000, 0.2000) -- 54mm pulled in from zone centre (0.0000, 0.2540)
 
 [multiview] still 1/4 at wrist yaw +180 deg (offset +180)
 [ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
+[ik] 'bearing+offset/elbow-down' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [1.901, -1.119, 0.968, -1.367, -0.026, -0.455]  (travel 2.749 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [1.901, -1.119, 0.968, -1.367, -0.026, -0.455]  (travel 2.749 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.901, -1.119, 0.968, -1.367, -0.026, -0.455]  (travel 2.749 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
 [ik] 'home' seed: IK did not converge
 [ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
 [ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'deep-elbow-down' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'home-mirrored' seed: OK -> [1.901, -1.119, 0.968, -1.367, -0.026, -0.455]  (travel 2.749 rad)
 [ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
 [ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 2.0062, 'joint3_to_joint2': -0.931, 'joint4_to_joint3': 1.0252, 'joint5_to_joint4': -1.5429, 'joint6_to_joint5': -0.0829, 'joint6output_to_joint6': -0.225}
-[arm] trajectory: 19 waypoints, 4.479s total, ~0.444 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] chose 'bearing-offset/elbow-down' (2.172 rad of joint travel): [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]
+Executing joint-space move to (0.0, 0.2, 0.24)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8998, 'joint3_to_joint2': -0.2236, 'joint4_to_joint3': -0.9675, 'joint5_to_joint4': -0.3251, 'joint6_to_joint5': -0.0258, 'joint6output_to_joint6': -0.4542}
+[arm] trajectory: 12 waypoints, 4.260s total, ~0.441 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': -0.0168, 'joint4_to_joint3': 0.0061, 'joint5_to_joint4': -0.0337, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.922, 'joint3_to_joint2': -0.9172, 'joint4_to_joint3': 0.977, 'joint5_to_joint4': -1.5033, 'joint6_to_joint5': -0.0613, 'joint6output_to_joint6': -0.2515}  (max movement so far 1.9052 rad)
-[detect] OK: 2 tag(s), rms 3.95 px, 1 block(s)
-[detect] tags [0, 1] | rms 3.95 px | 2106 px/m | camera at zone (-29.6, +5.3) mm
-[detect]   [0] zone (+13.7, +20.4) mm  yaw -88.8 deg  39.5 x 42.6 mm  circle sym=0
-
-[multiview] still 2/4 at wrist yaw +150 deg (offset +150)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 1.7412, 'joint3_to_joint2': -1.0178, 'joint4_to_joint3': 0.8058, 'joint5_to_joint4': -1.2252, 'joint6_to_joint5': 0.0797, 'joint6output_to_joint6': -0.0288}
-[arm] trajectory: 5 waypoints, 1.166s total, ~0.286 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9895, 'joint3_to_joint2': -0.9357, 'joint4_to_joint3': 1.0078, 'joint5_to_joint4': -1.5584, 'joint6_to_joint5': -0.0644, 'joint6output_to_joint6': -0.2377}  (max movement so far 0.0000 rad)
-[detect] OK: 2 tag(s), rms 4.28 px, 1 block(s)
-[detect] tags [0, 1] | rms 4.28 px | 2257 px/m | camera at zone (-12.4, -12.2) mm
-[detect]   [0] zone (+12.2, +26.2) mm  yaw -89.8 deg  37.0 x 48.4 mm  unknown sym=1
-
-[multiview] still 3/4 at wrist yaw +210 deg (offset +210)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 2.0476, 'joint3_to_joint2': 0.0536, 'joint4_to_joint3': -1.065, 'joint5_to_joint4': -0.3703, 'joint6_to_joint5': -0.12, 'joint6output_to_joint6': -0.7291}
-[arm] trajectory: 16 waypoints, 4.250s total, ~0.441 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.7579, 'joint3_to_joint2': -1.0247, 'joint4_to_joint3': 0.8098, 'joint5_to_joint4': -1.2608, 'joint6_to_joint5': 0.0658, 'joint6output_to_joint6': -0.0398}  (max movement so far 0.0000 rad)
-[detect] OK: 2 tag(s), rms 4.47 px, 1 block(s)
-[detect] tags [2, 3] | rms 4.47 px | 2172 px/m | camera at zone (-24.8, -0.7) mm
-[detect]   [0] zone (+12.8, -10.8) mm  yaw +91.5 deg  38.4 x 44.1 mm  unknown sym=1
-[multiview] 3 usable views, skipping the remaining 1 still(s)
-
-[multiview] 3 usable view(s), tags seen across all of them: [0, 1, 2, 3]
-[multiview]   [0] zone (+13.0, +23.3) mm  yaw +0.0 deg  38.2 x 45.5 mm  circle  views=2 spread=3.0 mm/0.0 deg
-[multiview]   [1] zone (+12.8, -10.8) mm  yaw +91.5 deg  38.4 x 44.1 mm  unknown  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
-[stage1] block confirmed across 2 views, spread 3.0 mm / 0.0 deg
-
-[stage1] block: 38.2 x 45.5 mm circle, zone (+13.0, +23.3) mm, yaw +0.0 deg -> grasp yaw +0.0 deg (symmetry 0)
-
-[grasp-hover] want camera at zone (+12.5, +64.3) mm -> world (0.0125, 0.3183)
-[grasp-hover] starting flange (0.0104, 0.2643), 54mm pulled toward base, yaw +180.0 deg
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.010,0.264,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.010403208099287006,0.2643168465578633,0.28), using constraint sampling
-Planning FAILED for target (0.010403208099287006, 0.2643168465578633, 0.28)
-[grasp-hover] move failed
-
-=== Returning home ===
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0009, 'joint3_to_joint2': -0.0006, 'joint4_to_joint3': 0.0006, 'joint5_to_joint4': -0.0002, 'joint6_to_joint5': -0.0007, 'joint6output_to_joint6': -0.786}
-[arm] trajectory: 12 waypoints, 4.551s total, ~0.445 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 2.0263, 'joint3_to_joint2': 0.0215, 'joint4_to_joint3': -1.0737, 'joint5_to_joint4': -0.4065, 'joint6_to_joint5': -0.1012, 'joint6output_to_joint6': -0.7147}  (max movement so far 0.0000 rad)
-
-STAGE 1 DID NOT COMPLETE
-Confirm the grasp VISUALLY. arm_group_controller reports 'Goal reached, success!' from elapsed time alone -- there is no constraints: block in ros2_controllers.yaml, so ROS logs are not evidence of physical motion on this setup.
-ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ python3 tag_pick_place.py --zone-origin 0.0 0.254 0.0 --dry-run     --debug-image /tmp/zone.png --log /tmp/corrections.csv
-[WARN] [1785549600.730154495] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549600.730240997] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549600.730253664] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549600.730531192] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[joint_states] no data after 6s (0 publisher(s) visible) -- recreating the subscription to force a fresh DDS match (attempt 1)
-[WARN] [1785549604.323947335] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549604.324016713] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549604.324526715] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.324562236] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785549604.324582738] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785549604.324601629] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
-[WARN] [1785549604.324622713] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549604.333195275] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.333255659] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785549604.425950316] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549604.431858382] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549604.431911063] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549604.441277573] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.441867773] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.442204358] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.442249688] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785549604.442565332] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.442681397] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.442718325] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785549604.460686824] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549604.460796531] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.460816091] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785549604.460885027] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785549604.460902299] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785549604.468074586] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549604.468218525] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.468244399] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785549604.468335568] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
-[WARN] [1785549604.468392685] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549604.468573469] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549604.468612954] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785549604.468669876] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785549604.468709285] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[joint_states] recovered after 1 subscription recreate(s)
-[stage1] detect hover height 0.2800 m (measured focus floor is ~0.220m lens height; this clears it)
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0002, 'joint3_to_joint2': 0.0001, 'joint4_to_joint3': 0.0008, 'joint5_to_joint4': 0.0009, 'joint6_to_joint5': -0.0001, 'joint6output_to_joint6': -0.7861}
-[arm] trajectory: 2 waypoints, 0.372s total, ~0.093 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': -0.0183, 'joint5_to_joint4': -0.0337, 'joint6_to_joint5': -0.0122, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
-[gripper] target joint positions: {'gripper_controller': 0.15}
-[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
-[stage1] survey flange (0.0000, 0.2000) -- 54mm pulled in from zone centre (0.0000, 0.2540)
-
-[multiview] still 1/4 at wrist yaw +180 deg (offset +180)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8195, 'joint3_to_joint2': -0.2086, 'joint4_to_joint3': -0.9705, 'joint5_to_joint4': -0.2359, 'joint6_to_joint5': -0.0735, 'joint6output_to_joint6': -0.5079}
-[arm] trajectory: 11 waypoints, 4.106s total, ~0.439 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': -0.0199, 'joint5_to_joint4': -0.0321, 'joint6_to_joint5': -0.0122, 'joint6output_to_joint6': -0.7714}  (max movement so far 0.0000 rad)
-[detect] FAIL: saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else.
-[detect] tags [1] | rms 0.00 px | 0 px/m | camera at zone (+0.0, +0.0) mm
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0199, 'joint3_to_joint2': -0.0138, 'joint4_to_joint3': 0.0061, 'joint5_to_joint4': -0.0367, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
+[detect] service call timed out after 45s
 [multiview]   no usable homography from this view
 
 [multiview] still 2/4 at wrist yaw +150 deg (offset +150)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
+[ik] 'current-state' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [1.883, -1.155, 1.029, -1.348, 0.048, 0.052]  (travel 2.484 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [1.883, -1.155, 1.029, -1.348, 0.048, 0.052]  (travel 2.484 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.883, -1.155, 1.029, -1.348, 0.048, 0.052]  (travel 2.484 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
 [ik] 'home' seed: IK did not converge
 [ik] 'home-wrist-zeroed' seed: IK did not converge
 [ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'all-zeros' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'deep-elbow-down' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'home-mirrored' seed: OK -> [1.883, -1.155, 1.029, -1.348, 0.048, 0.052]  (travel 2.484 rad)
 [ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
 [ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
 [ik] 'all-zeros-mirrored' seed: IK did not converge
 [ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 1.7404, 'joint3_to_joint2': -0.7834, 'joint4_to_joint3': 0.2158, 'joint5_to_joint4': -0.8797, 'joint6_to_joint5': 0.1411, 'joint6output_to_joint6': -0.0584}
-[arm] trajectory: 10 waypoints, 2.892s total, ~0.414 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] chose 'current-state' (0.534 rad of joint travel): [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]
+Executing joint-space move to (0.0, 0.2, 0.24)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8821, 'joint3_to_joint2': -0.2046, 'joint4_to_joint3': -1.0292, 'joint5_to_joint4': -0.2408, 'joint6_to_joint5': 0.0491, 'joint6output_to_joint6': 0.0513}
+[arm] trajectory: 4 waypoints, 1.535s total, ~0.337 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8024, 'joint3_to_joint2': -0.2147, 'joint4_to_joint3': -0.9802, 'joint5_to_joint4': -0.2515, 'joint6_to_joint5': -0.0552, 'joint6output_to_joint6': -0.5199}  (max movement so far 0.0000 rad)
-[detect] FAIL: saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else.
-[detect] tags [1] | rms 0.00 px | 0 px/m | camera at zone (+0.0, +0.0) mm
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8867, 'joint3_to_joint2': -0.2253, 'joint4_to_joint3': -0.977, 'joint5_to_joint4': -0.3419, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -0.4662}  (max movement so far 0.0000 rad)
+[detect] service call timed out after 45s
 [multiview]   no usable homography from this view
 
 [multiview] still 3/4 at wrist yaw +210 deg (offset +210)
-[ik] 'current-state' seed: IK did not converge
+[ik] 'current-state' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'bearing+offset/elbow-down' seed: IK did not converge
 [ik] 'bearing+offset/elbow-up' seed: IK did not converge
 [ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
+[ik] 'bearing/elbow-up' seed: OK -> [1.921, -1.12, 0.983, -1.385, -0.112, -0.957]  (travel 2.684 rad)
 [ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.921, -1.12, 0.983, -1.385, -0.112, -0.957]  (travel 2.684 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
+[ik] 'home-wrist-zeroed' seed: OK -> [1.921, -1.12, 0.983, -1.385, -0.112, -0.957]  (travel 2.684 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
+[ik] 'deep-elbow-down' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'downward-confirmed-mirrored' seed: IK did not converge
 [ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [1.921, -1.12, 0.983, -1.385, -0.112, -0.957]  (travel 2.684 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8669, 'joint3_to_joint2': -1.0008, 'joint4_to_joint3': 0.6009, 'joint5_to_joint4': -0.935, 'joint6_to_joint5': -0.0605, 'joint6output_to_joint6': -0.9028}
-[arm] trajectory: 7 waypoints, 2.161s total, ~0.384 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
+[ik] chose 'current-state' (1.020 rad of joint travel): [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]
+Executing joint-space move to (0.0, 0.2, 0.24)...
+[arm] target joint positions: {'joint2_to_joint1': 1.9216, 'joint3_to_joint2': -0.2126, 'joint4_to_joint3': -0.9826, 'joint5_to_joint4': -0.3264, 'joint6_to_joint5': -0.1112, 'joint6output_to_joint6': -0.9582}
+[arm] trajectory: 5 waypoints, 2.505s total, ~0.400 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.7563, 'joint3_to_joint2': -0.7929, 'joint4_to_joint3': 0.1887, 'joint5_to_joint4': -0.8957, 'joint6_to_joint5': 0.1257, 'joint6output_to_joint6': -0.0721}  (max movement so far 0.0000 rad)
-[detect] FAIL: saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else.
-[detect] tags [2] | rms 0.00 px | 0 px/m | camera at zone (+0.0, +0.0) mm
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8836, 'joint3_to_joint2': -0.2178, 'joint4_to_joint3': -1.0414, 'joint5_to_joint4': -0.2637, 'joint6_to_joint5': 0.0597, 'joint6output_to_joint6': 0.0443}  (max movement so far 0.0000 rad)
+[detect] service call timed out after 45s
 [multiview]   no usable homography from this view
 
 [multiview] still 4/4 at wrist yaw +120 deg (offset +120)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
+[ik] 'current-state' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'home' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
 [ik] 'home-wrist-zeroed' seed: IK did not converge
 [ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'all-zeros' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'deep-elbow-down' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'home-mirrored' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
 [ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
 [ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8383, 'joint3_to_joint2': -1.0028, 'joint4_to_joint3': 0.8323, 'joint5_to_joint4': -1.2645, 'joint6_to_joint5': 0.2161, 'joint6output_to_joint6': 0.5077}
-[arm] trajectory: 8 waypoints, 3.289s total, ~0.424 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] 'all-zeros-mirrored' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] chose 'deep-elbow-down-mirrored' (1.550 rad of joint travel): [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]
+Executing joint-space move to (0.0, 0.2, 0.24)...
+[arm] target joint positions: {'joint2_to_joint1': 1.873, 'joint3_to_joint2': -0.1694, 'joint4_to_joint3': -1.1374, 'joint5_to_joint4': -0.0972, 'joint6_to_joint5': 0.0913, 'joint6output_to_joint6': 0.568}
+[arm] trajectory: 8 waypoints, 3.523s total, ~0.429 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8499, 'joint3_to_joint2': -1.017, 'joint4_to_joint3': 0.5767, 'joint5_to_joint4': -0.9526, 'joint6_to_joint5': -0.0443, 'joint6output_to_joint6': -0.8866}  (max movement so far 0.0000 rad)
-[detect] OK: 2 tag(s), rms 5.07 px, 1 block(s)
-[detect] tags [0, 3] | rms 5.07 px | 2025 px/m | camera at zone (-35.0, +15.6) mm
-[detect]   [0] zone (+29.6, +8.5) mm  yaw +0.7 deg  36.7 x 47.5 mm  unknown sym=1
-
-[multiview] 1 usable view(s), tags seen across all of them: [0, 3]
-[multiview]   [0] zone (+29.6, +8.5) mm  yaw +0.7 deg  36.7 x 47.5 mm  unknown  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
-[stage1] WARNING: the chosen block was seen in only 1 view, no cross-check. Position may be less reliable than usual.
-
-[stage1] block: 36.7 x 47.5 mm unknown, zone (+29.6, +8.5) mm, yaw +0.7 deg -> grasp yaw +0.7 deg (symmetry 1)
-
-[grasp-hover] want camera at zone (+28.7, +49.5) mm -> world (0.0287, 0.3035)
-[grasp-hover] starting flange (0.0237, 0.2498), 54mm pulled toward base, yaw +180.7 deg
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.024,0.250,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.02365763738730552,0.24977089690813545,0.28), using constraint sampling
-Planning FAILED for target (0.02365763738730552, 0.24977089690813545, 0.28)
-[grasp-hover] move failed
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9036, 'joint3_to_joint2': -0.233, 'joint4_to_joint3': -1.0139, 'joint5_to_joint4': -0.3419, 'joint6_to_joint5': -0.092, 'joint6output_to_joint6': -0.9434}  (max movement so far 0.0000 rad)
+[detect] service call timed out after 45s
+[multiview]   no usable homography from this view
+[multiview] NO usable view. This is a framing, focus or lighting problem -- check that any tag is visible at all before suspecting the geometry.
+[stage1] no still saw enough tags to fuse. This is a framing, focus or lighting problem -- check the debug frames before suspecting the geometry.
 
 === Returning home ===
 Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0005, 'joint3_to_joint2': 0.0007, 'joint4_to_joint3': 0.0007, 'joint5_to_joint4': -0.0009, 'joint6_to_joint5': -0.0006, 'joint6output_to_joint6': -0.7847}
-[arm] trajectory: 20 waypoints, 4.199s total, ~0.440 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] target joint positions: {'joint2_to_joint1': 0.0001, 'joint3_to_joint2': 0.0004, 'joint4_to_joint3': -0.0003, 'joint5_to_joint4': -0.0002, 'joint6_to_joint5': -0.0007, 'joint6output_to_joint6': -0.7858}
+[arm] trajectory: 15 waypoints, 4.264s total, ~0.441 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8499, 'joint3_to_joint2': -1.0338, 'joint4_to_joint3': 0.8114, 'joint5_to_joint4': -1.2807, 'joint6_to_joint5': 0.1977, 'joint6output_to_joint6': 0.4939}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8822, 'joint3_to_joint2': -0.1686, 'joint4_to_joint3': -1.1474, 'joint5_to_joint4': -0.1318, 'joint6_to_joint5': 0.0812, 'joint6output_to_joint6': 0.5552}  (max movement so far 0.0000 rad)
 
 STAGE 1 DID NOT COMPLETE
 Confirm the grasp VISUALLY. arm_group_controller reports 'Goal reached, success!' from elapsed time alone -- there is no constraints: block in ros2_controllers.yaml, so ROS logs are not evidence of physical motion on this setup.
-ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ python3 tag_pick_place.py --zone-origin 0.0 0.254 0.0 --dry-run \
+ewok@mars:~/swarm/swarm_project$ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/tag_pick_place.py --zone-origin 0.0 0.254 0.0 --dry-run \
     --debug-image /tmp/zone.png --log /tmp/corrections.csv
-[WARN] [1785549684.332507280] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549684.332586934] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549684.332636449] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.332652152] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785549684.332665273] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785549684.332678448] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
-[WARN] [1785549684.332705494] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549684.333215532] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.333267006] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785549684.417276406] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549684.417339650] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549684.419366494] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549684.426366083] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.427916194] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.429617682] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.429666905] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785549684.432066775] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.432209180] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.432228914] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785549684.463130681] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549684.463271842] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.463303126] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785549684.463464781] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785549684.463498088] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785549684.463535527] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549684.463661287] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.463709302] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785549684.463740063] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
-[WARN] [1785549684.463762019] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549684.463814966] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549684.463838572] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785549684.463886489] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785549684.463907159] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785549688.733126215] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785549688.733221184] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785549688.733249413] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785549688.733663565] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[stage1] detect hover height 0.2800 m (measured focus floor is ~0.220m lens height; this clears it)
+[WARN] [1785684214.394077362] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.394188998] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.394214111] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.399342204] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.562166145] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.562335136] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.566819654] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.566867735] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.581449165] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.581614758] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.581906629] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.581934619] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1785684214.581982869] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
+[WARN] [1785684214.582002473] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.582182353] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.582199042] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[stage1] detect hover height 0.2400 m (measured focus floor is ~0.220m lens height; this clears it)
+[WARN] [1785684214.610593596] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785684214.610621454] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1785684214.610829001] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.610899893] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.611022513] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1785684214.611467677] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785684214.611525771] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1785684214.611601040] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.611833610] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.611860609] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1785684214.612162032] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.612204115] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
 Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0009, 'joint3_to_joint2': 0.0006, 'joint4_to_joint3': 0.0008, 'joint5_to_joint4': 0.0006, 'joint6_to_joint5': 0.0001, 'joint6output_to_joint6': -0.7849}
-[arm] trajectory: 2 waypoints, 0.379s total, ~0.095 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] target joint positions: {'joint2_to_joint1': 0.0003, 'joint3_to_joint2': 0.0002, 'joint4_to_joint3': 0.0004, 'joint5_to_joint4': 0.0005, 'joint6_to_joint5': -0.0009, 'joint6output_to_joint6': -0.7859}
+[arm] trajectory: 2 waypoints, 0.370s total, ~0.092 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[WARN] [1785684214.664657291] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.664711235] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785684214.664817105] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.664844991] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785684214.664857389] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785684214.664872017] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1785684214.664905511] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785684214.702266775] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785684214.702306764] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0199, 'joint3_to_joint2': -0.0152, 'joint4_to_joint3': 0.0061, 'joint5_to_joint4': -0.0353, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0199, 'joint3_to_joint2': -0.0138, 'joint4_to_joint3': 0.0061, 'joint5_to_joint4': -0.0337, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
 [gripper] target joint positions: {'gripper_controller': 0.15}
 [gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
 [gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
+[gripper] waiting... current joint positions: {'gripper_controller': 0.1275}  (max movement so far 0.0000 rad)
 [stage1] survey flange (0.0000, 0.2000) -- 54mm pulled in from zone centre (0.0000, 0.2540)
 
 [multiview] still 1/4 at wrist yaw +180 deg (offset +180)
 [ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
+[ik] 'bearing+offset/elbow-down' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [1.901, -1.119, 0.968, -1.367, -0.026, -0.455]  (travel 2.749 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [1.901, -1.119, 0.968, -1.367, -0.026, -0.455]  (travel 2.749 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.901, -1.119, 0.968, -1.367, -0.026, -0.455]  (travel 2.749 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
 [ik] 'home' seed: IK did not converge
 [ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
 [ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'deep-elbow-down' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] 'home-mirrored' seed: OK -> [1.901, -1.119, 0.968, -1.367, -0.026, -0.455]  (travel 2.749 rad)
 [ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
 [ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8343, 'joint3_to_joint2': -1.1128, 'joint4_to_joint3': 1.1181, 'joint5_to_joint4': -1.3533, 'joint6_to_joint5': -0.071, 'joint6output_to_joint6': -0.5592}
-[arm] trajectory: 18 waypoints, 4.129s total, ~0.439 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]  (travel 2.172 rad)
+[ik] chose 'bearing-offset/elbow-down' (2.172 rad of joint travel): [1.901, -0.224, -0.968, -0.326, -0.026, -0.455]
+Executing joint-space move to (0.0, 0.2, 0.24)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8998, 'joint3_to_joint2': -0.2236, 'joint4_to_joint3': -0.9675, 'joint5_to_joint4': -0.3251, 'joint6_to_joint5': -0.0258, 'joint6output_to_joint6': -0.4542}
+[arm] trajectory: 12 waypoints, 4.260s total, ~0.441 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0199, 'joint3_to_joint2': -0.0168, 'joint4_to_joint3': 0.0061, 'joint5_to_joint4': -0.0337, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -0.7685}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0199, 'joint3_to_joint2': -0.0168, 'joint4_to_joint3': 0.0061, 'joint5_to_joint4': -0.0337, 'joint6_to_joint5': 0.0061, 'joint6output_to_joint6': -0.7685}  (max movement so far 0.0061 rad)
-[detect] OK: 2 tag(s), rms 4.40 px, 1 block(s)
-[detect] tags [1, 2] | rms 4.40 px | 1858 px/m | camera at zone (-7.1, -17.8) mm
-[detect]   [0] zone (-1.8, +8.0) mm  yaw -0.1 deg  36.2 x 42.4 mm  unknown sym=1
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0199, 'joint3_to_joint2': -0.0138, 'joint4_to_joint3': 0.0061, 'joint5_to_joint4': -0.0367, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
+[detect] service call timed out after 45s
+[multiview]   no usable homography from this view
 
 [multiview] still 2/4 at wrist yaw +150 deg (offset +150)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
+[ik] 'current-state' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [1.883, -1.155, 1.029, -1.348, 0.048, 0.052]  (travel 2.484 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [1.883, -1.155, 1.029, -1.348, 0.048, 0.052]  (travel 2.484 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.883, -1.155, 1.029, -1.348, 0.048, 0.052]  (travel 2.484 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
 [ik] 'home' seed: IK did not converge
 [ik] 'home-wrist-zeroed' seed: IK did not converge
 [ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'all-zeros' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'deep-elbow-down' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]  (travel 0.534 rad)
+[ik] 'home-mirrored' seed: OK -> [1.883, -1.155, 1.029, -1.348, 0.048, 0.052]  (travel 2.484 rad)
 [ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
 [ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
 [ik] 'all-zeros-mirrored' seed: IK did not converge
 [ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 2.0961, 'joint3_to_joint2': -0.975, 'joint4_to_joint3': 0.8469, 'joint5_to_joint4': -1.2621, 'joint6_to_joint5': -0.0912, 'joint6output_to_joint6': 0.2153}
-[arm] trajectory: 6 waypoints, 2.068s total, ~0.379 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] chose 'current-state' (0.534 rad of joint travel): [1.883, -0.205, -1.029, -0.241, 0.048, 0.052]
+Executing joint-space move to (0.0, 0.2, 0.24)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8821, 'joint3_to_joint2': -0.2046, 'joint4_to_joint3': -1.0292, 'joint5_to_joint4': -0.2408, 'joint6_to_joint5': 0.0491, 'joint6output_to_joint6': 0.0513}
+[arm] trajectory: 4 waypoints, 1.535s total, ~0.337 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8178, 'joint3_to_joint2': -1.1289, 'joint4_to_joint3': 1.0982, 'joint5_to_joint4': -1.3729, 'joint6_to_joint5': -0.0552, 'joint6output_to_joint6': -0.569}  (max movement so far 0.0000 rad)
-[detect] FAIL: saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else.
-[detect] tags [1] | rms 0.00 px | 0 px/m | camera at zone (+0.0, +0.0) mm
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8867, 'joint3_to_joint2': -0.2253, 'joint4_to_joint3': -0.977, 'joint5_to_joint4': -0.3419, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -0.4662}  (max movement so far 0.0000 rad)
+[detect] service call timed out after 45s
 [multiview]   no usable homography from this view
 
 [multiview] still 3/4 at wrist yaw +210 deg (offset +210)
-[ik] 'current-state' seed: IK did not converge
+[ik] 'current-state' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'bearing+offset/elbow-down' seed: IK did not converge
 [ik] 'bearing+offset/elbow-up' seed: IK did not converge
 [ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
+[ik] 'bearing/elbow-up' seed: OK -> [1.921, -1.12, 0.983, -1.385, -0.112, -0.957]  (travel 2.684 rad)
 [ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.921, -1.12, 0.983, -1.385, -0.112, -0.957]  (travel 2.684 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
+[ik] 'home-wrist-zeroed' seed: OK -> [1.921, -1.12, 0.983, -1.385, -0.112, -0.957]  (travel 2.684 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
+[ik] 'deep-elbow-down' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'downward-confirmed-mirrored' seed: IK did not converge
 [ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [1.921, -1.12, 0.983, -1.385, -0.112, -0.957]  (travel 2.684 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
 [ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8728, 'joint3_to_joint2': -1.0653, 'joint4_to_joint3': 1.041, 'joint5_to_joint4': -1.486, 'joint6_to_joint5': -0.1051, 'joint6output_to_joint6': -1.0792}
-[arm] trajectory: 7 waypoints, 3.063s total, ~0.418 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]  (travel 1.020 rad)
+[ik] chose 'current-state' (1.020 rad of joint travel): [1.921, -0.212, -0.983, -0.327, -0.112, -0.957]
+Executing joint-space move to (0.0, 0.2, 0.24)...
+[arm] target joint positions: {'joint2_to_joint1': 1.9216, 'joint3_to_joint2': -0.2126, 'joint4_to_joint3': -0.9826, 'joint5_to_joint4': -0.3264, 'joint6_to_joint5': -0.1112, 'joint6output_to_joint6': -0.9582}
+[arm] trajectory: 5 waypoints, 2.505s total, ~0.400 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 2.0785, 'joint3_to_joint2': -1.017, 'joint4_to_joint3': 0.8512, 'joint5_to_joint4': -1.2961, 'joint6_to_joint5': -0.0735, 'joint6output_to_joint6': 0.2025}  (max movement so far 0.0000 rad)
-[detect] FAIL: saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else.
-[detect] tags [0] | rms 0.00 px | 0 px/m | camera at zone (+0.0, +0.0) mm
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8836, 'joint3_to_joint2': -0.2178, 'joint4_to_joint3': -1.0414, 'joint5_to_joint4': -0.2637, 'joint6_to_joint5': 0.0597, 'joint6output_to_joint6': 0.0443}  (max movement so far 0.0000 rad)
+[detect] service call timed out after 45s
 [multiview]   no usable homography from this view
 
 [multiview] still 4/4 at wrist yaw +120 deg (offset +120)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
+[ik] 'current-state' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'home' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
 [ik] 'home-wrist-zeroed' seed: IK did not converge
 [ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'all-zeros' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'deep-elbow-down' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'home-mirrored' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
 [ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
 [ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (0.000,0.200,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (0.0,0.2,0.28), using constraint sampling
-Executing joint-space move to (0.0, 0.2, 0.28)...
-[arm] target joint positions: {'joint2_to_joint1': 1.7723, 'joint3_to_joint2': -1.0781, 'joint4_to_joint3': 0.7824, 'joint5_to_joint4': -1.1289, 'joint6_to_joint5': 0.191, 'joint6output_to_joint6': 0.339}
-[arm] trajectory: 8 waypoints, 3.304s total, ~0.424 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] 'all-zeros-mirrored' seed: OK -> [1.873, -1.217, 1.137, -1.323, 0.092, 0.569]  (travel 2.980 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]  (travel 1.550 rad)
+[ik] chose 'deep-elbow-down-mirrored' (1.550 rad of joint travel): [1.873, -0.169, -1.137, -0.096, 0.092, 0.569]
+Executing joint-space move to (0.0, 0.2, 0.24)...
+[arm] target joint positions: {'joint2_to_joint1': 1.873, 'joint3_to_joint2': -0.1694, 'joint4_to_joint3': -1.1374, 'joint5_to_joint4': -0.0972, 'joint6_to_joint5': 0.0913, 'joint6output_to_joint6': 0.568}
+[arm] trajectory: 8 waypoints, 3.523s total, ~0.429 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8912, 'joint3_to_joint2': -1.0798, 'joint4_to_joint3': 1.0215, 'joint5_to_joint4': -1.5017, 'joint6_to_joint5': -0.0873, 'joint6output_to_joint6': -1.0629}  (max movement so far 0.0000 rad)
-[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 138 (range 1-192), focus 73 | NO AprilTag of any id anywhere in the frame -- focus metric is very low, suspect defocus/blur
-[detect] tags [] | rms 0.00 px | 0 px/m | camera at zone (+0.0, +0.0) mm
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9036, 'joint3_to_joint2': -0.233, 'joint4_to_joint3': -1.0139, 'joint5_to_joint4': -0.3419, 'joint6_to_joint5': -0.092, 'joint6output_to_joint6': -0.9434}  (max movement so far 0.0000 rad)
+[detect] service call timed out after 45s
 [multiview]   no usable homography from this view
-
-[multiview] 1 usable view(s), tags seen across all of them: [1, 2]
-[multiview]   [0] zone (-1.8, +8.0) mm  yaw +359.9 deg  36.2 x 42.4 mm  unknown  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
-[stage1] WARNING: the chosen block was seen in only 1 view, no cross-check. Position may be less reliable than usual.
-
-[stage1] block: 36.2 x 42.4 mm unknown, zone (-1.8, +8.0) mm, yaw +359.9 deg -> grasp yaw -0.1 deg (symmetry 1)
-
-[grasp-hover] want camera at zone (-2.1, +49.0) mm -> world (-0.0021, 0.3030)
-[grasp-hover] starting flange (-0.0018, 0.2490), 54mm pulled toward base, yaw +179.9 deg
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: IK did not converge
-[ik] 'downward-confirmed' seed: IK did not converge
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: IK did not converge
-[ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: IK did not converge
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: IK did not converge
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: IK did not converge
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw180' seed: IK did not converge
-[ik] 'detect-tilt/yaw180-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw150' seed: IK did not converge
-[ik] 'detect-tilt/yaw150-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw210' seed: IK did not converge
-[ik] 'detect-tilt/yaw210-mirrored' seed: IK did not converge
-[ik] 'detect-tilt/yaw120' seed: IK did not converge
-[ik] 'detect-tilt/yaw120-mirrored' seed: IK did not converge
-[ik] All seeds exhausted for (-0.002,0.249,0.280) -- falling back to constraint sampling
-[move_arm_to] No valid IK state found for (-0.00175949393970001,0.24900271976362506,0.28), using constraint sampling
-Planning FAILED for target (-0.00175949393970001, 0.24900271976362506, 0.28)
-[grasp-hover] move failed
+[multiview] NO usable view. This is a framing, focus or lighting problem -- check that any tag is visible at all before suspecting the geometry.
+[stage1] no still saw enough tags to fuse. This is a framing, focus or lighting problem -- check the debug frames before suspecting the geometry.
 
 === Returning home ===
 Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': -0.0002, 'joint3_to_joint2': -0.0009, 'joint4_to_joint3': -0.0001, 'joint5_to_joint4': 0.0003, 'joint6_to_joint5': 0.0009, 'joint6output_to_joint6': -0.7862}
-[arm] trajectory: 19 waypoints, 4.080s total, ~0.439 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] target joint positions: {'joint2_to_joint1': 0.0001, 'joint3_to_joint2': 0.0004, 'joint4_to_joint3': -0.0003, 'joint5_to_joint4': -0.0002, 'joint6_to_joint5': -0.0007, 'joint6output_to_joint6': -0.7858}
+[arm] trajectory: 15 waypoints, 4.264s total, ~0.441 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.79, 'joint3_to_joint2': -1.0968, 'joint4_to_joint3': 0.7854, 'joint5_to_joint4': -1.1641, 'joint6_to_joint5': 0.1747, 'joint6output_to_joint6': 0.3252}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8822, 'joint3_to_joint2': -0.1686, 'joint4_to_joint3': -1.1474, 'joint5_to_joint4': -0.1318, 'joint6_to_joint5': 0.0812, 'joint6output_to_joint6': 0.5552}  (max movement so far 0.0000 rad)
 
 STAGE 1 DID NOT COMPLETE
 Confirm the grasp VISUALLY. arm_group_controller reports 'Goal reached, success!' from elapsed time alone -- there is no constraints: block in ros2_controllers.yaml, so ROS logs are not evidence of physical motion on this setup.
-ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ 
-
+ewok@mars:~/swarm/swarm_project$ 

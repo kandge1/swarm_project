@@ -302,6 +302,19 @@ MULTIVIEW_ENOUGH_VIEWS = 3
 # has to absorb the arm's dead band.
 MULTIVIEW_MAX_SPREAD_M = 0.006
 
+# Companion to MULTIVIEW_MAX_SPREAD_M for ORIENTATION agreement, in degrees.
+#
+# Position spread alone does not catch a bad fusion. Hardware 2026-07-31: a
+# candidate at 2.0 mm position spread -- comfortably "agreeing" -- carried a
+# 177.2 deg yaw spread. Two views cannot see the same rigid object 177 deg
+# apart; that is two different things merged into one cluster. The real block
+# in that same run fused at 0.8 mm / 0.2 deg, so the separation between a good
+# fusion and a bad one is stark and this threshold is nowhere near either edge.
+#
+# Skipped entirely for symmetry == 0 (a circle), where yaw carries no meaning
+# and any spread is expected.
+MULTIVIEW_MAX_SPREAD_YAW_DEG = 20.0
+
 
 def quat_to_matrix(q):
     x, y, z, w = q
@@ -798,6 +811,81 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
     return response, False, flange
 
 
+def select_block(fused):
+    """Pick the block to descend on, ranked by AGREEMENT rather than by count.
+
+    zone_vision.fuse_detections sorts purely by -n_views, and taking [0] from
+    that was wrong on hardware 2026-07-31 in a way that would have driven the
+    jaws at a strip of tape:
+
+        [0]  9.3 x 23.1 mm  views=3  spread=10.3 mm/136.6 deg   <-- was chosen
+        [3] 37.5 x 45.4 mm  views=2  spread= 0.8 mm/  0.2 deg   <-- the block
+
+    Three views "agreeing" to within 10 mm and 137 deg are not agreeing at all;
+    they are three unrelated slivers landing in one match radius. The real
+    block, fused to 0.8 mm and 0.2 deg, lost on view count alone.
+
+    So a candidate has to EARN its extra views: if the views that produced it
+    disagree, that is evidence against it, not for it. Ordering is
+
+        1. multi-view candidates whose views actually agree   (best)
+        2. single-view candidates, unverified but not contradicted
+        3. multi-view candidates whose views disagree         (never)
+
+    Rank 3 sits below rank 2 deliberately. A disagreeing fusion is not a weak
+    measurement, it is a wrong one -- distinct objects averaged into a position
+    matching neither. An honest single view is worth more.
+    """
+    agreeing, single, disagreeing = [], [], []
+
+    for f in fused:
+        if f.n_views < 2:
+            single.append(f)
+            continue
+
+        why = None
+        if f.spread_m > MULTIVIEW_MAX_SPREAD_M:
+            why = ("position spread %.1f mm exceeds %.1f mm"
+                   % (f.spread_m * 1000, MULTIVIEW_MAX_SPREAD_M * 1000))
+        elif (f.symmetry != 0
+              and math.degrees(f.spread_yaw_rad) > MULTIVIEW_MAX_SPREAD_YAW_DEG):
+            # symmetry == 0 is a circle: yaw is meaningless, any spread is fine.
+            why = ("yaw spread %.1f deg exceeds %.1f deg"
+                   % (math.degrees(f.spread_yaw_rad),
+                      MULTIVIEW_MAX_SPREAD_YAW_DEG))
+
+        if why is None:
+            agreeing.append(f)
+        else:
+            disagreeing.append((f, why))
+
+    for f, why in disagreeing:
+        print("[stage1] rejected %.1f x %.1f mm at zone (%+.1f, %+.1f) mm: "
+              "%d views but %s -- they are not looking at one object."
+              % (f.width * 1000, f.length * 1000, f.zx * 1000, f.zy * 1000,
+                 f.n_views, why))
+
+    if agreeing:
+        # Most views first, then tightest agreement as the tie-break.
+        agreeing.sort(key=lambda f: (-f.n_views, f.spread_m))
+        best = agreeing[0]
+        print("[stage1] block confirmed across %d views, spread %.1f mm / "
+              "%.1f deg" % (best.n_views, best.spread_m * 1000,
+                            math.degrees(best.spread_yaw_rad)))
+        return best
+
+    if single:
+        # Largest footprint, not first: among unverified candidates the slivers
+        # shed by tag borders and tape edges are exactly the small ones.
+        single.sort(key=lambda f: -(f.width * f.length))
+        best = single[0]
+        print("[stage1] WARNING: the chosen block was seen in only 1 view, no "
+              "cross-check. Position may be less reliable than usual.")
+        return best
+
+    return None
+
+
 def run_stage1(io_client, detector, args, log):
     # DETECT_HOVER_Z, not MAX_HOVER_Z: this is the height that actually FOCUSES
     # (measured 2026-07-30/31 -- see the constant). MAX_HOVER_Z = 0.205m was the
@@ -848,14 +936,11 @@ def run_stage1(io_client, detector, args, log):
         print("[stage1] zone is empty -- nothing to pick.")
         return False
 
-    block = fused_blocks[0]
-    if not block.trustworthy:
-        print("[stage1] WARNING: the chosen block was seen in only 1 view, no "
-              "cross-check. Position may be less reliable than usual.")
-    else:
-        print("[stage1] block confirmed across %d views, spread %.1f mm / "
-              "%.1f deg" % (block.n_views, block.spread_m * 1000,
-                            math.degrees(block.spread_yaw_rad)))
+    block = select_block(fused_blocks)
+    if block is None:
+        print("[stage1] no candidate survived the agreement check -- nothing "
+              "here is measured well enough to descend on.")
+        return False
     # block.yaw does not exist on a FusedDetection -- fusion happens entirely in
     # ZONE-LOCAL coordinates (see _response_to_detections), deliberately, so
     # comparing views never mixes in the caller's own zone-survey error. World

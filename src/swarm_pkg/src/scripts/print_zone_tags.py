@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a printable A4 sheet for a pickup or place zone.
+"""Generate a printable sheet for a pickup or place zone.
 
 Draws the ACTUAL AprilTag (36h11) bitmaps at the ACTUAL physical size and
 spacing zone_vision.py expects -- imports DEFAULT_ZONE_SIZE, DEFAULT_TAG_SIZE,
@@ -15,15 +15,31 @@ WHY THE PRINT SCALE MATTERS, NOT JUST THE PATTERN:
 AprilTag detection decodes the bit pattern regardless of size -- a tag printed
 too small or too big is still read correctly. But zone_vision's homography
 fits image pixels to WORLD MILLIMETRES using DEFAULT_ZONE_SIZE and
-DEFAULT_TAG_SIZE as ground truth. If the printer rescales the page ("fit to
-page", "scale to fit"), the physical tags come out a different size than the
-code assumes, and EVERY position and dimension it reports comes out scaled by
-that same wrong factor -- silently, because the detector has no way to know
-your printer lied to it. That is why every sheet carries a calibration ruler:
-measure it with an actual ruler after printing, before trusting anything else.
+DEFAULT_TAG_SIZE as ground truth. If the printer rescales the page, the
+physical tags come out a different size than the code assumes, and EVERY
+position and dimension it reports comes out scaled by that same wrong factor
+-- silently, because the detector has no way to know your printer lied to it.
+That is why every sheet carries a calibration ruler on each axis: measure both
+with an actual ruler after printing, before trusting anything else.
 
-PRINT SETTINGS: 100% / "Actual size". Do NOT use "Fit to page" or "Shrink to
-fit" -- either one breaks the physical scale this whole feature depends on.
+PAGE SIZE: authored as US Letter (215.9 x 279.4 mm), since that is what most
+campus printers feed by default even when asked for A4 -- a page-size
+mismatch under a non-aspect-preserving "fit to page" is what produces
+NON-SQUARE output (measured 3.25 x 3.8125 in from a 4x4 in target on one
+printer here) even after a single uniform --print-correction was applied.
+
+IF THE OUTPUT IS STILL OFF AFTER SWITCHING TO LETTER: the two axes can be
+corrected independently. Print once with --print-correction-x 1.0
+--print-correction-y 1.0 (the default), measure the two rulers this sheet
+prints (one horizontal, one vertical, each nominally 100.0 mm), then rerun
+with:
+
+    --print-correction-x = 100.0 / measured_horizontal_mm
+    --print-correction-y = 100.0 / measured_vertical_mm
+
+PRINT SETTINGS: 100% / "Actual size" if your printer offers it. If it
+doesn't (many campus print stations hide or remove that option), the
+correction factors above are what you have instead.
 """
 import argparse
 import math
@@ -37,14 +53,14 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import zone_vision as zv  # noqa: E402
 
-A4_MM = (210.0, 297.0)          # portrait, (width, height)
-MARGIN_MM = 12.0
-LABEL_GAP_MM = 6.0               # gap between a tag's outer edge and its ID label
+PAGE_MM = (215.9, 279.4)        # US Letter, portrait, (width, height)
 RULER_LENGTH_MM = 100.0
+RULER_CLEARANCE_MM = 14.0       # gap between the zone bbox and each ruler
+LABEL_GAP_MM = 5.0              # gap between a tag's outer edge and its ID label
 
 ZONES = {
-    "pickup": (zv.PICKUP_TAG_IDS, "PICKUP ZONE"),
-    "place": (zv.PLACE_TAG_IDS, "PLACE ZONE"),
+    "pickup": zv.PICKUP_TAG_IDS,
+    "place": zv.PLACE_TAG_IDS,
 }
 
 
@@ -60,45 +76,37 @@ def _marker_bitmap(dictionary, tag_id, side_px):
     return cv2.aruco.drawMarker(dictionary, tag_id, side_px)
 
 
-def render_sheet(zone_name, dpi):
-    tag_ids, title = ZONES[zone_name]
+def render_sheet(zone_name, dpi, correction_x=1.0, correction_y=1.0):
+    tag_ids = ZONES[zone_name]
     zone = zv.zone_for(zone_name)
     zone_size_mm = zone.zone_size * 1000.0
     tag_size_mm = zone.tag_size * 1000.0
     bbox_mm = zone_size_mm + tag_size_mm   # tags overhang the zone square by tag/2 a side
 
-    if bbox_mm + 2 * MARGIN_MM > min(A4_MM):
+    needed_h = bbox_mm + 2 * (RULER_CLEARANCE_MM + 20.0)   # rulers top & bottom
+    needed_w = bbox_mm + 2 * (RULER_CLEARANCE_MM + 20.0)   # rulers left & right
+    if needed_w > PAGE_MM[0] or needed_h > PAGE_MM[1]:
         raise ValueError(
-            "a %.1f mm zone with %.1f mm tags needs a %.1f mm bounding box, which "
-            "does not fit on A4 (%.0f x %.0f mm) even in landscape. Shrink "
-            "zone_size or tag_size, or print on a larger sheet."
-            % (zone_size_mm, tag_size_mm, bbox_mm, *A4_MM))
+            "a %.1f mm zone with %.1f mm tags does not fit on a %.0f x %.0f mm "
+            "page with room for both rulers. Shrink zone_size or tag_size."
+            % (zone_size_mm, tag_size_mm, *PAGE_MM))
 
-    px_per_mm = dpi / 25.4
-    page_px = (round(A4_MM[0] * px_per_mm), round(A4_MM[1] * px_per_mm))
+    px_per_mm_x = dpi / 25.4 * correction_x
+    px_per_mm_y = dpi / 25.4 * correction_y
+    page_px = (round(PAGE_MM[0] * px_per_mm_x), round(PAGE_MM[1] * px_per_mm_y))
     canvas = np.full((page_px[1], page_px[0]), 255, dtype=np.uint8)
 
     def mm_to_px(x_mm, y_mm):
         """Page-local mm (origin top-left, +Y down) -> pixel coords."""
-        return int(round(x_mm * px_per_mm)), int(round(y_mm * px_per_mm))
-
-    # Layout: tag square centred horizontally, positioned in the upper portion
-    # of the page so there is room below for the calibration ruler and notes.
-    #
-    # HEADER_CLEARANCE_MM must clear BOTH lines of title text AND the top-row
-    # ID labels, which sit LABEL_GAP_MM above the tags' own top edge -- with
-    # too little clearance here the "ID 3" label lands directly on top of the
-    # title (this happened at 10mm; 26mm leaves a clean gap).
-    HEADER_CLEARANCE_MM = 26.0
-    centre_x_mm = A4_MM[0] / 2.0
-    centre_y_mm = MARGIN_MM + bbox_mm / 2.0 + HEADER_CLEARANCE_MM
+        return int(round(x_mm * px_per_mm_x)), int(round(y_mm * px_per_mm_y))
 
     font = cv2.FONT_HERSHEY_SIMPLEX
-    cv2.putText(canvas, "%s -- AprilTag 36h11, IDs %s" % (title, list(tag_ids)),
-                mm_to_px(MARGIN_MM, MARGIN_MM + 4), font, 0.9, 0, 2, cv2.LINE_AA)
-    cv2.putText(canvas, "Tag-centre square: %.1f mm (%.2f in). Tag size: %.1f mm (%.2f in)."
-                % (zone_size_mm, zone_size_mm / 25.4, tag_size_mm, tag_size_mm / 25.4),
-                mm_to_px(MARGIN_MM, MARGIN_MM + 12), font, 0.42, 0, 1, cv2.LINE_AA)
+
+    # Zone square centred on the page in BOTH axes -- nothing else on the page
+    # competes with that centring, so the tag-centre square's centre IS the
+    # page centre.
+    centre_x_mm = PAGE_MM[0] / 2.0
+    centre_y_mm = PAGE_MM[1] / 2.0
 
     dictionary = _dictionary()
     half_zone = zone_size_mm / 2.0
@@ -110,11 +118,15 @@ def render_sheet(zone_name, dpi):
         tag_cy = centre_y_mm - sy * half_zone
         tag_positions_mm.append((tag_id, sx, sy, tag_cx, tag_cy))
 
-        side_px = int(round(tag_size_mm * px_per_mm))
-        bitmap = _marker_bitmap(dictionary, tag_id, side_px)
+        side_px_x = int(round(tag_size_mm * px_per_mm_x))
+        side_px_y = int(round(tag_size_mm * px_per_mm_y))
+        bitmap = _marker_bitmap(dictionary, tag_id, max(side_px_x, side_px_y))
+        if (side_px_x, side_px_y) != bitmap.shape[::-1]:
+            bitmap = cv2.resize(bitmap, (side_px_x, side_px_y),
+                                 interpolation=cv2.INTER_NEAREST)
         cx_px, cy_px = mm_to_px(tag_cx, tag_cy)
-        x0, y0 = cx_px - side_px // 2, cy_px - side_px // 2
-        canvas[y0:y0 + side_px, x0:x0 + side_px] = bitmap
+        x0, y0 = cx_px - side_px_x // 2, cy_px - side_px_y // 2
+        canvas[y0:y0 + side_px_y, x0:x0 + side_px_x] = bitmap
 
         # ID label OUTSIDE the tag, away from the zone centre, clear of the
         # quiet zone every AprilTag needs around its border to detect reliably.
@@ -122,9 +134,9 @@ def render_sheet(zone_name, dpi):
         label_y = tag_cy - sy * (tag_size_mm / 2.0 + LABEL_GAP_MM)
         lx_px, ly_px = mm_to_px(label_x, label_y)
         text = "ID %d" % tag_id
-        (tw, th), _ = cv2.getTextSize(text, font, 0.55, 2)
+        (tw, th), _ = cv2.getTextSize(text, font, 0.5, 2)
         cv2.putText(canvas, text, (lx_px - tw // 2, ly_px + (th if sy > 0 else -2)),
-                    font, 0.55, 0, 2, cv2.LINE_AA)
+                    font, 0.5, 0, 2, cv2.LINE_AA)
 
     # Dashed line joining the tag centres -- the square the homography is
     # actually fitted to. Not required for detection; purely so a human can
@@ -141,44 +153,31 @@ def render_sheet(zone_name, dpi):
                 p0[1] + (p1[1] - p0[1]) * (s + 1) / steps)
             cv2.line(canvas, (int(a[0]), int(a[1])), (int(b[0]), int(b[1])), 160, 1)
 
-    # Zone axes, matching the +X/+Y convention tag_pick_place.py and
-    # zone_vision.py use everywhere else -- useful when deciding --zone-yaw.
-    #
-    # Drawn as a small LEGEND in the margin below the ruler, NOT inside the
-    # zone interior. An earlier version put this at the zone centre, which is
-    # exactly where a real block gets placed -- feeding the rendered sheet
-    # back through zv.analyze() as a check on this script caught it directly:
-    # the arrows themselves were segmented as a phantom "23.6 x 44.2 mm
-    # unknown" object. The working area must stay visually empty.
-    legend_y_mm = A4_MM[1] - MARGIN_MM - 15.0
-    legend_x_mm = MARGIN_MM + 15.0
-    cv2.putText(canvas, "Zone axes (for --zone-yaw reference):",
-                mm_to_px(MARGIN_MM, legend_y_mm - 6), font, 0.42, 0, 1, cv2.LINE_AA)
-    origin_px = mm_to_px(legend_x_mm, legend_y_mm)
-    for (dx, dy), label in (((15, 0), "+X"), ((0, -15), "+Y")):
-        tip_px = mm_to_px(legend_x_mm + dx, legend_y_mm + dy)
-        cv2.arrowedLine(canvas, origin_px, tip_px, 0, 2, tipLength=0.15)
-        cv2.putText(canvas, label, tip_px, font, 0.5, 0, 1, cv2.LINE_AA)
+    # Two calibration rulers, one per axis -- see module docstring. Not
+    # decorative: this is the only way to detect and correct anisotropic
+    # print scaling. Kept to a bare line + end ticks + two numbers, no prose,
+    # so nothing crowds the page edges.
+    def _ruler(p_start_mm, p_end_mm, tick_dir):
+        p0 = mm_to_px(*p_start_mm)
+        p1 = mm_to_px(*p_end_mm)
+        cv2.line(canvas, p0, p1, 0, 2)
+        for p_mm, p_px, label in ((p_start_mm, p0, "0"), (p_end_mm, p1, "100")):
+            tx, ty = p_px
+            dx, dy = tick_dir
+            cv2.line(canvas, (tx - dx * 6, ty - dy * 6), (tx + dx * 6, ty + dy * 6), 0, 2)
+            lx = tx + (10 if dx else -14)
+            ly = ty + (14 if dy else 4)
+            cv2.putText(canvas, label, (lx, ly), font, 0.35, 0, 1, cv2.LINE_AA)
 
-    # Calibration ruler -- see module docstring. This is not decorative.
-    ruler_y_mm = centre_y_mm + bbox_mm / 2.0 + 18.0
     ruler_x0_mm = centre_x_mm - RULER_LENGTH_MM / 2.0
-    p0 = mm_to_px(ruler_x0_mm, ruler_y_mm)
-    p1 = mm_to_px(ruler_x0_mm + RULER_LENGTH_MM, ruler_y_mm)
-    cv2.line(canvas, p0, p1, 0, 2)
-    for mark_mm in (0, 50, 100):
-        tx, ty = mm_to_px(ruler_x0_mm + mark_mm, ruler_y_mm)
-        cv2.line(canvas, (tx, ty - 6), (tx, ty + 6), 0, 2)
-        cv2.putText(canvas, "%d" % mark_mm, (tx - 8, ty + 20), font, 0.4, 0, 1, cv2.LINE_AA)
-    cv2.putText(canvas,
-                "^ measure this line with a ruler: must be EXACTLY 100.0 mm.",
-                mm_to_px(ruler_x0_mm, ruler_y_mm + 12), font, 0.4, 0, 1, cv2.LINE_AA)
-    cv2.putText(canvas,
-                "If it isn't, your printer rescaled the page -- reprint at",
-                mm_to_px(ruler_x0_mm, ruler_y_mm + 18), font, 0.4, 0, 1, cv2.LINE_AA)
-    cv2.putText(canvas,
-                "100% / Actual Size, NOT 'Fit to page' or 'Shrink to fit'.",
-                mm_to_px(ruler_x0_mm, ruler_y_mm + 24), font, 0.4, 0, 1, cv2.LINE_AA)
+    ruler_top_y_mm = centre_y_mm - bbox_mm / 2.0 - RULER_CLEARANCE_MM
+    _ruler((ruler_x0_mm, ruler_top_y_mm), (ruler_x0_mm + RULER_LENGTH_MM, ruler_top_y_mm),
+           tick_dir=(0, 1))
+
+    ruler_y0_mm = centre_y_mm - RULER_LENGTH_MM / 2.0
+    ruler_right_x_mm = centre_x_mm + bbox_mm / 2.0 + RULER_CLEARANCE_MM
+    _ruler((ruler_right_x_mm, ruler_y0_mm), (ruler_right_x_mm, ruler_y0_mm + RULER_LENGTH_MM),
+           tick_dir=(1, 0))
 
     return canvas, dpi
 
@@ -192,24 +191,35 @@ def main():
                         help="print resolution embedded in the PNG (default: %(default)s)")
     parser.add_argument("--out-dir", default=".",
                         help="where to write the PNG(s) (default: current directory)")
+    parser.add_argument("--print-correction-x", type=float, default=1.0,
+                        help="horizontal pre-scale = 100 / measured_horizontal_ruler_mm "
+                             "from a --print-correction-x 1.0 print (default: 1.0)")
+    parser.add_argument("--print-correction-y", type=float, default=1.0,
+                        help="vertical pre-scale = 100 / measured_vertical_ruler_mm "
+                             "from a --print-correction-y 1.0 print (default: 1.0)")
     args = parser.parse_args()
 
     zones = ["pickup", "place"] if args.zone == "both" else [args.zone]
     os.makedirs(args.out_dir, exist_ok=True)
 
     for zone_name in zones:
-        canvas, dpi = render_sheet(zone_name, args.dpi)
+        canvas, dpi = render_sheet(zone_name, args.dpi,
+                                    args.print_correction_x, args.print_correction_y)
         path = os.path.join(args.out_dir, "%s_zone_A4.png" % zone_name)
         # dpi metadata so a print dialog's "Actual Size" reproduces the real
-        # mm scale -- still verify with the ruler, since not every viewer or
+        # mm scale -- still verify with the rulers, since not every viewer or
         # driver respects it.
         Image.fromarray(canvas).save(path, dpi=(dpi, dpi))
-        ids, _ = ZONES[zone_name]
-        print("wrote %s  (%s, AprilTag 36h11 IDs %s, %d dpi)"
-              % (path, zone_name, list(ids), dpi))
+        print("wrote %s  (%s, AprilTag 36h11 IDs %s, %d dpi, correction x%.4f y%.4f)"
+              % (path, zone_name, list(ZONES[zone_name]), dpi,
+                 args.print_correction_x, args.print_correction_y))
 
-    print("\nPrint at 100% / Actual Size -- NOT 'Fit to page'. Verify the ruler "
-          "on the printed sheet measures exactly 100.0 mm before trusting anything else.")
+    print("\nPrint on Letter paper. If your printer offers 100%% / Actual Size, use "
+          "it. Either way, measure BOTH rulers on the sheet (top = horizontal, "
+          "right side = vertical; each should read 100.0 mm) before trusting the "
+          "layout. If either is off, rerun with:")
+    print("  --print-correction-x = 100.0 / measured_horizontal_mm")
+    print("  --print-correction-y = 100.0 / measured_vertical_mm")
 
 
 if __name__ == "__main__":

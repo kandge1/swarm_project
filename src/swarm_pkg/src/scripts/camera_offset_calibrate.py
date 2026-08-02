@@ -66,6 +66,7 @@ import rclpy
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import tool_frame_check  # noqa: E402
+import zone_vision as zv  # noqa: E402
 from pick_place import (  # noqa: E402
     GRIPPER_OPEN,
     MAX_HOVER_Z,
@@ -113,7 +114,7 @@ def main():
                         help="surveyed zone centre in world metres")
     parser.add_argument("--zone-yaw", type=float, default=0.0,
                         help="zone rotation about +Z, degrees")
-    parser.add_argument("--zone-size", type=float, default=0.1524)
+    parser.add_argument("--zone-size", type=float, default=zv.DEFAULT_ZONE_SIZE)
     parser.add_argument("--flange-x", type=float, default=None,
                         help="flange X for both stills (default: zone centre X)")
     parser.add_argument("--flange-y", type=float, default=None,

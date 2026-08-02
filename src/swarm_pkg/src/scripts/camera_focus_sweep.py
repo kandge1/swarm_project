@@ -49,6 +49,7 @@ import rclpy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import zone_vision as zv  # noqa: E402
 from pick_place import (  # noqa: E402
     GRIPPER_OPEN,
     RobotIOClient,
@@ -71,7 +72,7 @@ def main():
     parser.add_argument("--zone-origin", type=float, nargs=3,
                         metavar=("X", "Y", "Z"), required=True)
     parser.add_argument("--zone-yaw", type=float, default=0.0)
-    parser.add_argument("--zone-size", type=float, default=0.1524)
+    parser.add_argument("--zone-size", type=float, default=zv.DEFAULT_ZONE_SIZE)
     parser.add_argument("--heights", type=float, nargs="+",
                         default=[0.150, 0.180, 0.205, 0.240, 0.280, 0.320],
                         help="flange heights to try, metres")
