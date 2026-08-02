@@ -11,7 +11,7 @@ slow, it is impossible. The reply is a few hundred bytes.
 
     # from either machine, with the arm parked at a hover
     ros2 service call /detect_block swarm_interfaces/srv/DetectBlock \\
-        "{zone: pickup, zone_x: 0.0, zone_y: 0.25, zone_z: 0.0, zone_yaw: 0.0}"
+        "{zone: pickup, zone_x: 0.0, zone_y: 0.2286, zone_z: 0.0, zone_yaw: 0.0}"
 
 READS THE CAMERA DIRECTLY (cv2.VideoCapture), not via a v4l2_camera_node topic.
 Changed 2026-07-31 -- it used to subscribe to /wrist_camera/image_raw, published

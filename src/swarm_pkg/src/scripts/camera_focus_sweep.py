@@ -3,7 +3,7 @@
 
 RUNS ON MARS. Needs camera.launch.py + block_detector_node.py on the Pi.
 
-    python3 camera_focus_sweep.py --zone-origin 0.0 0.254 0.0
+    python3 camera_focus_sweep.py --zone-origin 0.0 0.2286 0.0
 
 WHY
 ---

@@ -363,14 +363,14 @@ cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
 #    they are up -- use the service list, not the node list.
 ros2 service list | grep detect_block
 ros2 service call /detect_block swarm_interfaces/srv/DetectBlock \
-  "{zone: 'pickup', zone_x: 0.0, zone_y: 0.25, zone_z: 0.0, zone_yaw: 0.0}"
+  "{zone: 'pickup', zone_x: 0.0, zone_y: 0.2286, zone_z: 0.0, zone_yaw: 0.0}"
 
 # 2. detect and print the grasp pose, execute no descent
-python3 tag_pick_place.py --zone-origin 0.0 0.25 0.0 --dry-run \
+python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.0 --dry-run \
     --debug-image /tmp/zone.png --log /tmp/corrections.csv
 
 # 3. the real thing
-python3 tag_pick_place.py --zone-origin 0.0 0.25 0.0 --log /tmp/corrections.csv
+python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.0 --log /tmp/corrections.csv
 ```
 
 `--zone-origin` is the **surveyed** world pose of the zone centre. Nothing

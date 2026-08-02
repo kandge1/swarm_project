@@ -3,7 +3,7 @@
 
 RUNS ON MARS. Needs the Pi's camera + block_detector_node, and move_group here.
 
-    python3 camera_offset_calibrate.py --zone-origin 0.0 0.254 0.0
+    python3 camera_offset_calibrate.py --zone-origin 0.0 0.2286 0.0
 
 WHY THIS EXISTS
 ---------------

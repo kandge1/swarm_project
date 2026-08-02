@@ -76,13 +76,33 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 # spawn_world.py's output. NOT re-verified by an actual run yet -- watch the
 # first grasp closely.
 SPAWN_HEIGHT_CORRECTION = 0.035  # m, = old spawn_z (0.055) - new spawn_z (0.02)
-PICK_XYZ = (+0.000, +0.250, 0.030 + SPAWN_HEIGHT_CORRECTION)
-PLACE_XYZ = (+0.000, -0.250, 0.040 + SPAWN_HEIGHT_CORRECTION)
+#
+# ZONE RADIUS: 9 in = 0.2286 m, moved in from 0.250 m on 2026-08-02.
+#
+# This is a PHYSICAL change -- the mats were re-taped closer to the base -- and
+# the reason is reach, not neatness. Everything in this file and in
+# tag_pick_place.py that failed on hardware failed by asking for a flange
+# position a centimetre or two outside the workspace: the detection hover had to
+# drop 0.280 -> 0.240 to reach the zone at all, and the multiview survey has to
+# pull the flange IN from the zone centre because reaching outward is simply not
+# available. Pulling the zone itself in buys that margin back everywhere at once,
+# for free, instead of spending code on working around it.
+#
+# 0.2286 is exact (9 * 0.0254), not rounded, because the tag square, the block
+# database and the print sheets are all dimensioned in inches -- keep the whole
+# chain in one unit system so a 0.4 mm rounding error never has to be chased.
+ZONE_RADIUS_M = 9 * 0.0254   # 0.2286
+PICK_XYZ = (+0.000, +ZONE_RADIUS_M, 0.030 + SPAWN_HEIGHT_CORRECTION)
+PLACE_XYZ = (+0.000, -ZONE_RADIUS_M, 0.040 + SPAWN_HEIGHT_CORRECTION)
 # APPROACH_HEIGHT is how far above the grasp/place flange target to
 # pre-position for the straight-down descent. It is HARD-CAPPED by the arm's
-# reach, NOT a free choice: at the pick/place radius (0.25m) the flange can
+# reach, NOT a free choice: at a pick/place radius of 0.25m the flange could
 # only reach at all up to z~=0.21 (measured with scripts/reach_probe.py --
 # 0.21 works, 0.215 is already outside the workspace at ANY orientation).
+# The zone has since moved in to 0.2286, so that ceiling is now the CONSERVATIVE
+# side of the truth rather than the tight one; it has NOT been re-measured, so
+# nothing below has been raised to spend the slack. Re-run reach_probe.py at
+# 0.2286 before treating any of these numbers as headroom.
 # The place flange target (0.16) is the higher of the two, so keep
 # 0.16+APPROACH_HEIGHT <= ~0.205. Anything taller puts the hover outside the
 # reachable workspace, where every IK seed legitimately fails to converge
@@ -450,6 +470,15 @@ SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG = 0.95
 #     dependence are entirely unmeasured, so it is not known to hold anywhere
 #     else in the workspace -- and Stage 1 onward grasps at arbitrary positions
 #     inside the zone.
+#     THIS BIT HAS NOW ACTUALLY EXPIRED, 2026-08-02: the zones moved in to
+#     ZONE_RADIUS_M = 0.2286, so no grasp happens at the fitted reach any more.
+#     Direction of the error is known even though the size is not -- less reach
+#     means a shorter gravity lever, so the true sag at 0.2286 is SMALLER than at
+#     0.249 and these constants now OVER-correct. Left unchanged deliberately
+#     rather than scaled by a guessed cos/lever ratio: 2.5 cm is ~10% of reach,
+#     the residuals being corrected are 1-3 deg, so the error introduced is a
+#     fraction of a degree -- smaller than the scatter the fit was made against.
+#     Re-fit from a real run before trusting sub-millimetre placement.
 #   - The payload term is fitted to ONE block mass.
 #   - The flange-to-jaw lever is 0.056 m, so 1 deg of residual tilt is 1.0 mm of
 #     jaw offset, and a 30 mm block tilted 1 deg has its top face 0.5 mm out of

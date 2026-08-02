@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 """Read-only reachability probe (does NOT move the arm).
 
-For the pick column (0, +0.25, z) and place column (0, -0.25, z), sweep
-height z and, at each height, find the SMALLEST orientation tolerance at
+For the pick column (0, +ZONE_RADIUS_M, z) and place column (0, -ZONE_RADIUS_M,
+z), sweep height z and, at each height, find the SMALLEST orientation tolerance at
 which the fixed downward grasp orientation becomes reachable via /compute_ik.
 Also does a fully-free-orientation position check to confirm the position
 itself is reachable at all. Tells us whether straight-down is achievable at
 the hover heights or only lower on the column.
 """
 import math
+import os
+import sys
+
 import rclpy
 from rclpy.node import Node
 from moveit_msgs.srv import GetPositionIK
 from moveit_msgs.msg import Constraints, PositionConstraint, OrientationConstraint
 from geometry_msgs.msg import PoseStamped, Pose
 from shape_msgs.msg import SolidPrimitive
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pick_place import ZONE_RADIUS_M  # noqa: E402
 
 GROUP_NAME = "arm_group"
 POSE_LINK = "joint6_flange"
@@ -25,7 +31,12 @@ QX, QY, QZ, QW = -0.7071, 0.7071, 0.0, 0.0
 
 POS_TOL = 0.03  # position sphere radius (m)
 ORI_TOLS = [0.05, 0.10, 0.15, 0.25, 0.40, 0.60, 0.90]  # rad, tried smallest first
-COLUMNS = [("pick  y=+0.25", 0.0, 0.25), ("place y=-0.25", 0.0, -0.25)]
+# Probe the columns the arm ACTUALLY works at, which moved 0.250 -> 0.2286 when
+# the mats were re-taped on 2026-08-02. Imported rather than repeated: the whole
+# point of this script is to re-measure the reach ceiling after a change like
+# that, so it must not be possible for it to probe a radius nobody uses.
+COLUMNS = [("pick  y=+%.4f" % ZONE_RADIUS_M, 0.0, +ZONE_RADIUS_M),
+           ("place y=-%.4f" % ZONE_RADIUS_M, 0.0, -ZONE_RADIUS_M)]
 HEIGHTS = [0.14, 0.16, 0.18, 0.20, 0.22, 0.24, 0.26, 0.28]
 
 

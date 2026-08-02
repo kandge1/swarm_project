@@ -175,7 +175,7 @@ The default calibration pose puts the flange at the zone centre, so the two stil
 zone corners, which is the framing the centre-aimed survey cannot get.
 
 ```bash
-python3 camera_offset_calibrate.py --zone-origin 0.0 0.254 0.0
+python3 camera_offset_calibrate.py --zone-origin 0.0 0.2286 0.0
 ```
 
 It prints the offset in the flange frame, ready to paste into
@@ -194,37 +194,51 @@ Origin is the **bottom of the robot base** — the URDF has `world -> g_base` at
 so world origin and the base's mounting plane are the same point. +X and +Y are world axes;
 the numbers below assume `zone_yaw = 0`, i.e. the mat squared to the robot.
 
-Zone centres come from `pick_place.py`'s hand-tuned `PICK_XYZ` / `PLACE_XYZ`:
+Zone centres come from `pick_place.py`'s `ZONE_RADIUS_M`, which `PICK_XYZ` / `PLACE_XYZ` are
+both built from:
 
 | zone | centre (mm from base origin) |
 |---|---|
-| pickup | `(0, +250)` |
-| place | `(0, −250)` |
+| pickup | `(0, +228.6)` |
+| place | `(0, −228.6)` |
 
-Tag **centres** on the corners of a 152.4 mm (6.00 in) square:
+**Moved in from ±250 mm on 2026-08-02**, and this is a physical re-taping of the mats, not a
+constant edit. Every hardware failure to date has been the arm asking for a flange position a
+centimetre or two outside its workspace — the detection hover had to come down 280 → 240 mm to
+reach the zone at all, the multiview survey has to pull the flange *inward* because reaching
+outward is not available, and `MAX_HOVER_Z` exists purely to clamp a hover that had drifted
+past the reach ceiling. Moving the zone in buys margin against all of those at once. 228.6 is
+9.00 in exactly; the tag square, the block sizes and the print sheets are all dimensioned in
+inches, so keeping the whole chain in one unit system means no 0.4 mm rounding error to chase
+later.
+
+Tag **centres** on the corners of a 101.6 mm (4.00 in) square:
 
 | zone | tag | zone-local (mm) | world from base (mm) | radius |
 |---|---|---|---|---|
-| pickup | 0 | (−76.2, −76.2) | **(−76.2, +173.8)** | 189.8 |
-| pickup | 1 | (+76.2, −76.2) | **(+76.2, +173.8)** | 189.8 |
-| pickup | 2 | (+76.2, +76.2) | **(+76.2, +326.2)** | 335.0 |
-| pickup | 3 | (−76.2, +76.2) | **(−76.2, +326.2)** | 335.0 |
-| place | 4 | (−76.2, −76.2) | **(−76.2, −326.2)** | 335.0 |
-| place | 5 | (+76.2, −76.2) | **(+76.2, −326.2)** | 335.0 |
-| place | 6 | (+76.2, +76.2) | **(+76.2, −173.8)** | 189.8 |
-| place | 7 | (−76.2, +76.2) | **(−76.2, −173.8)** | 189.8 |
+| pickup | 0 | (−50.8, −50.8) | **(−50.8, +177.8)** | 184.9 |
+| pickup | 1 | (+50.8, −50.8) | **(+50.8, +177.8)** | 184.9 |
+| pickup | 2 | (+50.8, +50.8) | **(+50.8, +279.4)** | 284.0 |
+| pickup | 3 | (−50.8, +50.8) | **(−50.8, +279.4)** | 284.0 |
+| place | 4 | (−50.8, −50.8) | **(−50.8, −279.4)** | 284.0 |
+| place | 5 | (+50.8, −50.8) | **(+50.8, −279.4)** | 284.0 |
+| place | 6 | (+50.8, +50.8) | **(+50.8, −177.8)** | 184.9 |
+| place | 7 | (−50.8, +50.8) | **(−50.8, −177.8)** | 184.9 |
 
 Ordering is `ZONE_CORNER_SIGNS`, counter-clockwise from the −X−Y corner. Note it is applied
 per-zone, so tag 4 sits at the place zone's −X−Y corner, which is its FAR side from the robot.
 
 Two things to notice before printing:
 
-- **The far tags sit at 335 mm radius**, well outside the 249 mm the arm actually works at.
-  They only need to be *seen*, not reached, so this is fine — but it is the number that decides
-  the FOV go/no-go (Stage 0b.2), and it grew when the tag square went 4in → 6in.
+- **The far tags sit at 284 mm radius**, outside the ~249 mm the arm works at. They only need
+  to be *seen*, not reached, so this is fine — but it is the number that decides the FOV go/no-go
+  (Stage 0b.2). It was 335 mm at the 6 in square and ±250 mm zone; the 4 in square and the move
+  in to ±228.6 each took a bite out of it, which is most of why the survey stills now frame all
+  four tags instead of clipping two off the edge.
 - **Placement accuracy is yours, not the printer's.** The zone size is set by where you put the
-  tag centres with a ruler. `zone_size` is a parameter; if you end up with 150 mm instead of
-  152.4, measure it and pass the real number rather than forcing the placement.
+  tag centres with a ruler. `zone_size` is a parameter; if you end up with 100 mm instead of
+  101.6, measure it and pass the real number rather than forcing the placement. The same goes
+  for the 228.6 mm zone radius — it is `--zone-origin`, so measure what you actually taped.
 
 ### Printing: `print_tag_sheet.py`
 
@@ -376,6 +390,14 @@ redundant — this run already measured repeatability as a by-product.
 **The caveat: J0 backlash, 1.83 deg = 8.0 mm at r = 0.25 m.** Larger than the dead zone
 itself, and J0 is the joint that swings the gripper laterally across the zone. Any correction
 that reverses direction spends its first 8 mm taking up slack and does nothing visible.
+
+The **degrees** are the measurement; the millimetres are that angle times the radius, so they
+shrink slightly now that the zones sit at 0.2286 m rather than 0.25 — 1.83 deg is 7.3 mm there,
+and the dead band's 0.99 deg is 3.9 mm rather than 4.3. Not enough to change any conclusion
+(the backlash still exceeds the dead zone, which is the whole point), and the thresholds below
+have deliberately **not** been re-tuned for a 9% effect that is well inside the scatter they
+were set against. Recorded so the next person does not read a stale millimetre figure as a
+fresh measurement.
 
 ### What this changed
 

@@ -11,8 +11,8 @@ the network. See APRIL_TAGS.md for the whole design.
 
     # mars: planning, then this
     ros2 launch mycobot_280pi_camera_moveit2 real_robot_planning.launch.py
-    python3 tag_pick_place.py --zone-origin 0.0 0.25 0.0 --dry-run
-    python3 tag_pick_place.py --zone-origin 0.0 0.25 0.0
+    python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.0 --dry-run
+    python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.0
 
 Everything about arm motion is imported from pick_place.py rather than
 reimplemented -- same RobotIOClient, same seeded IK, same trapezoidal timing,
@@ -58,6 +58,7 @@ from pick_place import (  # noqa: E402
     GRIPPER_OPEN,
     HOME_RADIANS,
     PLACE_XYZ,
+    ZONE_RADIUS_M,
     RobotIOClient,
     cartesian_move_to,
     go_home,
@@ -159,24 +160,57 @@ SETTLE_AFTER_MOVE_SEC = 0.6          # let the arm stop ringing before a still
 # 0.240 keeps focus: the lens sits ~16.5 mm below the flange at the detection
 # wrist yaw (flange 0.280 -> lens 0.2635, measured), so this puts the lens at
 # ~0.2235 -- still above the measured ~0.220 focus floor, with ~20 mm more reach.
+#
+# NOT raised back up when the zone moved in to 0.2286 on 2026-08-02, even though
+# the reach argument that forced it down is now much slacker. The 0.220 focus
+# floor is the OTHER constraint on this number and it did not move: at 0.240 the
+# lens sits ~3 mm above it, so there is far more room to go DOWN-and-lose-focus
+# than there is reason to go up. Raising it would trade a measured-good
+# detection height for reach margin that is no longer scarce.
 DETECT_HOVER_Z = 0.240
 
 # How far to pull the flange IN from the zone centre, toward the base, before
-# aiming with look_at_quat. MEASURED, from the exact pose verified on hardware
-# 2026-07-31: flange y=0.200 at z=0.280 against a zone centre at y=0.254
-# converged on real IK seeds and decoded 2 tags. 0.254 - 0.200 = 0.054m.
+# aiming with look_at_quat.
 #
-# NOT derived from camera_offset_world(). That was the first attempt and it is
-# a real bug worth naming: camera_offset_world's lateral offset is YAW-
-# DEPENDENT and its sign flips between wrist yaw 0 (-38.9mm) and yaw 180
-# (+41.0mm) at this zone. Using the yaw=0 value pulled the flange OUTWARD to
-# y=0.293 instead of inward -- past anything ever verified reachable, so every
-# one of the 4 multiview stills failed all 19 IK seeds and fell back to a
-# planning failure. look_at_quat aims via ROTATION, not by placing the flange
-# at a precise lens-offset distance, so the multiview flange position does not
-# need a per-yaw lens offset at all -- it only needs to be somewhere reachable
-# near the zone, and this is the specific spot already proven to be that.
-DETECT_HOVER_PULLIN_M = 0.054
+# 0.054 until 2026-08-02, and that number was a COMPROMISE, not a target: it was
+# the pull-in that put the flange at y=0.200 against a zone centre at y=0.254,
+# which was the deepest pose actually verified reachable at the time. Centring
+# the lens over the zone would have wanted the flange at 0.254 - 0.041 = 0.213,
+# which that run had already failed to reach. So the survey ran 13 mm off-centre
+# because that was what the arm could do.
+#
+# The zone moving in to ZONE_RADIUS_M = 0.2286 removes the compromise. Lens
+# centring now wants the flange at 0.2286 - 0.041 = 0.1876, which sits INSIDE
+# the band already proven good on hardware (0.1529 reached fine and gave the
+# best still of that run; 0.200 reached fine). So take the geometrically right
+# answer instead of the reachable-compromise one.
+#
+# 0.041 is not a fresh guess either -- it is the measured lateral lens offset in
+# world metres at the DETECTION wrist yaw (camera_offset_world(180) = +41.0 mm,
+# pointing outward, away from the base). Pull the flange in by exactly that and
+# the lens lands on the zone centre. Framing at the four survey yaws improves
+# across the board, computed against this geometry:
+#
+#     yaw 180 -> 13.0 mm off centre  ==>   0.4 mm      (3.1 deg tilt -> 0.1)
+#     yaw 150 -> 26.8 mm             ==>  20.3 mm      (6.4 deg -> 4.8)
+#     yaw 210 -> 27.5 mm             ==>  21.1 mm      (6.5 deg -> 5.0)
+#     yaw 120 -> 47.5 mm             ==>  39.6 mm      (11.2 deg -> 9.4)
+#
+# and the starting flange sits 37.6 mm above MIN_FLANGE_RADIUS_M rather than
+# 24.6 mm, so the correction loop has more room to walk inward before it clamps.
+#
+# THE SIGN TRAP IS STILL LIVE, so read this before touching it: 0.041 is used
+# here as a fixed RADIAL pull-in, not by calling camera_offset_world() per move.
+# That offset's sign FLIPS with wrist yaw -- -38.9 mm at yaw 0, +41.0 mm at
+# yaw 180 -- and an earlier version that derived the flange position from it at
+# the wrong yaw pushed the survey OUTWARD to y=0.293 instead of inward, past
+# anything reachable, failing all 19 IK seeds on all 4 stills. The multiview
+# stills deliberately sweep the wrist yaw, so the offset is genuinely different
+# for each one and there is no single value to derive from. look_at_quat aims by
+# ROTATING, so the flange does not have to sit at a yaw-precise lens distance --
+# it only has to be somewhere reachable near the zone. The 41 mm below buys good
+# framing at the yaw the survey leans on; it is not a per-still correction.
+DETECT_HOVER_PULLIN_M = 0.041
 
 # Hard floor on how close to the base the flange may be commanded, in the XY
 # plane. NOT a reachability limit -- IK converges happily inside it, and
@@ -266,7 +300,8 @@ def _pullin_toward_base(x, y, pullin_m):
 # The lens sits ~40 mm off the flange axis, so as the wrist turns, the lens
 # swings around a circle of that radius. The survey flange is pulled
 # DETECT_HOVER_PULLIN_M toward the base, so the two only cancel at one yaw.
-# Measured distance from the lens to the zone centre, at the survey flange:
+# Measured distance from the lens to the zone centre, at the survey flange
+# (zone at 0.254, pull-in 54 mm -- the run this was decided from):
 #
 #     yaw    0 deg -> 85.8 mm off centre, 18.9 deg of aiming tilt
 #     yaw   90 deg -> 62.2 mm off centre, 13.6 deg
@@ -278,11 +313,20 @@ def _pullin_toward_base(x, y, pullin_m):
 # and decoded one each. The 6 in zone is NOT too big -- the camera is simply not
 # over it at three of the four offsets.
 #
-# The fix cannot be to push the flange out to re-centre the lens: that needs
-# y ~ 0.286, and the same run had ALL 19 IK seeds fail at y = 0.245 already.
-# Reaching outward is not available at DETECT_HOVER_Z. So instead cluster the
-# offsets near 180, where the lens offset points TOWARD the zone and the flange
-# we can actually reach is the one that centres the camera.
+# At the time the fix could not be to push the flange out to re-centre the lens:
+# that needed y ~ 0.286, and the same run had ALL 19 IK seeds fail at y = 0.245
+# already. Reaching outward was not available at DETECT_HOVER_Z. So instead
+# cluster the offsets near 180, where the lens offset points TOWARD the zone and
+# the flange we can actually reach is the one that centres the camera.
+#
+# THE CLUSTERING STAYS after the 2026-08-02 zone move, and it is worth saying why
+# rather than assuming. Moving the zone in to 0.2286 lets the pull-in drop to
+# 41 mm and genuinely centre the lens (0.4 mm off at yaw 180, was 13.2), and it
+# shrinks the off-centre distance at every other yaw too -- but only by that same
+# ~13 mm, because the lens still swings on a 40 mm circle whatever the flange
+# radius. yaw 0 would still land ~73 mm off centre over a zone that is now 4 in
+# across, i.e. still off the mat. The zone move fixed the REACH problem; it does
+# not fix the lens-swing problem, and those were always two separate things.
 #
 # This keeps the property the design actually depends on -- see the note above:
 # the angles do not need to be accurate or known, they only have to CHANGE which
@@ -355,11 +399,16 @@ CAMERA_MOUNT_FLIPPED = True
 #
 # This is NOT redundant with the flip above, and the reachability arithmetic is
 # why. With the lens physically on the near side of the flange, putting it over
-# a zone centre 254 mm out would need the FLANGE at 295 mm -- past this arm's
-# reach. Rotating the wrist 180 deg swings the lens to the far side, so the same
-# lens position needs the flange at only 213 mm, which is precisely where the arm
-# already parked this run. The flip tells the code which side the lens is on; this
-# picks the wrist angle that makes the required flange position reachable.
+# the zone centre would need the FLANGE ~41 mm FURTHER OUT than the zone --
+# 295 mm when the zone was at 254, and 270 mm now that it is at 228.6. Both are
+# past this arm's reach at DETECT_HOVER_Z. Rotating the wrist 180 deg swings the
+# lens to the far side, so the same lens position needs the flange 41 mm INSIDE
+# the zone instead: 213 mm then, 188 mm now (== DETECT_HOVER_PULLIN_M's whole
+# derivation). The flip tells the code which side the lens is on; this picks the
+# wrist angle that makes the required flange position reachable.
+#
+# Note the zone move did not make this optional. It bought ~25 mm of margin; the
+# wrong wrist yaw costs ~82 mm (41 out instead of 41 in). Still nowhere near.
 #
 # Detection-only. The grasp descent still uses the block's own yaw -- rotating the
 # wrist about its own axis moves the jaws' orientation, not the flange position,
@@ -441,7 +490,11 @@ def look_at_quat(flange_xyz, target_xyz, block_yaw_deg=0.0, iterations=2):
     Why this exists, and why "no orientation constraint" is not the alternative:
     detection needs the camera >= ~220 mm above the mat to focus (measured
     2026-07-30), and the arm cannot hold a straight-DOWN camera that high over a
-    zone 254 mm out -- every IK seed fails. The tempting shortcut is to drop the
+    zone 254 mm out -- every IK seed fails. (The zone has since moved in to
+    228.6 mm, which relieves that particular case; this function stays because
+    the reasoning below about WHY "no constraint" is the wrong fix is unaffected
+    by how far out the zone is, and because aiming beats a free planner at any
+    radius.) The tempting shortcut is to drop the
     orientation constraint entirely and let the planner reach the position any
     way it likes. That was tried on hardware and is actively bad: OMPL is then
     free to satisfy position alone, and it chose joint6_to_joint5 = -2.40 rad at
@@ -714,7 +767,7 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
     flange = _pullin_toward_base(target_world[0], target_world[1],
                                  DETECT_HOVER_PULLIN_M)
 
-    # The pull-in is a fixed 54 mm and takes no account of how far out the
+    # The pull-in is a fixed 41 mm and takes no account of how far out the
     # target started, so a block on the near side of the zone can land the
     # STARTING pose inside the self-collision floor before a single correction
     # has run. Clamp outward rather than refuse: from the floor the loop still
@@ -1056,7 +1109,8 @@ def parse_args():
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--zone-origin", type=float, nargs=3,
-                        metavar=("X", "Y", "Z"), default=[0.0, 0.25, 0.0],
+                        metavar=("X", "Y", "Z"),
+                        default=[0.0, ZONE_RADIUS_M, 0.0],
                         help="SURVEYED world pose of the pickup zone centre and "
                              "the plane the blocks sit on. Nothing measures this "
                              "-- every world coordinate this script reports is "
