@@ -359,6 +359,45 @@ reach and no grasp happens there any more. Direction is known — less reach, le
 droop, so it now over-corrects — magnitude is a fraction of a degree, inside the
 scatter of the original fit.
 
+**Correction, 2026-08-02: the droop is much larger than "a fraction of a
+degree", and the reason it looked small was a bug in the measurement.**
+
+`serial_rate_probe.py`'s `POSTURES` table stored gravity moment arms as
+*unsigned* magnitudes. Five of the six postures put the arm on one side of the
+shoulder axis (J2 from 0 to −90°); `extended` puts it on the other (J2 = +45°),
+so gravity loads it the opposite way. Taking `abs()` folded the two halves
+together and regressed the residual against a quantity that is not physical.
+
+Re-analysed with the sign restored, and with the residual split into the part
+that reverses with travel direction (friction/dead zone) and the part that does
+not (gravity):
+
+| | residual vs **unsigned** arm | residual vs **signed** arm |
+|---|---|---|
+| J2 shoulder | R² 0.00 / 0.03 | **R² 0.77 / 0.93** |
+| J3 elbow | R² 0.09 / 0.10 | **R² 0.87 / 0.88** |
+
+(test1_full.csv 2026-07-29 / test2_full.csv 2026-08-02.) Gravity droop is the
+**largest modelable error on the pitch joints**, roughly −5°per metre of moment
+arm, and it is clean enough to feed forward. The old `abs()` is also what made
+`report_sweep` print "They DISAGREE … do not use this slope as a feedforward"
+on every run it ever did.
+
+Both files are fixed: `POSTURES` now carries signed arms for all six joints,
+and `report_sweep` splits symmetric from antisymmetric before fitting. The
+self-check passes — J1, whose gravity arm is 0 by construction, comes out with a
+symmetric term of −0.11° and an antisymmetric term of +0.90°, which is half its
+1.67° measured backlash, exactly as it must be.
+
+**Consequence for `SAG_PRECOMP_*`: do not delete it yet.** It corrects flange
+*tilt*, which is the sum of the droop of every pitch joint. The sweep only ever
+covered joints 0–2, and J2+J3 together account for only ~1.4° of the ~4.2°
+measured tilt. **Joint 3 (`joint5_to_joint4`) carries a gravity arm of ±0.119 m
+— as much as joint 2 — and has never been measured.** It is now in the default
+`--sweep-joints`. Measure it before replacing the empirical tilt hack with a
+joint-space feedforward, or the replacement will fix a third of the problem and
+over-correct the rest.
+
 ---
 
 ## Offline tests (no robot, no mars launch needed)
