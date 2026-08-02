@@ -364,7 +364,20 @@ JOINT_LIMITS_RAD = [
 # belong here. See pick_place.py's SAG_PRECOMP_* -- which must be re-measured
 # against this, because it was fitted to cancel the WHOLE 4.19 deg empirically
 # and will now over-correct.
-GRAVITY_FF_ENABLED = True
+#
+# Overridable from the environment so the A/B does not cost a rebuild. This
+# file is installed by CMake and launched from the install tree, so flipping a
+# module constant means `colcon build` -- which on the robot also recompiles
+# mycobot_hardware's C++. Setting MYCOBOT_GRAVITY_FF=0 in the launching shell
+# is one restart instead:
+#
+#     MYCOBOT_GRAVITY_FF=0 ros2 launch mycobot_280pi_camera_moveit2 \
+#         real_robot_hardware.launch.py
+#
+# The value is echoed at startup, so the log says which half of the A/B a run
+# actually was rather than leaving it to the label on the mars side.
+GRAVITY_FF_ENABLED = os.environ.get("MYCOBOT_GRAVITY_FF", "1").strip().lower() \
+    not in ("0", "false", "no", "off")
 
 # joint index -> (intercept_deg, deg per metre of signed moment arm).
 # commanded = target + (intercept + slope * arm), because the fit is of
@@ -1375,11 +1388,55 @@ class Bridge:
             return
 
         with self.state.lock:
+            # COMPARE AGAINST THE LAST COMMAND ACTUALLY SENT, NOT THE LAST ONE
+            # RECEIVED. Fixed 2026-08-02; the difference is the whole bug.
+            #
+            # This used to compare `positions` against `self.state.command` --
+            # the previous setpoint from JTC -- and then overwrite it on the
+            # very next line. So the test was "did the setpoint move more than
+            # 0.001 rad SINCE THE LAST CONTROL CYCLE", which a slow trajectory
+            # never satisfies, and the difference never accumulates because the
+            # reference moves with it.
+            #
+            # ros2_control runs at 100Hz, so over a 6s trajectory:
+            #
+            #    141 deg move -> 0.00410 rad/cycle   4.1x epsilon  -> forwarded
+            #      8 deg move -> 0.00023 rad/cycle   0.2x epsilon  -> NEVER SENT
+            #
+            # The slowest move that could get through at all was ~34 deg in 6s.
+            # Anything gentler was silently dropped in full: `command_dirty` was
+            # never set, the background loop never wrote, and the arm sat still
+            # while `state.command` walked all the way to the target.
+            #
+            # Confirmed on hardware 2026-08-02. An 8 deg move logged exactly ONE
+            # `TIMING dt=` line for the entire 6s trajectory -- the first cycle,
+            # whose jump from the held pose to the trajectory's first setpoint
+            # was large enough to clear epsilon -- and nothing after it.
+            #
+            # It also broke the end-of-trajectory detector below, for the same
+            # reason: `command_changed_monotonic` is only stamped when `changed`
+            # is true, so during a slow ramp it went stale and
+            # _serial_settle_if_needed concluded the trajectory was over and
+            # started correcting 1s into a 6s move. That is why the log shows
+            # settle re-sends racing a trajectory that was still running.
+            #
+            # THIS IS THE LIKELIEST REASON NO GRASP DESCENT HAS EVER COMPLETED.
+            # A 5cm descent is ~6 deg over ~4s = 0.00026 rad/cycle, 0.3x epsilon
+            # -- squarely inside the dead zone this created.
+            #
+            # Against last_sent the deltas accumulate instead, so a slow ramp is
+            # forwarded as soon as it has moved a real 0.001 rad, and fast moves
+            # behave exactly as before (they cleared the threshold every cycle
+            # either way). The epsilon keeps doing its original job of not
+            # re-sending a genuinely unchanged target.
+            reference = (self.state.last_sent
+                         if self.state.last_sent is not None
+                         else self.state.command)
             changed = (
-                self.state.command is None
+                reference is None
                 or any(
                     abs(a - b) > COMMAND_CHANGE_EPSILON_RAD
-                    for a, b in zip(positions, self.state.command)
+                    for a, b in zip(positions, reference)
                 )
             )
             gripper_moved = (
@@ -1526,6 +1583,12 @@ def main():
           f"max command rate={args.max_command_rate}Hz, "
           f"motion read interval={args.motion_read_interval}s, "
           f"speed={args.min_speed}..{args.speed}")
+    # Say this out loud at startup. An A/B whose two halves are labelled on the
+    # mars side is only as good as whether the robot was actually relaunched,
+    # and "the numbers came out identical" is a much worse way to find out.
+    print(f"[mycobot_bridge] gravity feedforward: "
+          f"{'ENABLED' if GRAVITY_FF_ENABLED else 'DISABLED'} "
+          f"(MYCOBOT_GRAVITY_FF={os.environ.get('MYCOBOT_GRAVITY_FF', '<unset, default on>')})")
 
     # Seed shared state with a real initial read before accepting any
     # connections, so the first read() a client makes doesn't race the

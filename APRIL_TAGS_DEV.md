@@ -440,6 +440,49 @@ signal. The fix is a unidirectional final approach, still not implemented.
 
 ---
 
+## SLOW MOVES WERE NEVER SENT TO THE ARM AT ALL (found and fixed 2026-08-02)
+
+Found on the first `ff_verify.py` run. An 8° move produced **zero motion for
+60 s** while the goal was accepted normally. The robot-side log gave it away in
+one line: **exactly one `TIMING dt=` entry for the entire 6 s trajectory.**
+
+`write_command()` compared each incoming setpoint against the **previously
+received** one and then overwrote it on the next line. So the test was "did the
+setpoint move more than `COMMAND_CHANGE_EPSILON_RAD` = 0.001 rad *since the last
+control cycle*" — and because the reference moved along with it, the difference
+could never accumulate.
+
+At ros2_control's 100 Hz, over a 6 s trajectory:
+
+| move | per cycle | vs 0.001 epsilon | |
+|---|---|---|---|
+| pre-move, 141° | 0.00410 rad | 4.1× | forwarded |
+| main move, 8° | 0.00023 rad | **0.2×** | **never sent** |
+| a 5 cm grasp descent, ~6°/4 s | 0.00026 rad | **0.3×** | **never sent** |
+
+The slowest move that could get through at all was **~34° in 6 s**. Anything
+gentler was dropped in full — `command_dirty` never set, the loop never wrote,
+the arm sat still while `state.command` walked all the way to the target.
+
+It broke the end-of-trajectory detector too, for the same reason:
+`command_changed_monotonic` is only stamped when `changed` is true, so it went
+stale mid-ramp and `_serial_settle_if_needed` started correcting **1 s into a
+6 s move**. That is the settle-vs-trajectory race visible in the log.
+
+**This is the likeliest reason no grasp descent has ever completed.** A descent
+is precisely the shape that was being silently discarded.
+
+**Fixed** by comparing against the last command actually *sent*
+(`state.last_sent`), so deltas accumulate. Verified by replaying JTC's setpoint
+stream through the gate: the 8° move goes 0 → 120 forwarded commands, the
+descent 0 → 100, **large moves are unchanged at 600** (so no regression on the
+moves that already worked), and a held target still sends nothing — the epsilon
+keeps doing its original job of not re-spamming an unchanged target.
+
+**Not yet confirmed on hardware.**
+
+---
+
 ## Offline tests (no robot, no mars launch needed)
 
 ```bash

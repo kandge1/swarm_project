@@ -45,6 +45,27 @@ the joint error (gravity, which does not care which way you drove in). The
 ANTISYMMETRIC half -- friction, dead zone, lost motion -- is 0.4 to 0.9 deg per
 pitch joint, reverses with approach direction, and is untouched by any
 feedforward. Judge this by the CHANGE, not by the remainder.
+
+--------------------------------------------------------------------------
+--from-below NEEDS THE 2026-08-02 BRIDGE FIX BUILT ON THE ROBOT.
+--------------------------------------------------------------------------
+The first run of this script stalled: the pre-move ran fine and the 8 deg
+final approach then produced ZERO motion for 60 s. The robot-side log showed
+why -- exactly ONE `TIMING dt=` line for the whole 6 s trajectory.
+
+The cause was in mycobot_bridge.py's write_command(), which compared each
+incoming setpoint against the PREVIOUS RECEIVED one and then overwrote it. At
+ros2_control's 100 Hz an 8 deg / 6 s ramp advances 0.00023 rad per cycle,
+under the 0.001 rad COMMAND_CHANGE_EPSILON_RAD every single time, so the
+difference never accumulated and the command was never forwarded at all. It
+also went on to break the end-of-trajectory detector, which is why settle
+fired 1 s into a 6 s move. See that function's comment for the full writeup.
+
+Fixed by comparing against the last command actually SENT. Until the robot has
+that build, this flag will stall; run without it. The A/B is valid either way,
+because both runs take the identical path and backlash therefore contributes
+identically to both -- it is the DELTA between the runs that measures the
+feedforward, not either absolute number.
 """
 
 import argparse
@@ -154,10 +175,14 @@ def main():
                              "servos have stopped (default %(default)s)")
     parser.add_argument("--from-below", action="store_true",
                         help="approach the target from BELOW on every joint "
-                             "(pre-move -8 deg first). Backlash is direction "
-                             "dependent and un-correctable, so an A/B whose two "
-                             "runs arrive from different sides is not comparing "
-                             "the same thing. Use the same choice for both runs")
+                             "(pre-move -8 deg first) so backlash, which is "
+                             "direction dependent and un-correctable, enters "
+                             "both A/B runs identically. NEEDS the 2026-08-02 "
+                             "write_command fix built on the robot -- see the "
+                             "module docstring")
+    parser.add_argument("--approach-sec", type=float, default=2.0,
+                        help="duration of the --from-below final approach "
+                             "(default %(default)s)")
     args = parser.parse_args()
 
     target = ([math.radians(d) for d in args.degrees] if args.degrees
@@ -168,16 +193,34 @@ def main():
     try:
         io_client.wait_for_joint_states()
 
+        approach_sec = args.duration_sec
         if args.from_below:
-            pre = [t - math.radians(8.0) for t in target]
-            print(f"[ff_verify] pre-move 8 deg below target, so the final "
-                  f"approach is unidirectional...")
+            offset_deg = 8.0
+            pre = [t - math.radians(offset_deg) for t in target]
+            print("[ff_verify] pre-move {:.0f} deg below target, so the final "
+                  "approach is unidirectional...".format(offset_deg))
             io_client.arm_execute(_trajectory(pre, args.duration_sec))
             time.sleep(args.settle_sec)
+            approach_sec = args.approach_sec
+            # Warn, do not abort. Whether this move executes depends on which
+            # build the ROBOT is running, which this side cannot see -- and the
+            # first version of this check guessed wrong about the mechanism and
+            # would now block a move the fixed bridge handles fine.
+            per_cycle = math.radians(offset_deg) / max(1.0, approach_sec * 100.0)
+            print("[ff_verify] final approach: {:.0f} deg over {:.2f}s = "
+                  "{:.5f} rad per 100Hz control cycle".format(
+                      offset_deg, approach_sec, per_cycle))
+            if per_cycle < 0.001:
+                print("[ff_verify] NOTE: that is under the bridge's "
+                      "COMMAND_CHANGE_EPSILON_RAD. On a robot WITHOUT the "
+                      "2026-08-02 write_command fix this move will not execute "
+                      "at all and you will wait 60s for the timeout.")
+                print("[ff_verify] If it stalls, that is the missing build -- "
+                      "not the feedforward. Re-run without --from-below.")
 
         print(f"[ff_verify] [{args.label}] commanding target over "
-              f"{args.duration_sec}s...")
-        ok = io_client.arm_execute(_trajectory(target, args.duration_sec))
+              f"{approach_sec}s...")
+        ok = io_client.arm_execute(_trajectory(target, approach_sec))
         if not ok:
             print("[ff_verify] controller REJECTED the goal -- nothing measured.")
             return 1
