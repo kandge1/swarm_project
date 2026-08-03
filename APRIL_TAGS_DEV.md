@@ -469,11 +469,268 @@ its mean error exceeds its own spread.
 This run did **not** exercise the `write_command` fix — home→grasp is 2.2 rad,
 which cleared the old epsilon anyway. That remains unverified.
 
-**J1 backlash is untouched and is now the largest single error**: 1.75° =
-7.6 mm at 250 mm reach, bigger than the droop's Cartesian effect. It is not
-correctable by feedforward *or* feedback — on a reversal the joint does not move
-at all (43/62 reversing corrections stalled in test3), so there is no error
-signal. The fix is a unidirectional final approach, still not implemented.
+### The leftover tilt is the MOUNT, not sag (2026-08-03)
+
+The arm still visibly slouched after the feedforward landed, so the grasp pose
+was sampled directly from `/joint_states`, once at rest and once with the
+gripper held physically vertical by hand.
+
+**At rest the joints were already at their commanded target** — `joint3_to_joint2`
+off by **−0.12°**, `joint4_to_joint3` by **−0.12°**. The joint-space droop is
+gone. And the URDF puts the flange **0.17° from straight down** at those exact
+values. The arm is doing what it was told; the tool is not where the URDF says.
+
+Holding it physically vertical took **+1.05° on `joint3_to_joint2`** and
+**+0.53° on `joint4_to_joint3`**, everything else under 0.2° — a **1.68°
+tool-frame rotation** from the commanded orientation.
+
+That is a fixed geometric offset, and it must **not** go into
+`GRAVITY_FF_COEFFS`: those are scaled by the gravity moment arm, so a constant
+folded in there would be right at this one pose and wrong everywhere else. It
+belongs in `GRIPPER_MOUNT_TILT_*`, which post-multiplies in the tool frame and
+therefore rotates with the gripper — so it generalises across the workspace
+even though it was measured at one pose. Now set to **X −0.37, Y −1.48**
+(the −0.71° yaw component is dropped; rotation about the approach axis only
+spins the jaws and `GRIPPER_YAW_DEG` already owns that).
+
+It looked worse than before because `SAG_PRECOMP_*` had been empirically
+cancelling this constant, and zeroing it left the offset uncorrected.
+
+**The let-go test, answered 2026-08-03.** Held vertical and released, the arm
+**droops back** every time. Held there, the servo neither resists (no whine)
+nor drives. So the joint has ~1° of free play, the servo exerts no torque
+anywhere inside it, and gravity parks the arm at the bottom — consistently, in
+the same direction, because gravity does not change direction.
+
+That is *why feedforward is the only tool that works here*: the servo sees no
+error inside the window, so no amount of feedback or integrator gain can act on
+it, but the resting position is deterministic and can therefore be aimed past.
+
+**Critically, the encoder SEES the play** — it moved +1.05° when the arm was
+lifted by hand. If the play sat between the encoder and the output link the
+reading could not have changed. So it is upstream of the encoder, and
+`/joint_states` reads the true joint angle. That is what makes it a valid
+instrument for calibrating any of this.
+
+**And that is why the play does not explain the tilt.** At rest the encoder
+reads −0.12° from target and the URDF puts the flange 0.17° from vertical
+there, yet it is visibly tilted. 0.12° of joint error cannot make 1.68° of tool
+tilt, so ~1.5° is unaccounted for *in encoder space* — either the physical
+mount not matching the URDF's two hand-authored right angles, or J2's encoder
+zero being off. Indistinguishable from this data, and both fixed by the same
+tool-frame correction.
+
+**Play is not backlash.** test3 measured J2's backlash at **0.44°, the smallest
+of the pitch joints** (J3 0.79, J4 0.61), against 1.05° of measured free play.
+The excess is elastic compliance, which is load-dependent — and J2 shows it
+worst because it carries the largest gravity moment arm (0.24 m at the grasp).
+That part is already modelled; the FF predicted +0.77° on J3 against +0.75°
+measured.
+
+**Still open:** the same pose measured **−0.65 / −0.83°** during the ff-on A/B
+versus **−0.12 / −0.12°** here — **~0.6° of run-to-run scatter on the same
+joints**, which is the free-play window showing up as noise and the reason
+`--repeats` exists before any coefficient is touched.
+
+### It is NOT a pure mount offset — it is pose-dependent (2026-08-03)
+
+`--hover-only` with `GRIPPER_MOUNT_TILT_* = (−0.37, −1.48)` live, then the same
+two-echo hand measurement at the hover. Only **one** joint moved:
+`joint3_to_joint2` by **+0.79°**; four of the six were bit-identical. The
+remaining correction is 0.80° (local X −0.63, Y −0.48), which would put the
+constants at **X −1.00, Y −1.96**.
+
+**Do not just apply that.** The required URDF tilt for a physically vertical
+tool measures:
+
+| pose | required |
+|---|---|
+| grasp | **~1.68°** |
+| hover | **2.86°** |
+
+A rigid mount error is a fixed rotation in the TOOL frame, so it would have to
+be the *same magnitude at both*. It is not — they differ by 1.2°. So part of
+this is pose-dependent, i.e. load-dependent compliance the gravity model
+under-predicts at the hover, and `GRIPPER_MOUNT_TILT_*` is the wrong home for
+that part.
+
+Fitting at the hover would over-correct the **grasp** by ~0.5°, and the grasp is
+where blocks are actually picked. `--grasp-only` was added to park at the grasp
+pose with the jaws open so the measurement can be repeated where it matters.
+
+**Correction, after a third measurement:** the pose-dependence above was mostly
+an artifact of the *first* sample. Total required measured 1.68° (nothing
+applied, judging the full 2.6° tilt by eye), 2.86° at the hover and 2.60° at the
+grasp — and the two taken *with* a correction live agree to 0.26°. Eyeballing
+"vertical" is far harder at 2.6° than at 0.8°. A single tool-frame constant is
+appropriate after all.
+
+### Converged, 2026-08-03 — `GRIPPER_MOUNT_TILT_* = (−1.96, −2.42)`
+
+| iteration | applied | residual tool rotation |
+|---|---|---|
+| 1 | 1.53° | 1.85° |
+| 2 | 3.11° | **0.63°** (0.54° of it actual tilt; 0.34° is yaw about the tool axis) |
+
+**`joint3_to_joint2` went from needing +1.58° to needing +0.17°.** The joint that
+dominated every earlier measurement is done.
+
+**Stopped deliberately.** 0.54° is inside the ~0.6° run-to-run scatter J2's free
+play produces at a single pose, so a fourth pass would fit the play rather than
+the offset. It is 0.5 mm of jaw offset against ~7 mm of J1 backlash — not the
+limiting error anywhere.
+
+**Not understood, recorded rather than hidden:** the URDF tilt at which the tool
+reads physically vertical grew from 2.60° to 4.53° between iterations 2 and 3 —
+the apparent offset moved when the command moved, which a genuinely fixed mount
+error would not do. The physical residual shrank as intended, so nothing is
+blocked, but these constants are an empirical fit, not a measured geometric
+constant. Re-fit rather than extrapolate if the tool assembly is disturbed.
+
+**J1 backlash is the largest single error**: 1.75° = 7.6 mm at 250 mm reach,
+bigger than the droop's Cartesian effect. It is not correctable by feedforward
+*or* feedback — on a reversal the joint does not move at all (43/62 reversing
+corrections stalled in test3), so there is no error signal to act on and no
+deterministic offset to aim past.
+
+**Unidirectional final approach implemented 2026-08-03**, `pick_place.py`:
+`j1_unidirectional_approach()` backs J1 off 3° and re-commands the planned
+target, so the last thing J1 does is always travel in `+J1_APPROACH_DIR` and
+always rests against the same flank of its own slack. The lost motion becomes a
+*constant* offset instead of a ±1.75° coin flip — and a constant is
+calibratable.
+
+Enabled via `unidirectional=True` on the two **pre-grasp / pre-place** moves
+only. Those are where J1 makes its large swing; the Cartesian descents that
+follow are near-vertical, so J1 barely turns and inherits its approach direction
+from them. Putting it on a descent would inject a 3° base rotation into a move
+whose entire job is not to move sideways.
+
+It runs inside `move_arm_to` because that is the only place the *commanded*
+joint target is known — re-approaching the achieved position instead would bake
+in whatever backlash offset the arrival happened to leave.
+
+**Best-effort by design:** the back-off leg is itself a reversal and is free to
+stall, which is the very effect being worked around. If it does, the re-approach
+is a no-op and the arm is where it would have been anyway, so a failure logs and
+continues rather than aborting the pick.
+
+**Depends on the `write_command` fix** — both legs are 3° joint moves, exactly
+the class the bridge was silently discarding. Verify that first.
+
+### All three verified on hardware 2026-08-03
+
+**1. `write_command` fix — CONFIRMED.** `ff_verify --from-below` runs its final
+approach at 0.00070 rad/cycle, **0.70× the old epsilon** — the exact case that
+stalled for 60 s on 2026-08-02. It completed.
+
+**2. The unidirectional premise — VALIDATED, by an independent route.** In
+`--repeats 3` every repeat returns home first, so all three approach identically.
+`joint2_to_joint1`'s spread collapsed to **0.18°** around a consistent mean of
+**+0.89°**, and `joint6output`'s was **0.00** (bit-identical across all three).
+That is the ±1.75° coin flip becoming a *constant* — exactly what the
+unidirectional approach exists to produce, and a constant is calibratable.
+
+The `--from-below` run is the counter-example that proves it: approaching from
+below reverses every joint at the end, and **every single error came out
+positive** (+0.95 / +1.38 / +1.11 / +0.74 / +0.70 / +0.95) — uniformly ~1° short.
+Consistent, but consistently offset.
+
+**3. Spread table** (`--repeats 3`, ff-on):
+
+| joint | mean | spread | |
+|---|---|---|---|
+| `joint2_to_joint1` | +0.89 | 0.18 | consistent — J1 backlash as a constant |
+| `joint3_to_joint2` | −0.41 | 0.09 | mean ≫ spread, real |
+| `joint4_to_joint3` | −0.21 | 0.27 | noise |
+| `joint5_to_joint4` | +0.04 | 0.18 | noise |
+| `joint6_to_joint5` | −0.38 | 0.62 | noise |
+| `joint6output` | +0.95 | 0.00 | consistent |
+
+`joint3_to_joint2`'s −0.41° is a real signal, **but do not act on it.**
+`GRIPPER_MOUNT_TILT_*` was fitted *on top of* the current feedforward, so
+changing `GRAVITY_FF_COEFFS` now invalidates that fit and both would have to be
+re-measured together. The two corrections are coupled from here on.
+
+**J2 and J3 are done.** At the grasp they read bit-identical between resting and
+being held physically vertical.
+
+### Iteration 3 diverged — reverted, and this is the stopping point
+
+Adding J4's apparently-actionable +0.62° took the constants to (−2.50, −2.73),
+3.70°, and made things **worse**:
+
+| applied | residual |
+|---|---|
+| 1.53° | 1.85° |
+| **3.11°** | **0.63°** ← best |
+| 3.70° | 1.43° — and J4 itself went +0.62° → **+2.02°** |
+
+**Why the gate was wrong**, since the mistake is easy to repeat: J4's residual
+was measured while IK **re-solves the orientation every run**, while
+`ff_verify`'s 0.18° spread was measured with **fixed joint angles** commanded
+directly. Those are not the same noise. Each change to the commanded orientation
+makes IK redistribute the tilt across the wrist, so a residual measured at one
+orientation does not predict the residual at another — J4 simply absorbed more
+of the larger tilt. The iteration is only valid for steps small enough that IK
+returns essentially the same solution, and 0.6° was already past that.
+
+It was also heading for a cliff: the next step implied 5.66° against
+`IK_ORI_XY_TOLERANCE`'s 5.73°, where IK may discard the request silently.
+
+**Reverted to (−1.96, −2.42), 3.11°.** Residual 0.63°, of which 0.34° is yaw
+about the tool axis and tilts nothing — so **0.54° of real tilt = 0.5 mm** of jaw
+offset, against ~7 mm of J1 backlash still present. Not the limiting error
+anywhere. **Stop here**; further iteration fits how IK happened to distribute
+the wrist on a given run.
+
+---
+
+## FIRST COMPLETE PICK AND PLACE (2026-08-03)
+
+Full `pick_place.py`, no flags. Every step succeeded — descent at
+`fraction=1.00`, gripper contact detected, transit, place, release. Two real
+defects surfaced.
+
+### The mount tilt was displacing the grasp by 4.9 mm — FIXED
+
+The jaws sit `GRASP_OFFSET_Z` = 0.09 m below the flange. `GRIPPER_MOUNT_TILT_*`
+rotates the tool to hang them vertical, but **IK aims the FLANGE at (x, y, z)** —
+so the tip swings on that 0.09 m lever and nothing moves the target back.
+3.11° × 0.09 m = **4.9 mm**, and the measured jaw-tip error at the grasp was
+**radial +4.9 mm**. The prediction to the millimetre.
+
+Symptom on hardware: the block gripped off-centre, toward the near face.
+
+Fixed by `mount_tilt_tip_offset()` / `compensate_for_tip_swing()`, applied in
+both `make_grasp_pose` and `move_arm_to` — both, because if only one
+compensated the "straight down" Cartesian descent would have to translate
+sideways to reconcile them, which is the exact nudge that descent avoids. Inert
+when the tilt is zero.
+
+The **tangential** −5.3 mm is *not* from the tilt (which contributes +0.5 mm
+there). That is J1 backlash, 7.6 mm, now a constant thanks to the unidirectional
+approach but not yet calibrated out.
+
+### The pick/place tilt asymmetry is PAYLOAD, not frame
+
+The tilt corrected at the pick reappears at the place. It is **not** the
+tool-frame-vs-world-frame trap `GRIPPER_MOUNT_TILT_*`'s comment warns about:
+pick and place differ by only **3.04° of flange rotation**, essentially a pure
+roll, and the correction lands in the same world direction at both (+83.8° vs
++87.9°).
+
+What differs is the **block in the jaws**. Measured flange tilt: **3.12° at the
+grasp, 3.94° at the place** — 0.82° more droop under load.
+`SAG_PRECOMP_PAYLOAD_*` was fitted for exactly this and is currently zeroed.
+
+The bridge's gravity feedforward cannot fix it — it has no idea whether a block
+is held. `pick_place.py` does (`holding_block`), so the payload term belongs
+there.
+
+`--place-only` added: runs the grasp and parks at the place pose **still holding
+the block**, so the two-echo hand measurement can be taken loaded. Every other
+mode arrives empty and measures nothing about the payload.
 
 ---
 
