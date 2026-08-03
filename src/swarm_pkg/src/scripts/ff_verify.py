@@ -183,6 +183,18 @@ def main():
     parser.add_argument("--approach-sec", type=float, default=2.0,
                         help="duration of the --from-below final approach "
                              "(default %(default)s)")
+    parser.add_argument("--repeats", type=int, default=1,
+                        help="run the whole move this many times, returning to "
+                             "home between each, and report the spread "
+                             "(default %(default)s). USE 3+ BEFORE CHANGING ANY "
+                             "COEFFICIENT. The leftover residual after the "
+                             "feedforward sits inside the 0.4-0.9 deg "
+                             "antisymmetric friction band, so a single run "
+                             "cannot tell a coefficient that is too large from "
+                             "backlash that happened to land differently. The "
+                             "first A/B implied per-joint scale factors of 0.5x "
+                             "and 1.0x on two joints that should behave alike, "
+                             "which is what n=1 noise looks like")
     args = parser.parse_args()
 
     target = ([math.radians(d) for d in args.degrees] if args.degrees
@@ -218,23 +230,44 @@ def main():
                 print("[ff_verify] If it stalls, that is the missing build -- "
                       "not the feedforward. Re-run without --from-below.")
 
-        print(f"[ff_verify] [{args.label}] commanding target over "
-              f"{approach_sec}s...")
-        ok = io_client.arm_execute(_trajectory(target, approach_sec))
-        if not ok:
-            print("[ff_verify] controller REJECTED the goal -- nothing measured.")
-            return 1
-        print(f"[ff_verify] controller reported success; waiting "
-              f"{args.settle_sec}s for the servos to actually stop.")
-        time.sleep(args.settle_sec)
-        # Spin so the post-settle /joint_states actually lands before reading.
-        deadline = time.monotonic() + 1.0
-        while time.monotonic() < deadline:
-            rclpy.spin_once(io_client, timeout_sec=0.05)
+        runs = []
+        for rep in range(args.repeats):
+            if args.repeats > 1:
+                print("\n[ff_verify] ===== repeat {}/{} =====".format(
+                    rep + 1, args.repeats))
+                # Return to home first so every repeat takes the SAME path to
+                # the target. Backlash depends on approach direction, so a
+                # repeat that started from wherever the last one stopped would
+                # measure a different thing and inflate the spread with the one
+                # effect the spread is meant to expose.
+                if rep > 0:
+                    print("[ff_verify] returning home between repeats...")
+                    io_client.arm_execute(_trajectory(
+                        [HOME_RADIANS[n] for n in ARM_JOINT_NAMES],
+                        args.duration_sec))
+                    time.sleep(args.settle_sec)
 
-        achieved_map = io_client.current_joint_positions(ARM_JOINT_NAMES)
-        achieved = [achieved_map[n] for n in ARM_JOINT_NAMES]
-        report(args.label, target, achieved)
+            print(f"[ff_verify] [{args.label}] commanding target over "
+                  f"{approach_sec}s...")
+            ok = io_client.arm_execute(_trajectory(target, approach_sec))
+            if not ok:
+                print("[ff_verify] controller REJECTED the goal -- "
+                      "nothing measured.")
+                return 1
+            print(f"[ff_verify] controller reported success; waiting "
+                  f"{args.settle_sec}s for the servos to actually stop.")
+            time.sleep(args.settle_sec)
+            # Spin so the post-settle /joint_states actually lands before reading.
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline:
+                rclpy.spin_once(io_client, timeout_sec=0.05)
+
+            achieved_map = io_client.current_joint_positions(ARM_JOINT_NAMES)
+            runs.append([achieved_map[n] for n in ARM_JOINT_NAMES])
+            report(args.label, target, runs[-1])
+
+        if len(runs) > 1:
+            report_spread(args.label, target, runs)
     finally:
         io_client.destroy_node()
         rclpy.shutdown()
@@ -251,6 +284,49 @@ def _trajectory(target_radians, duration_sec):
     point.time_from_start.nanosec = int((duration_sec % 1) * 1e9)
     traj.points = [point]
     return traj
+
+
+def report_spread(label, target, runs):
+    """Mean and spread across repeats, and whether the spread is small enough
+    for the mean to justify touching a coefficient.
+
+    The gate is the point of this function. A residual of 0.7 deg means nothing
+    if the run-to-run spread is also 0.7 deg -- that is the antisymmetric
+    friction term, which reverses with approach direction and which no
+    feedforward can remove. Only a residual that is consistent ACROSS repeats
+    is evidence about the gravity coefficient."""
+    print()
+    print("=" * 74)
+    print("[ff_verify] SPREAD ACROSS {} REPEATS  [{}]".format(len(runs), label))
+    print("=" * 74)
+    print("{:<24} {:>9} {:>9} {:>9} {:>12}".format(
+        "joint", "mean err", "spread", "worst", "verdict"))
+    for i, name in enumerate(ARM_JOINT_NAMES):
+        errs = [math.degrees(target[i] - run[i]) for run in runs]
+        mean = sum(errs) / len(errs)
+        spread = max(errs) - min(errs)
+        worst = max(errs, key=abs)
+        # A mean smaller than the spread is indistinguishable from zero at this
+        # sample size, whatever its sign.
+        if abs(mean) < spread:
+            verdict = "in the noise"
+        elif i in FF_COEFFS:
+            # error = droop - bias, so a mean error of e means the bias is e
+            # too SMALL (e>0, still short) or |e| too LARGE (e<0, overshot).
+            # Either way the bias wants to move BY the mean error, so the
+            # percentage carries the mean's own sign -- negative means reduce.
+            bias = FF_COEFFS[i][0] + FF_COEFFS[i][1] * forward(target)[0][i]
+            verdict = ("TUNE {:+.0f}%".format(100.0 * mean / bias)
+                       if abs(bias) > 1e-6 else "no bias here")
+        else:
+            verdict = "consistent"
+        print("{:<24} {:>+9.2f} {:>9.2f} {:>+9.2f} {:>12}".format(
+            name, mean, spread, worst, verdict))
+    print()
+    print("[ff_verify] Only act on a joint whose mean EXCEEDS its spread. "
+          "Anything marked 'in the noise' is the antisymmetric friction term, "
+          "which no feedforward can remove -- retuning against it will chase "
+          "backlash and make the next run worse.")
 
 
 def report(label, target, achieved):

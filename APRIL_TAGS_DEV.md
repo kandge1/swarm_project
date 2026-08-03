@@ -425,12 +425,49 @@ remaining ~1.3° is a fixed mount/URDF offset — a constant, not a load effect.
   cannot be tuned simultaneously, and the leftover is a different *shape* than
   this radial+tangential+payload model.
 
-### Not yet verified on hardware
+### Verified on hardware 2026-08-03 — it works, and it over-corrects
 
-**None of this has moved the arm.** The next run must confirm the tilt actually
-improves, and measure what is left. If the remainder is a pose-independent
-constant, add it as a fixed offset; if it still varies with reach, the
-coefficients are wrong rather than incomplete.
+First clean A/B, `ff_verify.py` at the grasp pose, bridge banner confirming
+`DISABLED` then `ENABLED`:
+
+| joint | ff-off | ff-on | change | has a coefficient? |
+|---|---|---|---|---|
+| j0 `joint2_to_joint1` | +0.77 | +0.95 | +0.18 | no |
+| **j1 `joint3_to_joint2`** | +0.94 | **−0.65** | **−1.59** | **yes** |
+| **j2 `joint4_to_joint3`** | +0.75 | **−0.83** | **−1.58** | **yes** |
+| **j3 `joint5_to_joint4`** | +0.83 | **+0.04** | **−0.79** | **yes** |
+| j4 `joint6_to_joint5` | −0.35 | −0.08 | +0.27 | no |
+| j5 `joint6output` | +1.12 | +1.21 | +0.09 | no |
+
+The three joints with coefficients moved 1.59 / 1.58 / 0.79°; the three without
+moved 0.18 / 0.27 / 0.09°. **A 7× separation, exactly the predicted signature** —
+the effect is real and specific, not drift.
+
+The model predicted the droop well: at ff-off, j2 measured +0.75 against +0.77
+predicted and j3 +0.83 against +0.90. **j3 is essentially perfect after
+correction, +0.83° → +0.04°** — it still fell 0.94° short of its *biased*
+command, and the +0.90 bias cancelled that almost exactly, which is the
+mechanism working as designed.
+
+| | ff-off | ff-on |
+|---|---|---|
+| flange tilt | 2.54° | **1.44°** |
+| jaw position error | 8.2 mm | **6.4 mm** |
+| jaw dz | **−7.1 mm** | **+5.1 mm** |
+
+**j1 and j2 over-correct** — their errors flipped sign rather than going to
+zero, and dz overshot through zero from 7.1 mm low to 5.1 mm high.
+
+**Do not retune from this run.** It is n=1, and the leftover residuals
+(±0.65–0.83°) sit inside the 0.4–0.9° antisymmetric friction band that no
+feedforward can address. The per-joint scale factors it implies are incoherent
+(~0.5× for j2, ~1.0× for j3, on two joints that should behave alike), which is
+what n=1 noise looks like. `ff_verify.py --repeats 3` now returns to home
+between runs and reports mean vs spread, and only flags a joint for tuning when
+its mean error exceeds its own spread.
+
+This run did **not** exercise the `write_command` fix — home→grasp is 2.2 rad,
+which cleared the old epsilon anyway. That remains unverified.
 
 **J1 backlash is untouched and is now the largest single error**: 1.75° =
 7.6 mm at 250 mm reach, bigger than the droop's Cartesian effect. It is not
