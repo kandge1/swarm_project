@@ -1,46 +1,163 @@
-ewok@mars:~/swarm/swarm_project$ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
-[pick_place] pick block-center z=0.065 -> flange target z=0.155
-[pick_place] place surface z=0.075 (block size 0.020) -> flange target z=0.175
-[WARN] [1785776594.141817712] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785776594.142008830] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785776594.143273612] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785776594.143428790] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785776594.152052834] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785776594.152086448] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785776594.152109812] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785776594.152311101] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785776594.152389828] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785776594.152430204] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785776594.152439275] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785776594.152520533] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785776594.152546368] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785776594.165536515] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785776594.166968378] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785776594.166988829] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785776594.167024483] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
-[WARN] [1785776594.167049685] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785776594.167206106] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785776594.167225687] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785776594.167324614] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785776594.167359827] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785776594.167408337] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785776594.167523315] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785776594.167544541] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785776594.167636884] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785776594.167675983] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785776594.186739654] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785776594.186791898] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ python3 pick_place.py --grasp-only --pick-position 0 0.2286 0.040   # tips 44mm up
+python3 pick_place.py --grasp-only --pick-position 0 0.2286 0.025   # tips 29mm up
+python3 pick_place.py --grasp-only --pick-position 0 0.2286 0.011   # target, mid-block
+[pick_place] pick block-center z=0.040 -> flange target z=0.152
+[pick_place] place surface z=-0.004 (block size 0.030) -> flange target z=0.123
+[WARN] [1785788700.046537416] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788700.046666002] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788700.062224807] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788700.062332697] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788700.062676377] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.062716955] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785788700.062740279] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785788700.062762868] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1785788700.062799467] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788700.067813365] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.068270146] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788700.068450326] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.068502673] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1785788700.068712755] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785788700.068761803] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1785788700.068792658] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788700.068972185] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.069017715] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1785788700.069062094] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
+[WARN] [1785788700.069087722] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788700.069458289] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.069499669] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1785788700.069670342] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785788700.069702074] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1785788700.085018412] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.085064854] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1785788700.098466683] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788700.098777514] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.099245912] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.099278105] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1785788700.099429550] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.099604551] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788700.099633229] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[joint_states] no data after 6s (1 publisher(s) visible) -- recreating the subscription to force a fresh DDS match (attempt 1)
+[joint_states] recovered after 1 subscription recreate(s)
+[pick_place] --grasp-only: descending to the grasp pose and parking there with the jaws OPEN. No close, no place.
 
 === Return to home pose ===
-[WARN] [1785776594.209789693] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
 Executing joint-space move to home pose...
-[WARN] [1785776594.209830066] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785776594.209870635] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785776594.209887487] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
-[arm] target joint positions: {'joint2_to_joint1': -0.0004, 'joint3_to_joint2': -0.0005, 'joint4_to_joint3': 0.0005, 'joint5_to_joint4': 0.0006, 'joint6_to_joint5': 0.001, 'joint6output_to_joint6': -0.7848}
-[arm] trajectory: 2 waypoints, 0.329s total, ~0.082 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] target joint positions: {'joint2_to_joint1': 0.001, 'joint3_to_joint2': 0.0004, 'joint4_to_joint3': -0.0009, 'joint5_to_joint4': 0.0006, 'joint6_to_joint5': -0.0001, 'joint6output_to_joint6': -0.7852}
+[arm] trajectory: 26 waypoints, 7.335s total, ~0.466 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': -0.0122, 'joint4_to_joint3': -0.0122, 'joint5_to_joint4': 0.003, 'joint6_to_joint5': -0.0045, 'joint6output_to_joint6': -0.7576}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8483, 'joint3_to_joint2': -0.7576, 'joint4_to_joint3': -1.652, 'joint5_to_joint4': 0.9434, 'joint6_to_joint5': -0.0337, 'joint6output_to_joint6': 2.6323}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.7454, 'joint3_to_joint2': -0.2868, 'joint4_to_joint3': -0.6381, 'joint5_to_joint4': 0.3758, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': 0.5507}  (max movement so far 2.0817 rad)
+
+=== Toggle gripper (pre-start) ===
+[gripper] target joint positions: {'gripper_controller': -0.6}
+[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
+[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[gripper] waiting... current joint positions: {'gripper_controller': 0.1425}  (max movement so far 0.0000 rad)
+[gripper] target joint positions: {'gripper_controller': 0.15}
+[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
+[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[gripper] waiting... current joint positions: {'gripper_controller': -0.585}  (max movement so far 0.0000 rad)
+[gripper] waiting... current joint positions: {'gripper_controller': -0.6}  (max movement so far 0.0150 rad)
+
+=== Move to pre-grasp (above pick) ===
+[ik] 'current-state' seed: IK did not converge
+[ik] 'bearing+offset/elbow-down' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [1.868, -1.543, 1.255, -1.233, -0.021, 2.654]  (travel 4.539 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [1.868, -1.543, 1.255, -1.233, -0.021, 2.654]  (travel 4.539 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.868, -1.543, 1.255, -1.233, -0.021, 2.654]  (travel 4.539 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] 'home' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] 'home-wrist-zeroed' seed: IK did not converge
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] 'all-zeros' seed: IK did not converge
+[ik] 'deep-elbow-down' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] 'downward-confirmed-mirrored' seed: IK did not converge
+[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] 'all-zeros-mirrored' seed: IK did not converge
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]  (travel 4.100 rad)
+[ik] chose 'elbow-bent-wrist-zero' (4.100 rad of joint travel): [1.868, -0.389, -1.255, 0.123, -0.021, 2.654]
+Executing joint-space move to (-0.0006377754990256157, 0.22254977003942006, 0.19183464561501928)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8681, 'joint3_to_joint2': -0.3895, 'joint4_to_joint3': -1.2541, 'joint5_to_joint4': 0.124, 'joint6_to_joint5': -0.0204, 'joint6output_to_joint6': 2.6533}
+[arm] trajectory: 22 waypoints, 7.319s total, ~0.466 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': 0.0138, 'joint4_to_joint3': 0.0014, 'joint5_to_joint4': 0.0138, 'joint6_to_joint5': 0.003, 'joint6output_to_joint6': -0.7563}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.1427, 'joint3_to_joint2': -0.2269, 'joint4_to_joint3': -0.7761, 'joint5_to_joint4': 0.0904, 'joint6_to_joint5': 0.0045, 'joint6output_to_joint6': 1.3514}  (max movement so far 2.1077 rad)
+[j1] unidirectional approach: backing off 3.0 deg, then re-approaching +ve so the 1.75 deg of lost motion lands the same way every time
+[arm] target joint positions: {'joint2_to_joint1': 1.8157, 'joint3_to_joint2': -0.3895, 'joint4_to_joint3': -1.2541, 'joint5_to_joint4': 0.124, 'joint6_to_joint5': -0.0204, 'joint6output_to_joint6': 2.6533}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8514, 'joint3_to_joint2': -0.3711, 'joint4_to_joint3': -1.2439, 'joint5_to_joint4': 0.1227, 'joint6_to_joint5': -0.0075, 'joint6output_to_joint6': 2.6246}  (max movement so far 0.0000 rad)
+[arm] target joint positions: {'joint2_to_joint1': 1.8681, 'joint3_to_joint2': -0.3895, 'joint4_to_joint3': -1.2541, 'joint5_to_joint4': 0.124, 'joint6_to_joint5': -0.0204, 'joint6output_to_joint6': 2.6533}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8345, 'joint3_to_joint2': -0.3773, 'joint4_to_joint3': -1.2439, 'joint5_to_joint4': 0.1227, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': 2.626}  (max movement so far 0.0000 rad)
+
+=== Descend to grasp pose (Cartesian) ===
+[cartesian] joints at start: [1.8345, -0.3773, -1.2439, 0.1227, -0.0106, 2.626]
+[cartesian] planned fraction: 1.00
+Executing Cartesian move to (0.0, 0.2286, 0.152) (fraction=1.00)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8681, 'joint3_to_joint2': -0.4855, 'joint4_to_joint3': -1.5438, 'joint5_to_joint4': 0.5085, 'joint6_to_joint5': -0.0213, 'joint6output_to_joint6': 2.6537}
+[arm] trajectory: 14 waypoints, 1.243s total, ~0.609 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8483, 'joint3_to_joint2': -0.3711, 'joint4_to_joint3': -1.2439, 'joint5_to_joint4': 0.1227, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6276}  (max movement so far 0.0000 rad)
+
+=== Let the settle close out the grasp residual ===
+[settle] holding 2.0s before the grasp so the bridge's biased settle can close out the residual
+[settle] joints after pause: [105.9, -25.31, -86.04, 26.19, -1.05, 150.55]
+
+=== Parked at the grasp pose ===
+[pick_place] Arm left in place deliberately. Put a level on a jaw face, or repeat the two-echo hand measurement here.
+[pick_place] Run reset_arm.py when you are done.
+
+Pick-and-place sequence complete.
+[pick_place] pick block-center z=0.025 -> flange target z=0.137
+[pick_place] place surface z=-0.004 (block size 0.030) -> flange target z=0.123
+[WARN] [1785788740.042803981] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788740.042967196] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788740.045283520] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788740.055228046] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.055620189] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.055655363] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1785788740.057254807] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788740.057307667] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788740.057335288] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788740.065485013] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.065868424] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788740.065938153] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.065989758] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1785788740.068073833] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785788740.068167216] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1785788740.068191485] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788740.068242466] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.076237609] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.076330949] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785788740.076356478] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785788740.076376509] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1785788740.076423833] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.076502327] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1785788740.119740375] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1785788740.119824072] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
+[WARN] [1785788740.119864911] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[pick_place] --grasp-only: descending to the grasp pose and parking there with the jaws OPEN. No close, no place.
+
+=== Return to home pose ===
+Executing joint-space move to home pose...
+[arm] target joint positions: {'joint2_to_joint1': 0.0008, 'joint3_to_joint2': -0.0003, 'joint4_to_joint3': 0.0003, 'joint5_to_joint4': -0.001, 'joint6_to_joint5': 0.0009, 'joint6output_to_joint6': -0.7851}
+[arm] trajectory: 24 waypoints, 7.328s total, ~0.466 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[WARN] [1785788740.196731711] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.196795649] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1785788740.196930175] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785788740.196961240] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1785788740.197119124] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.197348166] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788740.197388650] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8576, 'joint3_to_joint2': -0.4677, 'joint4_to_joint3': -1.5385, 'joint5_to_joint4': 0.5091, 'joint6_to_joint5': -0.0321, 'joint6output_to_joint6': 2.6292}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.7346, 'joint3_to_joint2': -0.1656, 'joint4_to_joint3': -0.5737, 'joint5_to_joint4': 0.2101, 'joint6_to_joint5': -0.0014, 'joint6output_to_joint6': 0.5292}  (max movement so far 2.1000 rad)
 
 === Toggle gripper (pre-start) ===
 [gripper] target joint positions: {'gripper_controller': -0.6}
@@ -53,500 +170,170 @@ Executing joint-space move to home pose...
 [gripper] waiting... current joint positions: {'gripper_controller': -0.585}  (max movement so far 0.0000 rad)
 
 === Move to pre-grasp (above pick) ===
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.857, -0.449, -1.134, 0.062, -0.021, 2.643]  (travel 4.049 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.857, -1.494, 1.134, -1.16, -0.021, 2.643]  (travel 4.451 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.857, -0.449, -1.134, 0.062, -0.021, 2.643]  (travel 4.049 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.857, -1.494, 1.134, -1.16, -0.021, 2.643]  (travel 4.451 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.857, -0.449, -1.134, 0.062, -0.021, 2.643]  (travel 4.049 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.857, -1.494, 1.134, -1.16, -0.021, 2.643]  (travel 4.451 rad)
-[ik] 'downward-confirmed' seed: OK -> [1.857, -0.449, -1.134, 0.062, -0.021, 2.643]  (travel 4.049 rad)
+[ik] 'current-state' seed: OK -> [1.868, -1.677, 1.383, -1.227, -0.021, 2.654]  (travel 4.620 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [1.868, -1.677, 1.383, -1.227, -0.021, 2.654]  (travel 4.620 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [1.868, -1.677, 1.383, -1.227, -0.021, 2.654]  (travel 4.620 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.868, -1.677, 1.383, -1.227, -0.021, 2.654]  (travel 4.620 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
 [ik] 'home' seed: IK did not converge
 [ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.857, -0.449, -1.134, 0.062, -0.021, 2.643]  (travel 4.049 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
 [ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: OK -> [1.857, -0.449, -1.134, 0.062, -0.021, 2.643]  (travel 4.049 rad)
-[ik] 'downward-confirmed-mirrored' seed: IK did not converge
-[ik] 'home-mirrored' seed: OK -> [1.857, -1.494, 1.134, -1.16, -0.021, 2.643]  (travel 4.451 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.857, -0.449, -1.134, 0.062, -0.021, 2.643]  (travel 4.049 rad)
+[ik] 'deep-elbow-down' seed: OK -> [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [1.868, -0.409, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
+[ik] 'home-mirrored' seed: OK -> [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [1.868, -0.409, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
 [ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.857, -0.449, -1.134, 0.062, -0.021, 2.643]  (travel 4.049 rad)
-[ik] chose 'elbow-bent-wrist-zero' (4.049 rad of joint travel): [1.857, -0.449, -1.134, 0.062, -0.021, 2.643]
-Executing joint-space move to (0.0, 0.2286, 0.195)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8564, 'joint3_to_joint2': -0.4489, 'joint4_to_joint3': -1.1331, 'joint5_to_joint4': 0.0614, 'joint6_to_joint5': -0.0203, 'joint6output_to_joint6': 2.6433}
-[arm] trajectory: 21 waypoints, 7.302s total, ~0.466 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]  (travel 4.149 rad)
+[ik] chose 'elbow-bent-wrist-zero' (4.149 rad of joint travel): [1.868, -0.41, -1.383, 0.272, -0.021, 2.654]
+Executing joint-space move to (-0.0006377754990256157, 0.22254977003942006, 0.1768346456150193)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8672, 'joint3_to_joint2': -0.4091, 'joint4_to_joint3': -1.3831, 'joint5_to_joint4': 0.2729, 'joint6_to_joint5': -0.0222, 'joint6output_to_joint6': 2.6538}
+[arm] trajectory: 22 waypoints, 7.323s total, ~0.466 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': -0.0138, 'joint4_to_joint3': -0.0138, 'joint5_to_joint4': 0.003, 'joint6_to_joint5': -0.0045, 'joint6output_to_joint6': -0.7576}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.198, 'joint3_to_joint2': -0.2929, 'joint4_to_joint3': -0.7393, 'joint5_to_joint4': 0.026, 'joint6_to_joint5': -0.0014, 'joint6output_to_joint6': 1.4526}  (max movement so far 2.2103 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.0014, 'joint5_to_joint4': 0.0106, 'joint6_to_joint5': 0.0075, 'joint6output_to_joint6': -0.7576}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.1765, 'joint3_to_joint2': -0.2515, 'joint4_to_joint3': -0.8851, 'joint5_to_joint4': 0.1887, 'joint6_to_joint5': 0.0014, 'joint6output_to_joint6': 1.3989}  (max movement so far 2.1565 rad)
 [j1] unidirectional approach: backing off 3.0 deg, then re-approaching +ve so the 1.75 deg of lost motion lands the same way every time
-[arm] target joint positions: {'joint2_to_joint1': 1.8041, 'joint3_to_joint2': -0.4489, 'joint4_to_joint3': -1.1331, 'joint5_to_joint4': 0.0614, 'joint6_to_joint5': -0.0203, 'joint6output_to_joint6': 2.6433}
+[arm] target joint positions: {'joint2_to_joint1': 1.8149, 'joint3_to_joint2': -0.4091, 'joint4_to_joint3': -1.3831, 'joint5_to_joint4': 0.2729, 'joint6_to_joint5': -0.0222, 'joint6output_to_joint6': 2.6538}
 [arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8392, 'joint3_to_joint2': -0.4417, 'joint4_to_joint3': -1.1289, 'joint5_to_joint4': 0.0475, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6138}  (max movement so far 0.0000 rad)
-[arm] target joint positions: {'joint2_to_joint1': 1.8564, 'joint3_to_joint2': -0.4489, 'joint4_to_joint3': -1.1331, 'joint5_to_joint4': 0.0614, 'joint6_to_joint5': -0.0203, 'joint6output_to_joint6': 2.6433}
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8483, 'joint3_to_joint2': -0.3927, 'joint4_to_joint3': -1.379, 'joint5_to_joint4': 0.273, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6246}  (max movement so far 0.0000 rad)
+[arm] target joint positions: {'joint2_to_joint1': 1.8672, 'joint3_to_joint2': -0.4091, 'joint4_to_joint3': -1.3831, 'joint5_to_joint4': 0.2729, 'joint6_to_joint5': -0.0222, 'joint6output_to_joint6': 2.6538}
 [arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8392, 'joint3_to_joint2': -0.4417, 'joint4_to_joint3': -1.1289, 'joint5_to_joint4': 0.0475, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6138}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8483, 'joint3_to_joint2': -0.3927, 'joint4_to_joint3': -1.379, 'joint5_to_joint4': 0.273, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6246}  (max movement so far 0.0000 rad)
 
 === Descend to grasp pose (Cartesian) ===
-[cartesian] joints at start: [1.8268, -0.4417, -1.1289, 0.0475, -0.0199, 2.6138]
+[cartesian] joints at start: [1.8361, -0.3957, -1.379, 0.273, -0.0183, 2.626]
 [cartesian] planned fraction: 1.00
-Executing Cartesian move to (0.0, 0.2286, 0.155) (fraction=1.00)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8571, 'joint3_to_joint2': -0.5258, 'joint4_to_joint3': -1.4428, 'joint5_to_joint4': 0.448, 'joint6_to_joint5': -0.0207, 'joint6output_to_joint6': 2.6427}
-[arm] trajectory: 14 waypoints, 1.267s total, ~0.617 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+Executing Cartesian move to (0.0, 0.2286, 0.137) (fraction=1.00)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8681, 'joint3_to_joint2': -0.5538, 'joint4_to_joint3': -1.6113, 'joint5_to_joint4': 0.6443, 'joint6_to_joint5': -0.0213, 'joint6output_to_joint6': 2.6537}
+[arm] trajectory: 14 waypoints, 1.216s total, ~0.604 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8361, 'joint3_to_joint2': -0.4417, 'joint4_to_joint3': -1.1289, 'joint5_to_joint4': 0.0475, 'joint6_to_joint5': -0.0199, 'joint6output_to_joint6': 2.6154}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8483, 'joint3_to_joint2': -0.4033, 'joint4_to_joint3': -1.379, 'joint5_to_joint4': 0.2745, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6276}  (max movement so far 0.0000 rad)
 
 === Let the settle close out the grasp residual ===
 [settle] holding 2.0s before the grasp so the bridge's biased settle can close out the residual
-[settle] joints after pause: [105.2, -28.82, -80.24, 21.97, -1.14, 149.85]
+[settle] joints after pause: [105.9, -31.2, -91.4, 35.68, -1.05, 150.55]
 
-=== Close gripper (grasp, stop on contact) ===
-[gripper] target joint positions: {'gripper_controller': 0.12}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
-[gripper] target=0.120 (coarse)  pos=0.1350  lag=+0.0150  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': 0.09}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
-[gripper] target=0.090 (coarse)  pos=0.1350  lag=+0.0450  stalled=2/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': 0.06}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
-[gripper] target=0.060 (coarse)  pos=0.0600  lag=+0.0000  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': 0.03}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.06}  (max movement so far 0.0000 rad)
-[gripper] target=0.030 (coarse)  pos=0.0600  lag=+0.0300  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': 0.0}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.06}  (max movement so far 0.0000 rad)
-[gripper] target=0.000 (coarse)  pos=0.0075  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.03}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.0075}  (max movement so far 0.0000 rad)
-[gripper] target=-0.030 (coarse)  pos=0.0075  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.06}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': 0.0075}  (max movement so far 0.0000 rad)
-[gripper] target=-0.060 (coarse)  pos=-0.0525  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.09}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.0525}  (max movement so far 0.0000 rad)
-[gripper] target=-0.090 (coarse)  pos=-0.0525  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.12}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.0525}  (max movement so far 0.0000 rad)
-[gripper] target=-0.120 (coarse)  pos=-0.1125  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.15}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.1125}  (max movement so far 0.0000 rad)
-[gripper] target=-0.150 (coarse)  pos=-0.1125  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.18}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.1125}  (max movement so far 0.0000 rad)
-[gripper] target=-0.180 (coarse)  pos=-0.1725  lag=+0.0075  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.21}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.1725}  (max movement so far 0.0000 rad)
-[gripper] target=-0.210 (coarse)  pos=-0.1725  lag=+0.0375  stalled=1/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.24}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.1725}  (max movement so far 0.0000 rad)
-[gripper] target=-0.240 (coarse)  pos=-0.2175  lag=+0.0225  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.27}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.2175}  (max movement so far 0.0000 rad)
-[gripper] target=-0.270 (coarse)  pos=-0.2250  lag=+0.0450  stalled=0/3  effort=0.000
-[gripper] target joint positions: {'gripper_controller': -0.3}
-[gripper] trajectory: 1 waypoints, 0.300s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.225}  (max movement so far 0.0000 rad)
-[gripper] waiting... current joint positions: {'gripper_controller': -0.2325}  (max movement so far 0.3750 rad)
-[gripper] target=-0.300 (coarse)  pos=-0.2325  lag=+0.0675  stalled=0/3  effort=0.000
-[gripper] CONTACT: jaw trailing its command by 0.0675 rad (>= 0.06), holding at -0.2325 while commanded -0.300. Stopping close.
-
-=== Retreat after grasp (Cartesian) ===
-[cartesian] joints at start: [1.8392, -0.5231, -1.4357, 0.4341, -0.0152, 2.6169]
-[cartesian] planned fraction: 1.00
-Executing Cartesian move to (0.0, 0.2286, 0.195) (fraction=1.00)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8571, 'joint3_to_joint2': -0.449, 'joint4_to_joint3': -1.1339, 'joint5_to_joint4': 0.0623, 'joint6_to_joint5': -0.0207, 'joint6output_to_joint6': 2.6427}
-[arm] trajectory: 14 waypoints, 1.220s total, ~0.605 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8392, 'joint3_to_joint2': -0.5231, 'joint4_to_joint3': -1.4357, 'joint5_to_joint4': 0.4341, 'joint6_to_joint5': -0.0152, 'joint6output_to_joint6': 2.6169}  (max movement so far 0.0000 rad)
-
-=== Move to pre-place (above place) ===
-[pick_place] hover 0.215 exceeds the reachable ceiling 0.205 -- clamping (descent shortens to 0.030m)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [-1.293, -1.299, 0.837, -1.16, 0.02, -0.507]  (travel 5.070 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [-1.293, -1.299, 0.837, -1.16, 0.02, -0.507]  (travel 5.070 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [-1.293, -1.299, 0.837, -1.16, 0.02, -0.507]  (travel 5.070 rad)
-[ik] 'downward-confirmed' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] 'home' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] 'all-zeros' seed: OK -> [-1.293, -1.299, 0.837, -1.16, 0.02, -0.507]  (travel 5.070 rad)
-[ik] 'deep-elbow-down' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] 'home-mirrored' seed: OK -> [-1.293, -1.299, 0.837, -1.16, 0.02, -0.507]  (travel 5.070 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]  (travel 4.447 rad)
-[ik] chose 'bearing-offset/elbow-down' (4.447 rad of joint travel): [-1.293, -0.523, -0.837, -0.261, 0.02, -0.507]
-Executing joint-space move to (0.0, -0.2286, 0.205)...
-[arm] target joint positions: {'joint2_to_joint1': -1.2931, 'joint3_to_joint2': -0.5225, 'joint4_to_joint3': -0.8368, 'joint5_to_joint4': -0.2597, 'joint6_to_joint5': 0.0194, 'joint6output_to_joint6': -0.5066}
-[arm] trajectory: 21 waypoints, 6.765s total, ~0.463 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8392, 'joint3_to_joint2': -0.4754, 'joint4_to_joint3': -1.1551, 'joint5_to_joint4': 0.0597, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6169}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0429, 'joint3_to_joint2': -0.4953, 'joint4_to_joint3': -0.9863, 'joint5_to_joint4': -0.1304, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': 0.7945}  (max movement so far 1.8225 rad)
-[j1] unidirectional approach: backing off 3.0 deg, then re-approaching +ve so the 1.75 deg of lost motion lands the same way every time
-[arm] target joint positions: {'joint2_to_joint1': -1.3454, 'joint3_to_joint2': -0.5225, 'joint4_to_joint3': -0.8368, 'joint5_to_joint4': -0.2597, 'joint6_to_joint5': 0.0194, 'joint6output_to_joint6': -0.5066}
-[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -1.2746, 'joint3_to_joint2': -0.5123, 'joint4_to_joint3': -0.8589, 'joint5_to_joint4': -0.2608, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': -0.4831}  (max movement so far 0.0000 rad)
-[arm] target joint positions: {'joint2_to_joint1': -1.2931, 'joint3_to_joint2': -0.5225, 'joint4_to_joint3': -0.8368, 'joint5_to_joint4': -0.2597, 'joint6_to_joint5': 0.0194, 'joint6output_to_joint6': -0.5066}
-[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -1.3191, 'joint3_to_joint2': -0.5123, 'joint4_to_joint3': -0.8589, 'joint5_to_joint4': -0.2621, 'joint6_to_joint5': 0.0183, 'joint6output_to_joint6': -0.4831}  (max movement so far 0.0000 rad)
-
-=== Descend to place pose (Cartesian) ===
-[cartesian] joints at start: [-1.3191, -0.5123, -0.8589, -0.2621, 0.0183, -0.4831]
-[cartesian] planned fraction: 1.00
-Executing Cartesian move to (0.0, -0.2286, 0.175) (fraction=1.00)...
-[arm] target joint positions: {'joint2_to_joint1': -1.293, 'joint3_to_joint2': -0.5075, 'joint4_to_joint3': -1.1762, 'joint5_to_joint4': 0.0626, 'joint6_to_joint5': 0.0203, 'joint6output_to_joint6': -0.5074}
-[arm] trajectory: 13 waypoints, 1.166s total, ~0.536 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -1.313, 'joint3_to_joint2': -0.5123, 'joint4_to_joint3': -0.8589, 'joint5_to_joint4': -0.2637, 'joint6_to_joint5': 0.0199, 'joint6output_to_joint6': -0.4831}  (max movement so far 0.0000 rad)
-
-=== Let the settle close out the place residual ===
-[settle] holding 2.0s before the release so the bridge's biased settle can close out the residual
-[settle] joints after pause: [-75.23, -29.35, -64.59, 0.17, 1.14, -27.68]
-
-=== Open gripper (release) ===
-[gripper] target joint positions: {'gripper_controller': 0.15}
-[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
-[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[gripper] waiting... current joint positions: {'gripper_controller': -0.24}  (max movement so far 0.0000 rad)
-
-=== Retreat after release (Cartesian) ===
-[pick_place] hover 0.215 exceeds the reachable ceiling 0.205 -- clamping (descent shortens to 0.030m)
-[cartesian] joints at start: [-1.313, -0.5123, -1.175, 0.0475, 0.0215, -0.4847]
-[cartesian] planned fraction: 1.00
-Executing Cartesian move to (0.0, -0.2286, 0.205) (fraction=1.00)...
-[arm] target joint positions: {'joint2_to_joint1': -1.293, 'joint3_to_joint2': -0.5232, 'joint4_to_joint3': -0.8375, 'joint5_to_joint4': -0.2606, 'joint6_to_joint5': 0.0203, 'joint6output_to_joint6': -0.5074}
-[arm] trajectory: 13 waypoints, 1.171s total, ~0.551 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -1.313, 'joint3_to_joint2': -0.5123, 'joint4_to_joint3': -1.175, 'joint5_to_joint4': 0.0475, 'joint6_to_joint5': 0.0215, 'joint6output_to_joint6': -0.4847}  (max movement so far 0.0000 rad)
-
-=== Return to home pose (final) ===
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': -0.0001, 'joint3_to_joint2': -0.0009, 'joint4_to_joint3': 0.0005, 'joint5_to_joint4': 0.0002, 'joint6_to_joint5': 0.0003, 'joint6output_to_joint6': -0.7846}
-[arm] trajectory: 11 waypoints, 3.126s total, ~0.420 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -1.313, 'joint3_to_joint2': -0.5138, 'joint4_to_joint3': -0.8528, 'joint5_to_joint4': -0.2621, 'joint6_to_joint5': 0.0215, 'joint6output_to_joint6': -0.4847}  (max movement so far 0.0000 rad)
-
-=== Final return to home pose ===
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0001, 'joint3_to_joint2': 0.0002, 'joint4_to_joint3': -0.0009, 'joint5_to_joint4': -0.0005, 'joint6_to_joint5': -0.0003, 'joint6output_to_joint6': -0.7863}
-[arm] trajectory: 2 waypoints, 0.364s total, ~0.091 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0244, 'joint3_to_joint2': -0.0138, 'joint4_to_joint3': -0.0138, 'joint5_to_joint4': -0.0138, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': -0.7531}  (max movement so far 0.0000 rad)
+=== Parked at the grasp pose ===
+[pick_place] Arm left in place deliberately. Put a level on a jaw face, or repeat the two-echo hand measurement here.
+[pick_place] Run reset_arm.py when you are done.
 
 Pick-and-place sequence complete.
-ewok@mars:~/swarm/swarm_project$ 
+[pick_place] pick block-center z=0.011 -> flange target z=0.123
+[pick_place] place surface z=-0.004 (block size 0.030) -> flange target z=0.123
+[WARN] [1785788772.040464054] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788772.040579467] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788772.044680905] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788772.051210661] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788772.051266082] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788772.051346953] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.051364906] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785788772.051380033] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1785788772.051394450] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1785788772.051409801] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1785788772.052038935] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.052274741] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.052297412] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1785788772.052403846] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.052482231] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.052518649] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1785788772.061629878] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.061714886] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1785788772.064295086] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.088086568] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788772.088217041] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.088252535] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1785788772.088406623] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785788772.088437413] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1785788772.088480599] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788772.088575406] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.088612006] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1785788772.088636351] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
+[WARN] [1785788772.088658732] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1785788772.088764273] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1785788772.088784752] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1785788772.088818658] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1785788772.088848585] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[pick_place] --grasp-only: descending to the grasp pose and parking there with the jaws OPEN. No close, no place.
 
-Logs from dry run of tag_pick_place.py are as follows
-
-er@er:~/swarm_project$ python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py
-1785776999.272551 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
-1785776999.272634 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-[INFO] [1785776999.785733994] [block_detector]: block_detector up: reading /dev/video0 directly, serving /detect_block
-[INFO] [1785776999.788327026] [block_detector]: tag_size=0.0254 m, default zone_size=0.1016 m, method=canny
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-[INFO] [1785777018.915083071] [block_detector]: [pickup] 4 tag(s), rms 0.49 px, 1 block(s) (308 ms)
-[INFO] [1785777018.918689030] [block_detector]:   [0] zone (-0.6, -6.1) mm yaw +178.7 deg  34.9x35.3 mm circle sym=0
-[INFO] [1785777021.368476724] [block_detector]: [pickup] 2 tag(s), rms 0.36 px, 3 block(s) (145 ms)
-[INFO] [1785777021.371040666] [block_detector]:   [0] zone (-1.6, -9.4) mm yaw +89.2 deg  36.5x37.5 mm square sym=4
-[INFO] [1785777021.373613366] [block_detector]:   [1] zone (+44.1, -45.0) mm yaw -179.9 deg  12.0x14.0 mm unknown sym=1
-[INFO] [1785777021.380637643] [block_detector]:   [2] zone (-44.6, -45.1) mm yaw +179.7 deg  12.4x12.9 mm circle sym=0
-[INFO] [1785777025.805813600] [block_detector]: [pickup] 4 tag(s), rms 0.52 px, 1 block(s) (158 ms)
-[INFO] [1785777025.813638866] [block_detector]:   [0] zone (-1.4, -3.3) mm yaw -90.6 deg  35.9x37.2 mm circle sym=0
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
-
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-with this new error message:
-
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.6/src/serdata.cpp:354'
-
-rcutils_reset_error() shou
-
-I do not have the debug images for some reason, it did not make them
-
-ewok@mars:~/swarm/swarm_project$ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/tag_pick_place.py --dry-run
-[WARN] [1785777007.398794776] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785777007.398920701] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785777007.398945508] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777007.403353172] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785777010.147335084] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785777010.147372283] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785777010.147884569] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.147911383] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785777010.147918858] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1785777010.147925803] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
-[WARN] [1785777010.147933037] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785777010.155538705] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785777010.155595563] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785777010.155673718] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.155776581] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785777010.162437519] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.162479370] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785777010.162491994] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
-[WARN] [1785777010.162526569] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785777010.162590138] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.162603366] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785777010.170156914] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.170190293] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1785777010.176158583] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785777010.176202744] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785777010.176214710] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1785777010.176291279] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.176320034] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1785777010.190313489] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1785777010.190358178] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1785777010.190377742] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1785777010.190539994] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.191011692] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.191123981] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.191156723] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1785777010.191305596] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1785777010.191346484] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[stage1] detect hover height 0.2400 m (measured focus floor is ~0.220m lens height; this clears it)
+=== Return to home pose ===
 Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0008, 'joint3_to_joint2': 0.0002, 'joint4_to_joint3': 0.0009, 'joint5_to_joint4': 0.0003, 'joint6_to_joint5': -0.0005, 'joint6output_to_joint6': -0.7851}
-[arm] trajectory: 2 waypoints, 0.331s total, ~0.083 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] target joint positions: {'joint2_to_joint1': -0.0009, 'joint3_to_joint2': -0.0007, 'joint4_to_joint3': -0.0001, 'joint5_to_joint4': -0.0004, 'joint6_to_joint5': -0.0006, 'joint6output_to_joint6': -0.7848}
+[arm] trajectory: 25 waypoints, 7.328s total, ~0.466 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0152, 'joint3_to_joint2': -0.0138, 'joint4_to_joint3': -0.0075, 'joint5_to_joint4': -0.0138, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -0.7576}  (max movement so far 0.0000 rad)
-[gripper] target joint positions: {'gripper_controller': 0.15}
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8483, 'joint3_to_joint2': -0.5459, 'joint4_to_joint3': -1.6029, 'joint5_to_joint4': 0.6625, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6292}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.7102, 'joint3_to_joint2': -0.1916, 'joint4_to_joint3': -0.592, 'joint5_to_joint4': 0.2608, 'joint6_to_joint5': 0.0075, 'joint6output_to_joint6': 0.4892}  (max movement so far 2.1399 rad)
+
+=== Toggle gripper (pre-start) ===
+[gripper] target joint positions: {'gripper_controller': -0.6}
 [gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
 [gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
 [gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
-[stage1] survey flange (0.0000, 0.1876) -- 41mm pulled in from zone centre (0.0000, 0.2286)
+[gripper] target joint positions: {'gripper_controller': 0.15}
+[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
+[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[gripper] waiting... current joint positions: {'gripper_controller': -0.585}  (max movement so far 0.0000 rad)
+[gripper] waiting... current joint positions: {'gripper_controller': -0.165}  (max movement so far 0.4200 rad)
 
-[multiview] still 1/4 at wrist yaw +180 deg (offset +180)
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.919, -1.09, 1.035, -1.515, -0.008, -0.436]  (travel 2.888 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.919, -1.09, 1.035, -1.515, -0.008, -0.436]  (travel 2.888 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.919, -1.09, 1.035, -1.515, -0.008, -0.436]  (travel 2.888 rad)
-[ik] 'downward-confirmed' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
+=== Move to pre-grasp (above pick) ===
+[ik] 'current-state' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [1.868, -1.799, 1.481, -1.202, -0.021, 2.654]  (travel 4.689 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [1.868, -1.799, 1.481, -1.202, -0.021, 2.654]  (travel 4.689 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [1.868, -1.799, 1.481, -1.202, -0.021, 2.654]  (travel 4.689 rad)
+[ik] 'downward-confirmed' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
 [ik] 'home' seed: IK did not converge
 [ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
-[ik] 'all-zeros' seed: OK -> [1.919, -1.09, 1.035, -1.515, -0.008, -0.436]  (travel 2.888 rad)
-[ik] 'deep-elbow-down' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
-[ik] 'home-mirrored' seed: OK -> [1.919, -1.09, 1.035, -1.515, -0.008, -0.436]  (travel 2.888 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]  (travel 2.250 rad)
-[ik] chose 'bearing-offset/elbow-down' (2.250 rad of joint travel): [1.919, -0.134, -1.035, -0.401, -0.008, -0.436]
-Executing joint-space move to (0.0, 0.1876, 0.24)...
-[arm] target joint positions: {'joint2_to_joint1': 1.9185, 'joint3_to_joint2': -0.1349, 'joint4_to_joint3': -1.0346, 'joint5_to_joint4': -0.4007, 'joint6_to_joint5': -0.0092, 'joint6output_to_joint6': -0.436}
-[arm] trajectory: 12 waypoints, 4.367s total, ~0.443 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0152, 'joint3_to_joint2': -0.0138, 'joint4_to_joint3': -0.0075, 'joint5_to_joint4': -0.0138, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -0.7576}  (max movement so far 0.0000 rad)
-[detect] OK: 4 tag(s), rms 0.49 px, 1 block(s)
-[detect] tags [0, 1, 2, 3] | rms 0.49 px | 2383 px/m | camera at zone (+13.3, +2.1) mm
-[detect]   [0] zone (-0.6, -6.1) mm  yaw +178.7 deg  34.9 x 35.3 mm  circle sym=0
-
-[multiview] still 2/4 at wrist yaw +150 deg (offset +150)
-[ik] 'current-state' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.9, -1.125, 1.097, -1.497, 0.065, 0.072]  (travel 2.648 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.9, -1.125, 1.097, -1.497, 0.065, 0.072]  (travel 2.648 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.9, -1.125, 1.097, -1.497, 0.065, 0.072]  (travel 2.648 rad)
-[ik] 'downward-confirmed' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'home' seed: IK did not converge
-[ik] 'home-wrist-zeroed' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'all-zeros' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'deep-elbow-down' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] 'home-mirrored' seed: OK -> [1.9, -1.125, 1.097, -1.497, 0.065, 0.072]  (travel 2.648 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [1.9, -1.125, 1.097, -1.497, 0.065, 0.072]  (travel 2.648 rad)
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.9, -1.125, 1.097, -1.497, 0.065, 0.072]  (travel 2.648 rad)
-[ik] 'all-zeros-mirrored' seed: OK -> [1.9, -1.125, 1.097, -1.497, 0.065, 0.072]  (travel 2.648 rad)
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]  (travel 0.536 rad)
-[ik] chose 'current-state' (0.536 rad of joint travel): [1.9, -0.113, -1.097, -0.314, 0.065, 0.072]
-Executing joint-space move to (0.0, 0.1876, 0.24)...
-[arm] target joint positions: {'joint2_to_joint1': 1.9004, 'joint3_to_joint2': -0.1127, 'joint4_to_joint3': -1.0978, 'joint5_to_joint4': -0.3135, 'joint6_to_joint5': 0.0642, 'joint6output_to_joint6': 0.0727}
-[arm] trajectory: 4 waypoints, 1.544s total, ~0.338 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9021, 'joint3_to_joint2': -0.1241, 'joint4_to_joint3': -1.0324, 'joint5_to_joint4': -0.4018, 'joint6_to_joint5': 0.0075, 'joint6output_to_joint6': -0.4494}  (max movement so far 0.0000 rad)
-[detect] OK: 2 tag(s), rms 0.36 px, 3 block(s)
-[detect] tags [2, 3] | rms 0.36 px | 2424 px/m | camera at zone (+15.2, +9.2) mm
-[detect]   [0] zone (-1.6, -9.4) mm  yaw +89.2 deg  36.5 x 37.5 mm  square sym=4
-[detect]   [1] zone (+44.1, -45.0) mm  yaw -179.9 deg  12.0 x 14.0 mm  unknown sym=1
-[detect]   [2] zone (-44.6, -45.1) mm  yaw +179.7 deg  12.4 x 12.9 mm  circle sym=0
-
-[multiview] still 3/4 at wrist yaw +210 deg (offset +210)
-[ik] 'current-state' seed: OK -> [1.941, -0.123, -1.045, -0.407, -0.095, -0.94]  (travel 1.009 rad)
-[ik] 'bearing+offset/elbow-down' seed: IK did not converge
-[ik] 'bearing+offset/elbow-up' seed: IK did not converge
-[ik] 'bearing/elbow-down' seed: IK did not converge
-[ik] 'bearing/elbow-up' seed: IK did not converge
-[ik] 'bearing-offset/elbow-down' seed: IK did not converge
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.941, -0.123, -1.045, -0.407, -0.095, -0.94]  (travel 1.009 rad)
-[ik] 'downward-confirmed' seed: OK -> [1.941, -1.088, 1.045, -1.532, -0.095, -0.94]  (travel 2.817 rad)
-[ik] 'home' seed: OK -> [1.941, -0.123, -1.045, -0.407, -0.095, -0.94]  (travel 1.009 rad)
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.941, -0.123, -1.045, -0.407, -0.095, -0.94]  (travel 1.009 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
 [ik] 'all-zeros' seed: IK did not converge
-[ik] 'deep-elbow-down' seed: OK -> [1.941, -0.123, -1.045, -0.407, -0.095, -0.94]  (travel 1.009 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.941, -0.123, -1.045, -0.407, -0.095, -0.94]  (travel 1.009 rad)
+[ik] 'deep-elbow-down' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [1.868, -1.799, 1.481, -1.202, -0.021, 2.654]  (travel 4.689 rad)
 [ik] 'home-mirrored' seed: IK did not converge
 [ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.941, -0.123, -1.045, -0.407, -0.095, -0.94]  (travel 1.009 rad)
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.941, -0.123, -1.045, -0.407, -0.095, -0.94]  (travel 1.009 rad)
-[ik] chose 'elbow-bent-wrist-zero' (1.009 rad of joint travel): [1.941, -0.123, -1.045, -0.407, -0.095, -0.94]
-Executing joint-space move to (0.0, 0.1876, 0.24)...
-[arm] target joint positions: {'joint2_to_joint1': 1.9412, 'joint3_to_joint2': -0.1234, 'joint4_to_joint3': -1.045, 'joint5_to_joint4': -0.4077, 'joint6_to_joint5': -0.0952, 'joint6output_to_joint6': -0.9406}
-[arm] trajectory: 5 waypoints, 2.488s total, ~0.400 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]  (travel 4.198 rad)
+[ik] chose 'elbow-bent-wrist-zero' (4.198 rad of joint travel): [1.868, -0.446, -1.481, 0.406, -0.021, 2.654]
+Executing joint-space move to (-0.0006377754990256157, 0.22254977003942006, 0.16283464561501929)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8683, 'joint3_to_joint2': -0.4468, 'joint4_to_joint3': -1.4802, 'joint5_to_joint4': 0.405, 'joint6_to_joint5': -0.0212, 'joint6output_to_joint6': 2.6539}
+[arm] trajectory: 23 waypoints, 7.323s total, ~0.466 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9021, 'joint3_to_joint2': -0.1241, 'joint4_to_joint3': -1.0891, 'joint5_to_joint4': -0.3313, 'joint6_to_joint5': 0.052, 'joint6output_to_joint6': 0.0536}  (max movement so far 0.0000 rad)
-[detect] OK: 4 tag(s), rms 0.52 px, 1 block(s)
-[detect] tags [0, 1, 2, 3] | rms 0.52 px | 2473 px/m | camera at zone (+19.8, +4.4) mm
-[detect]   [0] zone (-1.4, -3.3) mm  yaw -90.6 deg  35.9 x 37.2 mm  circle sym=0
-[multiview] 3 usable views, skipping the remaining 1 still(s)
-
-[multiview] 3 usable view(s), tags seen across all of them: [0, 1, 2, 3]
-[multiview]   [0] zone (-1.4, -6.1) mm  yaw +0.0 deg  35.9 x 37.2 mm  circle  views=3 spread=3.4 mm/0.0 deg
-[multiview]   [1] zone (+44.1, -45.0) mm  yaw +180.1 deg  12.0 x 14.0 mm  unknown  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
-[multiview]   [2] zone (-44.6, -45.1) mm  yaw +0.0 deg  12.4 x 12.9 mm  circle  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
-[stage1] block confirmed across 3 views, spread 3.4 mm / 0.0 deg
-
-[stage1] block: 35.9 x 37.2 mm circle, zone (-1.4, -6.1) mm, yaw +0.0 deg -> grasp yaw +0.0 deg (symmetry 0)
-
-[stage1] block world position from the tags: (-0.0014, 0.2225)
-
-[stage1] grasp target: world (-0.0014, 0.2225, 0.1550), yaw +0.0 deg
-[stage1] approach hover 0.1950 m, then a 40 mm straight-down descent
-[stage1] descent height is PICK_XYZ.z + GRASP_OFFSET_Z = 0.1550, the same flange height pick_place.py grasps this block at. Stage 1 measures X, Y and yaw; Z is not measured and is not recomputed.
-
-[stage1] --dry-run: moving to the grasp hover and STOPPING there. No descent, no grasp.
-
-=== Move over the block ===
-[ik] 'current-state' seed: IK did not converge
-[ik] 'bearing+offset/elbow-down' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'bearing+offset/elbow-up' seed: OK -> [1.872, -1.514, 1.225, -1.232, -0.021, 2.657]  (travel 4.539 rad)
-[ik] 'bearing/elbow-down' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'bearing/elbow-up' seed: OK -> [1.872, -1.514, 1.225, -1.232, -0.021, 2.657]  (travel 4.539 rad)
-[ik] 'bearing-offset/elbow-down' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'bearing-offset/elbow-up' seed: OK -> [1.872, -1.514, 1.225, -1.232, -0.021, 2.657]  (travel 4.539 rad)
-[ik] 'downward-confirmed' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'home' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'home-wrist-zeroed' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'all-zeros' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'deep-elbow-down' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'downward-confirmed-mirrored' seed: OK -> [1.872, -1.514, 1.225, -1.232, -0.021, 2.657]  (travel 4.539 rad)
-[ik] 'home-mirrored' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'home-wrist-zeroed-mirrored' seed: IK did not converge
-[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] 'all-zeros-mirrored' seed: IK did not converge
-[ik] 'deep-elbow-down-mirrored' seed: OK -> [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]  (travel 3.618 rad)
-[ik] chose 'elbow-bent-wrist-zero' (3.618 rad of joint travel): [1.872, -0.387, -1.225, 0.091, -0.021, 2.657]
-Executing joint-space move to (-0.0013890725718696192, 0.22252824075035024, 0.195)...
-[arm] target joint positions: {'joint2_to_joint1': 1.8707, 'joint3_to_joint2': -0.3863, 'joint4_to_joint3': -1.225, 'joint5_to_joint4': 0.0904, 'joint6_to_joint5': -0.0219, 'joint6output_to_joint6': 2.6562}
-[arm] trajectory: 15 waypoints, 7.638s total, ~0.467 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': 0.0014, 'joint5_to_joint4': 0.0138, 'joint6_to_joint5': 0.0091, 'joint6output_to_joint6': -0.7576}  (max movement so far 0.0000 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.1273, 'joint3_to_joint2': -0.2515, 'joint4_to_joint3': -0.905, 'joint5_to_joint4': 0.2621, 'joint6_to_joint5': 0.0061, 'joint6output_to_joint6': 1.3191}  (max movement so far 2.0768 rad)
+[j1] unidirectional approach: backing off 3.0 deg, then re-approaching +ve so the 1.75 deg of lost motion lands the same way every time
+[arm] target joint positions: {'joint2_to_joint1': 1.8159, 'joint3_to_joint2': -0.4468, 'joint4_to_joint3': -1.4802, 'joint5_to_joint4': 0.405, 'joint6_to_joint5': -0.0212, 'joint6output_to_joint6': 2.6539}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.922, 'joint3_to_joint2': -0.1241, 'joint4_to_joint3': -1.0645, 'joint5_to_joint4': -0.4079, 'joint6_to_joint5': -0.0782, 'joint6output_to_joint6': -0.9126}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.9082, 'joint3_to_joint2': -0.2791, 'joint4_to_joint3': -1.1551, 'joint5_to_joint4': -0.1103, 'joint6_to_joint5': -0.0337, 'joint6output_to_joint6': 1.3008}  (max movement so far 2.2134 rad)
-
-[stage1] --dry-run: parked over the block at grasp height and grasp yaw. LOOK AT THE ARM. How far, and which way, are the jaws off the block? That number is the arm's true error at the grasp pose -- it is not derivable from anything in this log.
-
-=== Returning home ===
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': 0.0004, 'joint3_to_joint2': -0.0, 'joint4_to_joint3': -0.0006, 'joint5_to_joint4': 0.0003, 'joint6_to_joint5': 0.0003, 'joint6output_to_joint6': -0.7853}
-[arm] trajectory: 22 waypoints, 7.326s total, ~0.466 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8499, 'joint3_to_joint2': -0.4294, 'joint4_to_joint3': -1.4786, 'joint5_to_joint4': 0.4033, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6231}  (max movement so far 0.0000 rad)
+[arm] target joint positions: {'joint2_to_joint1': 1.8683, 'joint3_to_joint2': -0.4468, 'joint4_to_joint3': -1.4802, 'joint5_to_joint4': 0.405, 'joint6_to_joint5': -0.0212, 'joint6output_to_joint6': 2.6539}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
 [arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8928, 'joint3_to_joint2': -0.3773, 'joint4_to_joint3': -1.2163, 'joint5_to_joint4': 0.075, 'joint6_to_joint5': -0.0367, 'joint6output_to_joint6': 2.6276}  (max movement so far 0.0000 rad)
-[arm] waiting... current joint positions: {'joint2_to_joint1': 0.7316, 'joint3_to_joint2': -0.158, 'joint4_to_joint3': -0.4677, 'joint5_to_joint4': 0.0367, 'joint6_to_joint5': -0.0014, 'joint6output_to_joint6': 0.4969}  (max movement so far 2.1307 rad)
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8499, 'joint3_to_joint2': -0.4294, 'joint4_to_joint3': -1.4786, 'joint5_to_joint4': 0.4033, 'joint6_to_joint5': -0.0183, 'joint6output_to_joint6': 2.6231}  (max movement so far 0.0000 rad)
 
-STAGE 1 COMPLETE
-Confirm the grasp VISUALLY. arm_group_controller reports 'Goal reached, success!' from elapsed time alone -- there is no constraints: block in ros2_controllers.yaml, so ROS logs are not evidence of physical motion on this setup.
+=== Descend to grasp pose (Cartesian) ===
+[cartesian] joints at start: [1.8345, -0.4309, -1.4786, 0.4033, -0.0199, 2.626]
+[cartesian] planned fraction: 1.00
+Executing Cartesian move to (0.0, 0.2286, 0.123) (fraction=1.00)...
+[arm] target joint positions: {'joint2_to_joint1': 1.8681, 'joint3_to_joint2': -0.6312, 'joint4_to_joint3': -1.6551, 'joint5_to_joint4': 0.7656, 'joint6_to_joint5': -0.0213, 'joint6output_to_joint6': 2.6537}
+[arm] trajectory: 14 waypoints, 1.201s total, ~0.596 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8483, 'joint3_to_joint2': -0.4309, 'joint4_to_joint3': -1.4786, 'joint5_to_joint4': 0.4049, 'joint6_to_joint5': -0.0199, 'joint6output_to_joint6': 2.6276}  (max movement so far 0.0000 rad)
+
+=== Let the settle close out the grasp residual ===
+[settle] holding 2.0s before the grasp so the bridge's biased settle can close out the residual
+[settle] joints after pause: [105.9, -32.87, -93.33, 41.66, -1.14, 150.55]
+
+=== Parked at the grasp pose ===
+[pick_place] Arm left in place deliberately. Put a level on a jaw face, or repeat the two-echo hand measurement here.
+[pick_place] Run reset_arm.py when you are done.
+
+Pick-and-place sequence complete.
+ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ 
+

@@ -77,6 +77,23 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 # first grasp closely.
 SPAWN_HEIGHT_CORRECTION = 0.035  # m, = old spawn_z (0.055) - new spawn_z (0.02)
 #
+# NO LONGER APPLIED TO PICK_XYZ / PLACE_XYZ (2026-08-03). Everything above is
+# about GAZEBO -- gazebo.launch.py's `ros_gz_sim create -z`, Gazebo's absolute
+# frame, spawn_world.py's printed coordinates. On real hardware there is no
+# spawn offset: the robot is physically where it is, and the mat is physically
+# where it is. Carrying a simulator's bookkeeping delta into a hardware target
+# put the grasp 35 mm too high on top of a table height that was also a
+# simulator's.
+#
+# The symptom was unmistakable once looked at: the jaws closed on the block's
+# top inward corner instead of straddling its middle. Confirmed by measurement
+# -- with the sag held out by hand and the block centred in the jaws, its
+# centre sat 63.5 mm above the mat against the 65 mm commanded. THE ARM WAS
+# ACCURATE TO 1.5 mm; it was simply being told the wrong height.
+#
+# Left defined because annulus_test.py still uses it, and it is still correct
+# THERE -- that script targets Gazebo.
+#
 # ZONE RADIUS: 9 in = 0.2286 m, moved in from 0.250 m on 2026-08-02.
 #
 # This is a PHYSICAL change -- the mats were re-taped closer to the base -- and
@@ -92,8 +109,36 @@ SPAWN_HEIGHT_CORRECTION = 0.035  # m, = old spawn_z (0.055) - new spawn_z (0.02)
 # database and the print sheets are all dimensioned in inches -- keep the whole
 # chain in one unit system so a 0.4 mm rounding error never has to be chased.
 ZONE_RADIUS_M = 9 * 0.0254   # 0.2286
-PICK_XYZ = (+0.000, +ZONE_RADIUS_M, 0.030 + SPAWN_HEIGHT_CORRECTION)
-PLACE_XYZ = (+0.000, -ZONE_RADIUS_M, 0.040 + SPAWN_HEIGHT_CORRECTION)
+
+# THE MAT, IN ROBOT BASE COORDINATES. Measured 2026-08-03.
+#
+# NEGATIVE, and the sign is the whole point. The URDF's g_base origin is the
+# bottom of the robot as modelled -- but the physical robot is not standing on
+# the mat. Its base (the housing the Pi sits in) rests on a 4 mm plate, and
+# THAT sits on the mat. The URDF has no mesh for the plate, so the model's
+# z = 0 floats 4 mm above the surface the blocks actually sit on.
+#
+# Everything the arm is asked to touch lives on the mat, so every such height
+# must be built from this constant rather than from 0. Re-measure it if the
+# robot is remounted or the plate changes.
+MAT_SURFACE_Z = -0.004
+
+# Physical block, measured: 30 mm exactly (1.18 in). NOT the 20 mm cube
+# spawn_world.py drops into Gazebo -- that mismatch is half of why the old
+# grasp height was wrong, the other half being SPAWN_HEIGHT_CORRECTION.
+BLOCK_HEIGHT_M = 0.030
+
+# A block resting on the mat has its CENTRE half its height above the mat.
+# That is all PICK_XYZ.z is, and it is now derived rather than tuned:
+#     -0.004 + 0.015 = +0.011
+# The old value was 0.065 -- 54 mm high, which is why the jaws closed on the
+# block's top corner instead of its middle.
+PICK_XYZ = (+0.000, +ZONE_RADIUS_M, MAT_SURFACE_Z + BLOCK_HEIGHT_M / 2.0)
+# PLACE_XYZ.z is a RESTING SURFACE, not a centre -- a different convention from
+# PICK_XYZ.z, which is a genuine trap when reading the two side by side. main()
+# converts it with `lz = place_surface_z + block_size/2 + GRASP_OFFSET_Z`. For a
+# block set down directly on the mat, the surface IS the mat.
+PLACE_XYZ = (+0.000, -ZONE_RADIUS_M, MAT_SURFACE_Z)
 # APPROACH_HEIGHT is how far above the grasp/place flange target to
 # pre-position for the straight-down descent. It is HARD-CAPPED by the arm's
 # reach, NOT a free choice: at a pick/place radius of 0.25m the flange could
@@ -233,12 +278,50 @@ def hover_z(target_z):
 # (it's purely gripper/flange geometry) -- re-measure with
 # gripper_offset_probe.py and update this if the gripper or camera-flange
 # geometry changes, not if the block size changes.
-GRASP_OFFSET_Z = 0.09
+#
+# RE-MEASURED ON HARDWARE 2026-08-03: 0.090 was 22 mm too SHORT, and being too
+# short is the dangerous direction -- flange = target + offset, so an
+# undersized offset drives the flange, and the fingertips with it, straight
+# into the mat. It did, three times.
+#
+# The measurement: --grasp-only with the fingertips resting on the mat, read
+# straight off /joint_states. Forward kinematics puts the flange 114.0 mm above
+# the mat in that pose, so flange-to-fingertip is 114 mm with the tips touching
+# and ~112 mm with the 2 mm gap actually observed at the shallowest step.
+#
+# 0.090 evidently described some earlier gripper or was inherited from the
+# Gazebo model; gripper_offset_probe.py's docstring claims it was measured, but
+# the FK says gripper_base alone is already 50 mm below the flange and the
+# fingers are visibly longer than 40 mm.
+#
+# UNCERTAIN TO ABOUT +/-2 mm, and biased deliberately toward the SAFE side (a
+# larger offset holds the arm higher). Re-run the --pick-position ladder to
+# confirm before trusting it for a real grasp.
+#
+# MEASURED DIRECTLY 2026-08-03, third value this session (0.090 -> 0.112 ->
+# 0.147). This one is not inferred, it is subtraction:
+#
+#   flange, from FK at the parked grasp pose : 151.3 mm above the mat
+#   fingertips, by ruler, same pose          :   4.0 mm above the mat
+#   flange-to-fingertip                      : 147.3 mm
+#
+# The two earlier values were both derived from "the tips looked about here"
+# rather than measured against the FK the report now prints, and both were
+# short -- which is the direction that drives the gripper into the bench.
+#
+# It is also large enough to be worth sanity-checking against the photo: the
+# gripper assembly really is ~150 mm from flange to fingertip. gripper_base
+# alone is 50 mm down (FK), and the fingers are the other ~97 mm.
+GRASP_OFFSET_Z = 0.147
 
-# Cube side length, meters -- matches CUBE_SIZE_1/CUBE_SIZE_2 in
-# spawn_world.py. Used to convert a place SURFACE height into the block-
-# center height the flange must descend to when releasing.
-DEFAULT_BLOCK_SIZE = 0.02
+# Cube side length, meters. Used to convert a place SURFACE height into the
+# block-center height the flange must descend to when releasing.
+#
+# WAS 0.02 to match spawn_world.py's Gazebo cubes. The physical block is 30 mm,
+# so on hardware that under-shot every release by 5 mm. Now shares one constant
+# with PICK_XYZ so the two can never drift apart again -- if the real block
+# changes, BLOCK_HEIGHT_M is the single place to say so.
+DEFAULT_BLOCK_SIZE = BLOCK_HEIGHT_M
 
 GRIPPER_OPEN = 0.15    # matches URDF joint upper limit
 GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
@@ -2196,6 +2279,148 @@ def make_orientation_constraint(link_name, frame_id, qx, qy, qz, qw,
     return constraint
 
 
+# URDF arm chain, for reporting where the flange ACTUALLY ended up. Copied from
+# mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf; the same
+# table lives in mycobot_bridge.py and ff_verify.py, validated against
+# serial_rate_probe.py's posture set to 5e-5 m. (xyz, rpy, axis).
+_FK_CHAIN = [
+    ([0.0, 0.0, 0.13956], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0, -0.001], [0.0, 1.5708, -1.5708], [0.0, 0.0, 1.0]),
+    ([-0.1104, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([-0.096, 0.0, 0.06462], [0.0, 0.0, -1.5708], [0.0, 0.0, 1.0]),
+    ([0.0, -0.07318, -0.001], [1.5708, -1.5708, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0456, 0.0], [-1.5708, 0.0, 0.0], [0.0, 0.0, 1.0]),
+]
+
+
+
+def _mat_mul(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4)]
+            for i in range(4)]
+
+
+def _origin(xyz, rpy):
+    r, p, y = rpy
+    cr, sr, cp, sp, cy, sy = (math.cos(r), math.sin(r), math.cos(p),
+                              math.sin(p), math.cos(y), math.sin(y))
+    return [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, xyz[0]],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, xyz[1]],
+            [-sp, cp * sr, cp * cr, xyz[2]], [0.0, 0.0, 0.0, 1.0]]
+
+
+def _axis_rot(axis, angle):
+    ax, ay, az = axis
+    c, s, u = math.cos(angle), math.sin(angle), 1.0 - math.cos(angle)
+    return [[u * ax * ax + c, u * ax * ay - s * az, u * ax * az + s * ay, 0.0],
+            [u * ax * ay + s * az, u * ay * ay + c, u * ay * az - s * ax, 0.0],
+            [u * ax * az - s * ay, u * ay * az + s * ax, u * az * az + c, 0.0],
+            [0.0, 0.0, 0.0, 1.0]]
+
+def _fk_flange(joint_values):
+    """(position, approach_axis) of the flange for the six arm joints, in
+    HOME_RADIANS order. Pure URDF geometry -- what the MODEL says the arm is
+    doing, which is exactly the thing to compare against a tape measure."""
+    t = [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
+    for (xyz, rpy, axis), angle in zip(_FK_CHAIN, joint_values):
+        r, p, y = rpy
+        cr, sr, cp, sp, cy, sy = (math.cos(r), math.sin(r), math.cos(p),
+                                  math.sin(p), math.cos(y), math.sin(y))
+        o = [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, xyz[0]],
+             [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, xyz[1]],
+             [-sp, cp * sr, cp * cr, xyz[2]], [0.0, 0.0, 0.0, 1.0]]
+        t = [[sum(t[i][k] * o[k][j] for k in range(4)) for j in range(4)]
+             for i in range(4)]
+        ax, ay, az = axis
+        c, s, u = math.cos(angle), math.sin(angle), 1.0 - math.cos(angle)
+        rot = [[u * ax * ax + c, u * ax * ay - s * az, u * ax * az + s * ay, 0.0],
+               [u * ax * ay + s * az, u * ay * ay + c, u * ay * az - s * ax, 0.0],
+               [u * ax * az - s * ay, u * ay * az + s * ax, u * az * az + c, 0.0],
+               [0.0, 0.0, 0.0, 1.0]]
+        t = [[sum(t[i][k] * rot[k][j] for k in range(4)) for j in range(4)]
+             for i in range(4)]
+    return ([t[0][3], t[1][3], t[2][3]], [t[0][2], t[1][2], t[2][2]])
+
+
+# The two FIXED joints below the flange. `camera_flange_to_gripper_base` carries
+# a 40 mm LATERAL offset, so the jaws do NOT sit on the flange's own axis --
+# projecting GRASP_OFFSET_Z down that axis puts the tip ~12 mm too far out and
+# was wrong in the first version of this report.
+_FK_TOOL = [
+    ([0.0, 0.0, 0.01], [1.579, 0.0, 2.3562]),
+    ([0.0, 0.04, 0.0], [-0.0082, 1.5708, 0.0]),
+]
+
+
+def _fk_gripper_base(joint_values):
+    """Position of gripper_base, through the real tool chain rather than by
+    projecting along the flange axis."""
+    t = [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
+    chain = [(xyz, rpy, axis) for xyz, rpy, axis in _FK_CHAIN]
+    for (xyz, rpy, axis), angle in zip(chain, joint_values):
+        t = _mat_mul(t, _origin(xyz, rpy))
+        t = _mat_mul(t, _axis_rot(axis, angle))
+    for xyz, rpy in _FK_TOOL:
+        t = _mat_mul(t, _origin(xyz, rpy))
+    return [t[0][3], t[1][3], t[2][3]]
+
+
+def report_reached(io_client, x, y, z, what="move"):
+    """Print where the flange and gripper ACTUALLY are against where they were
+    asked to be, in mm, from /joint_states via forward kinematics.
+
+    (x, y, z) is the FLANGE target as the caller passed it, BEFORE tip-swing
+    compensation -- that is what both call sites hand in. The comparison is
+    made against the compensated value, which is what was really commanded.
+
+    EXISTS BECAUSE THIS QUESTION KEEPS COSTING ROUND TRIPS. Twice now a
+    hardware session has stalled on "the arm is somewhere else and we cannot
+    tell whether the arm missed or the model is wrong" -- once for the grasp
+    height, once for a 25 mm radial shortfall. This does not fix either, but it
+    separates them in one line:
+
+      FK matches the target, tape measure disagrees -> the URDF's geometry (or
+          the point you are measuring from) is wrong; the arm did as it was told.
+      FK also misses the target -> the arm did not reach its commanded joints;
+          look at droop, backlash and the IK position tolerance.
+
+    Note the target passed in is the CALLER's point -- the tip target -- not
+    the tip-swing-compensated flange target, so the tip row is the one to
+    compare against a ruler."""
+    try:
+        names = list(HOME_RADIANS.keys())
+        current = io_client.current_joint_positions(names)
+        values = [current[n] for n in names]
+    except Exception as exc:
+        print(f"[reached] could not read /joint_states: {exc!r}")
+        return
+    flange, _approach = _fk_flange(values)
+    gripper = _fk_gripper_base(values)
+    cx, cy, cz = compensate_for_tip_swing(x, y, z)
+    cz = clamp_flange_z(cz, "reported")
+
+    err = [flange[0] - cx, flange[1] - cy, flange[2] - cz]
+    r_have = math.hypot(flange[0], flange[1])
+    r_want = math.hypot(cx, cy)
+    print(f"[reached] {what}")
+    print(f"[reached]   flange   FK ({flange[0]:+.4f}, {flange[1]:+.4f}, "
+          f"{flange[2]:+.4f})  commanded ({cx:+.4f}, {cy:+.4f}, {cz:+.4f})")
+    print(f"[reached]     error dx {1000 * err[0]:+.1f}  dy {1000 * err[1]:+.1f}"
+          f"  dz {1000 * err[2]:+.1f} mm     radius {1000 * r_have:.1f} vs "
+          f"{1000 * r_want:.1f} mm ({1000 * (r_have - r_want):+.1f})")
+    r_grip = math.hypot(gripper[0], gripper[1])
+    print(f"[reached]   gripper  FK ({gripper[0]:+.4f}, {gripper[1]:+.4f}, "
+          f"{gripper[2]:+.4f})   radius {1000 * r_grip:.1f} mm "
+          f"= {r_grip / 0.0254:.2f} in")
+    print(f"[reached]     {1000 * (gripper[2] - MAT_SURFACE_Z):.1f} mm above the mat")
+    # The flange row answers "did the arm do as it was told". The gripper row is
+    # what a tape measure sees. If the first is small and the second disagrees
+    # with a ruler, the URDF is wrong, not the arm.
+    if max(abs(v) for v in err) < 0.005:
+        print(f"[reached]   -> flange within 5 mm of command: the ARM is fine. "
+              f"Any disagreement with a ruler is URDF geometry or the point "
+              f"you are measuring from.")
+
+
 def _quat_rotate_z(q):
     """The world-frame direction the tool's own +Z axis points, for quaternion
     q = (x, y, z, w). That axis is the approach direction -- straight down at a
@@ -2242,11 +2467,99 @@ def mount_tilt_tip_offset(block_yaw_deg=0.0):
     return tuple(GRASP_OFFSET_Z * (swung[i] - plain[i]) for i in range(3))
 
 
+# MEASURED FLANGE -> JAW LATERAL OFFSET, world frame, 2026-08-03.
+#
+# At the parked grasp pose the flange was at FK radius 223.0 mm while a ruler
+# put the jaw centreline at 203.2 mm: the jaws hang 19.8 mm INWARD of the
+# flange, and the URDF does not know it (its own tool chain puts gripper_base
+# 3.5 mm OUTWARD instead, so the model is ~23 mm wrong laterally -- the same
+# class of error as the already-documented 180 deg camera flip).
+#
+# WORLD-FRAME, NOT RADIAL, and the distinction decides the place pose. The jaws
+# hold a FIXED world yaw (GRIPPER_YAW_DEG), so the tool frame has a fixed world
+# orientation and a tool-fixed offset is a fixed world vector. That makes the
+# pick harder and the place EASIER, because they sit at opposite bearings:
+#
+#     pick  (0, +0.2286) -> flange must reach y +0.2484   (past MAX_FLANGE_RADIUS_M)
+#     place (0, -0.2286) -> flange only needs y -0.2088
+#
+# THE FRAME IS AN INFERENCE FROM ONE POSE. Measure the jaws at the place pose
+# to settle it: 19.8 mm inward there too in WORLD terms (i.e. jaws at -0.2088)
+# confirms world-fixed; 19.8 mm inward RADIALLY (jaws at -0.2484) means it is
+# radial and this constant is the wrong shape.
+#
+# Set to (0.0, 0.0) to disable and recover the previous behaviour.
+JAW_LATERAL_OFFSET = (-0.0003, -0.0198)
+
+
+# RESIDUAL DESCENT BIAS, measured 2026-08-03.
+#
+# The arm stops slightly HIGH of its commanded flange z even with the bridge's
+# gravity feedforward live. report_reached measured +3.7 mm on the grasp run,
+# and the jaws visibly closed ~5 mm above the block's midline -- two independent
+# readings of the same thing, agreeing to about a millimetre.
+#
+# NOT folded into GRASP_OFFSET_Z, which is a rigid tool dimension measured by
+# subtraction and has no business absorbing a control error. This is the arm
+# stopping short, which is the residual of the free play the feedforward cannot
+# reach: joints 2 and 3 give up their last degree or so and the tool rides up.
+#
+# NEGATIVE = aim lower. Applied to the flange target, so it lowers the jaws by
+# the same amount.
+#
+# -0.005 -> -0.007 on 2026-08-03: at -0.005 the jaws sat ~2 mm high of the
+# midline by eye, so the remaining 2 mm was added. That leaves only 2.8 mm
+# between the commanded flange z (0.1508) and clamp_flange_z's floor (0.1480).
+# ANY further increase hits the clamp, and the clamp is not the thing to relax
+# -- if the grasp still lands high past this point, GRASP_OFFSET_Z is what is
+# wrong, not this.
+DESCENT_BIAS_Z = -0.007
+
+
 def compensate_for_tip_swing(x, y, z, block_yaw_deg=0.0):
-    """(x, y, z) shifted so the JAW TIP lands on the caller's point once
-    GRIPPER_MOUNT_TILT_* has swung it. See mount_tilt_tip_offset."""
+    """(x, y, z) shifted so the JAW TIP lands on the caller's point, correcting
+    the GRIPPER_MOUNT_TILT_* swing, the measured lateral offset between the
+    flange and where the jaws actually hang, and the arm's residual tendency to
+    stop high."""
     dx, dy, dz = mount_tilt_tip_offset(block_yaw_deg)
+    dx += JAW_LATERAL_OFFSET[0]
+    dy += JAW_LATERAL_OFFSET[1]
+    dz -= DESCENT_BIAS_Z
     return x - dx, y - dy, z - dz
+
+
+# Never let the fingertips get closer than this to the mat. 5 mm is well under
+# any legitimate target -- a block sitting on the mat is grasped at its centre,
+# BLOCK_HEIGHT_M/2 = 15 mm up -- so this can only ever catch a mistake.
+MIN_TIP_CLEARANCE_M = 0.005
+
+
+def clamp_flange_z(z, what="target"):
+    """Refuse to drive the fingertips into the mat.
+
+    ADDED AFTER DOING EXACTLY THAT, three times, on 2026-08-03. GRASP_OFFSET_Z
+    was 22 mm short, so every commanded flange height put the tips 22 mm lower
+    than intended, and nothing anywhere in the pipeline objected: MoveIt plans
+    against the URDF's kinematic tree, which contains no mat, no table and no
+    floor, so a Cartesian descent into the bench is a perfectly valid plan that
+    reports fraction=1.00.
+
+    The floor is derived, not tuned -- MAT_SURFACE_Z + GRASP_OFFSET_Z is the
+    flange height at which the tips touch the mat, and it moves automatically
+    if either constant is re-measured. A miscalibrated GRASP_OFFSET_Z will
+    still put the grasp at the wrong HEIGHT; what this guarantees is that the
+    failure is a bad grasp rather than the gripper being pressed into the
+    bench."""
+    floor = MAT_SURFACE_Z + GRASP_OFFSET_Z + MIN_TIP_CLEARANCE_M
+    if z >= floor:
+        return z
+    print(f"[safety] {what} flange z={z:.4f} would put the fingertips "
+          f"{1000 * (z - GRASP_OFFSET_Z - MAT_SURFACE_Z):+.1f} mm relative to "
+          f"the mat. Clamping to {floor:.4f} "
+          f"({1000 * MIN_TIP_CLEARANCE_M:.0f} mm clearance).")
+    print(f"[safety] Nothing else will catch this -- the planning scene has no "
+          f"mat in it, so a descent into the bench plans at fraction=1.00.")
+    return floor
 
 
 def make_grasp_pose(x, y, z, block_yaw_deg=0.0, holding_block=False):
@@ -2262,7 +2575,7 @@ def make_grasp_pose(x, y, z, block_yaw_deg=0.0, holding_block=False):
     px, py, pz = compensate_for_tip_swing(x, y, z, block_yaw_deg)
     pose.position.x = px
     pose.position.y = py
-    pose.position.z = pz
+    pose.position.z = clamp_flange_z(pz, "grasp-pose")
     (pose.orientation.x, pose.orientation.y,
      pose.orientation.z, pose.orientation.w) = grasp_quat_for(
         block_yaw_deg, x, y, holding_block)
@@ -2674,6 +2987,7 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
     # detection hovers), which are not aiming the jaws at anything.
     if orientation_override is None:
         x, y, z = compensate_for_tip_swing(x, y, z, block_yaw_deg)
+        z = clamp_flange_z(z, "move_arm_to")
 
     ik_state = None
     if lock_orientation:
@@ -2771,7 +3085,11 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
 
     print(f"Executing Cartesian move to ({x}, {y}, {z}) (fraction={fraction:.2f})...")
 
-    return io_client.arm_execute(solution_msg.joint_trajectory)
+    ok = io_client.arm_execute(solution_msg.joint_trajectory)
+    # fraction=1.00 only says the PLAN reached the target. Report where the arm
+    # actually is, which is a different question and the one that matters.
+    report_reached(io_client, x, y, z, what="after Cartesian descent")
+    return ok
 
 
 def parse_args():

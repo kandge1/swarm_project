@@ -732,6 +732,116 @@ there.
 the block**, so the two-echo hand measurement can be taken loaded. Every other
 mode arrives empty and measures nothing about the payload.
 
+### The grasp height was 54 mm too high — a simulator constant on hardware
+
+The jaws closed on the block's **top inward corner** instead of straddling its
+middle. The cause was not sag, not the URDF, and not the arm:
+
+```
+PICK_XYZ = (0, ZONE_RADIUS_M, 0.030 + SPAWN_HEIGHT_CORRECTION)   # = 0.065
+SPAWN_HEIGHT_CORRECTION = 0.035   # "old spawn_z (0.055) - new spawn_z (0.02)"
+```
+
+`SPAWN_HEIGHT_CORRECTION` is **Gazebo bookkeeping** — the delta between two
+`ros_gz_sim create -z` spawn heights. It has no meaning on hardware, where there
+is no spawn offset. And the 0.030 it was added to was itself
+`TABLE_TOP_Z + DEFAULT_BLOCK_SIZE/2` for a **20 mm simulated cube on a simulated
+table**. Two simulator numbers stacked into a hardware target.
+
+**The arm was never wrong.** With the sag held out by hand and the block centred
+in the jaws, its centre measured **63.5 mm** above the mat against the **65 mm**
+commanded — accurate to **1.5 mm**. It was being told the wrong height.
+
+**Real geometry, measured 2026-08-03:**
+
+| | |
+|---|---|
+| `MAT_SURFACE_Z` | **−0.004** — the URDF has no mesh for the 4 mm plate the robot stands on, so model z=0 floats 4 mm above the mat the blocks sit on |
+| `BLOCK_HEIGHT_M` | **0.030** (1.18 in), not the 20 mm Gazebo cube |
+| `PICK_XYZ.z` | `MAT_SURFACE_Z + BLOCK_HEIGHT_M/2` = **+0.011** (was 0.065) |
+| `PLACE_XYZ.z` | `MAT_SURFACE_Z` = **−0.004** (was 0.075) — a *surface*, not a centre |
+
+Both flange targets now land at **0.101 m**, fingertips **15 mm above the mat**,
+straddling the block's mid-height. `DEFAULT_BLOCK_SIZE` now shares
+`BLOCK_HEIGHT_M` so the pick and place conventions cannot drift apart again.
+
+`SPAWN_HEIGHT_CORRECTION` is left defined — `annulus_test.py` still uses it and
+is still correct there, because that script targets Gazebo.
+
+**This also explains why earlier picks "worked":** grabbing a 30 mm block by its
+top corner still lifts it. It was never a good grasp, just a lucky one.
+
+### …and then `GRASP_OFFSET_Z` turned out to be 22 mm short
+
+Stepping the corrected height in with `--pick-position` drove the gripper into
+the mat at every rung — the shallowest (block centre 0.040, predicted 44 mm of
+clearance) came within a couple of mm, and the two below it pressed in.
+
+Measured from `/joint_states` with the tips on the mat: **the flange sits
+114.0 mm above the mat**, so flange-to-fingertip is **~0.112 m**, against the
+0.090 configured. FK independently puts `gripper_base` alone 50 mm below the
+flange, and the fingers are visibly longer than the remaining 40 mm.
+
+`GRASP_OFFSET_Z` → **0.112** (±2 mm, biased toward the safe side — a larger
+offset holds the arm higher).
+
+**Both errors pushed the same way**, which is why the first symptom looked like
+a pure height problem: the target was 54 mm too high, the offset 22 mm too
+short, and the jaws landed on the block's top corner.
+
+### A floor, because nothing in the stack has one
+
+`clamp_flange_z()` refuses any target that would bring the fingertips closer
+than `MIN_TIP_CLEARANCE_M` = 5 mm to the mat, applied in both `make_grasp_pose`
+and `move_arm_to`.
+
+**MoveIt could never have caught this.** It plans against the URDF's kinematic
+tree, which contains no mat, no table and no floor — a Cartesian descent into
+the bench is a perfectly valid plan and reports `fraction=1.00`, which is
+exactly what the logs showed while the gripper was being pressed into the mat.
+
+The floor is derived (`MAT_SURFACE_Z + GRASP_OFFSET_Z + clearance`), so it
+tracks automatically if either constant is re-measured. It does not make a
+miscalibrated offset correct — it makes the failure a bad grasp instead of a
+damaged gripper.
+
+### The tool frame, finally measured rather than inferred (2026-08-03)
+
+`report_reached()` prints the FK flange and gripper positions after every
+Cartesian descent, which turned "the arm is somewhere else and we cannot tell
+why" into two numbers. **The arm was never the problem** — flange radius came
+out **within 0.5 mm** of commanded. Everything wrong was in the flange→jaw map.
+
+Parked at the grasp pose, FK vs a ruler:
+
+| | FK | measured | error |
+|---|---|---|---|
+| flange height above mat | 151.3 mm | — | — |
+| fingertip height above mat | — | **4 mm** | `GRASP_OFFSET_Z` = **0.147**, not 0.112 |
+| flange radius | 223.0 mm | — | — |
+| jaw centreline radius | 226.5 mm (`gripper_base`) | **203.2 mm** | jaws hang **19.8 mm inward** |
+
+`GRASP_OFFSET_Z` has now been 0.090 → 0.112 → **0.147**. The first two were
+inferred from "the tips looked about here"; this one is subtraction against the
+FK the report prints. Both earlier values were *short*, which is the direction
+that drives the gripper into the bench.
+
+`JAW_LATERAL_OFFSET = (-0.0003, -0.0198)` is new. **The URDF's tool chain is
+~23 mm wrong laterally** — it places `gripper_base` 3.5 mm *outward* of the
+flange where the jaws physically hang 19.8 mm *inward*. Same class of error as
+the already-known 180° camera flip.
+
+**World-frame, not radial**, because the jaws hold a fixed world yaw
+(`GRIPPER_YAW_DEG`) so the tool frame has a fixed world orientation. That makes
+the pick harder and the place easier. **This frame is inferred from one pose** —
+measure the jaws at the place pose to settle it: 19.8 mm inward there in *world*
+terms confirms it; 19.8 mm inward *radially* means the constant is the wrong
+shape.
+
+Net reach, after the mount-tilt compensation partly cancels it: pick flange
+**0.2405** (inside `MAX_FLANGE_RADIUS_M` 0.245 with 4.5 mm margin), place
+**0.2167**. No re-taping required.
+
 ---
 
 ## SLOW MOVES WERE NEVER SENT TO THE ARM AT ALL (found and fixed 2026-08-02)
@@ -777,12 +887,123 @@ keeps doing its original job of not re-spamming an unchanged target.
 
 ---
 
+## THE OUTER HALF OF THE PICKUP ZONE CANNOT BE REACHED (found 2026-08-03)
+
+Found by `zone_calibrate.py`'s pre-flight, before the arm moved. It is a
+**zone-placement** problem, not a calibration one, and no amount of tuning
+touches it.
+
+The pickup zone centre sits at `ZONE_RADIUS_M` = 0.2286 m (9.00 in) and the tag
+square is 4 in on a side, so the zone spans **7.00 in to 11.00 in** radially.
+The flange tops out at `MAX_FLANGE_RADIUS_M` = 0.245 m.
+
+| vertex | tip radius | flange radius needed | margin |
+|---|---|---|---|
+| tag0 (−X, near) | 0.1849 | 0.1965 | **+48.5 mm** |
+| tag1 (+X, near) | 0.1849 | 0.1962 | **+48.8 mm** |
+| tag2 (+X, far) | 0.2840 | 0.2956 | **−50.6 mm** |
+| tag3 (−X, far) | 0.2840 | 0.2957 | **−50.7 mm** |
+
+The centre itself clears by 4.5 mm — which is why every calibration so far has
+worked and this never surfaced. **A block detected in the outer half of the
+zone cannot be picked up at any orientation.** The arm is a myCobot 280: ~280 mm
+from the J1 axis, and the far corners need ~296 mm before the wrist is even
+asked to point down.
+
+`max_zone_centre_radius()` derives the fix rather than guessing it. For all four
+vertices of a 4 in square to be reachable:
+
+- **pickup zone centre must come in to 0.1769 m (6.96 in)**, from 9.00 in;
+- the place zone gets 0.2006 m (7.90 in), 0.93 in more, because
+  `JAW_LATERAL_OFFSET` is a **world** vector: it pushes the flange outward at
+  +Y and inward at −Y. Same asymmetry already noted for the grasp itself.
+
+Verified by re-running the pre-flight at the derived radius: all five waypoints
+come back reachable, the far corners with ~0.1 mm to spare.
+
+**Moving the zone means re-taping the mat**, so this is the user's call. It also
+invalidates nothing already measured — every constant was fitted at the centre
+and is radius-independent as far as anything here can tell, which is precisely
+what the survey is for.
+
+---
+
+## `zone_calibrate.py` — the zone survey
+
+Drives the jaws to the zone centre and each of the four tag vertices, and
+records where they actually ended up. Mars-side, no vision, no
+`DetectBlock`. Every calibration constant in `pick_place.py` was fitted at
+**one** point, the zone centre, and nothing had ever checked it 2 in away.
+
+```bash
+python3 zone_calibrate.py --dry-run                    # reach map, arm untouched
+python3 zone_calibrate.py --interactive                # survey + hand measurements
+python3 zone_calibrate.py --zone-radius 0.1769         # what a moved zone would give
+python3 zone_calibrate.py --repeats 3 --out zone3.csv  # repeatability
+```
+
+**The two column families answer different questions, and mixing them wastes a
+session:**
+
+- **FK columns** (`fk_*`, `err_*`) come from `/joint_states`. They see droop,
+  backlash and dead zone — the residual a feedforward removes. This is the
+  column set worth turning into a lookup table.
+- **Hand columns** (`meas_*`, from `--interactive`) are the *only* thing that
+  can catch a wrong geometry constant. FK reports the model's opinion of where
+  the tool is, and the model is what is under test. A wrong `GRASP_OFFSET_Z` is
+  invisible to FK by construction.
+
+FK error large → control problem. FK error small but the tape disagrees →
+geometry constant is wrong.
+
+The pre-flight screens twice, on radius then on real IK, and **skips** what
+fails rather than attempting it: `move_arm_to`'s OMPL fallback will "succeed" at
+an unreachable target by parking short and tilted inside its 4 cm position
+sphere — the runaway `MAX_FLANGE_RADIUS_M` documents — which looks like a
+completed move and poisons every number measured at it.
+
+`summarise()` splits the residual the same way the droop analysis did: a
+**constant** offset across the zone belongs in `DESCENT_BIAS_Z` /
+`JAW_LATERAL_OFFSET`; error that **swings** with position is pose-dependent and
+no single constant fixes it. Anything under 1 mm is reported as negligible
+rather than modelled, since that is under both the servo dead zone and what a
+tape measure resolves.
+
+---
+
+## `DESCENT_BIAS_Z` (2026-08-03)
+
+The arm stops **high** of its commanded flange z even with the bridge's gravity
+feedforward live. Two independent readings agreed to about a millimetre:
+`report_reached` measured **+3.7 mm** of flange `dz`, and the jaws visibly
+closed **~5 mm** above the block's midline.
+
+`DESCENT_BIAS_Z = -0.007` (−0.005 first, then −0.002 more after the jaws still
+read ~2 mm high by eye). Deliberately **not** folded into `GRASP_OFFSET_Z`,
+which is a rigid tool dimension measured by subtraction and has no business
+absorbing a control error. This is the residual free play the feedforward cannot
+reach — joints 2 and 3 give up their last degree and the tool rides up.
+
+Margins are now thin in both directions:
+
+| | |
+|---|---|
+| commanded flange z at the pick | 0.1508 |
+| `clamp_flange_z` floor | 0.1480 — **2.8 mm** |
+| flange radius | 0.2405 vs 0.245 — **4.5 mm** |
+
+**Any further increase hits the clamp**, and the clamp is not the thing to
+relax. If the grasp still lands high past this point, `GRASP_OFFSET_Z` is what
+is wrong.
+
+---
+
 ## Offline tests (no robot, no mars launch needed)
 
 ```bash
 cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
 python3 zone_vision_selftest.py     # synthetic geometry regression, ~1 s, expect "0 failure(s)"
-python3 -m py_compile tag_pick_place.py pick_place.py zone_vision.py block_detector_node.py
+python3 -m py_compile tag_pick_place.py pick_place.py zone_vision.py block_detector_node.py zone_calibrate.py
 ```
 
 `zone_vision_selftest.py` catches corner-order, homography and classification
