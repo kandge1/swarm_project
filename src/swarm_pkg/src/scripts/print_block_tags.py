@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""One A4 sheet per block: the six face tags, cut out and stuck on by hand.
+"""One sheet per block: the six face tags, cut out and stuck on by hand.
 
     python3 print_block_tags.py --out-dir ../../../../print_sheets
 
-writes block_tags_cube_A4.png and block_tags_cuboid_A4.png.
+writes block_tags_<class>_LETTER.pdf and .png. PRINT THE PDF, at Actual Size,
+on the paper named in the filename. print_zone_tags.py's docstring is the
+reference for why both of those matter; this sheet imports its calibration.
 
 The id scheme lives in block_coordinates.py -- TOP, BOTTOM and four distinct
 SIDE ids per block, 8-19 -- and this script only draws it. See that module for
@@ -17,22 +19,39 @@ one-module black border). This script asserts that against OpenCV at run time
 rather than trusting it, because everything below is divided by it. Note that
 print_tag_sheet.py:67 claims tag_size/10; that comment is wrong.
 
-The tag is limited by the block FACE, not by the paper: with one module of
-quiet zone on each side, a 30 mm face takes a 24 mm tag (block_coordinates.
-max_tag_size_for_face). That is the default. --tag-size overrides it, and
---face-size recomputes it for a different block.
+There are two competing constraints and the default resolves them in favour of
+pixels, deliberately.
 
-Then the pixel budget decides whether any of this works. The project's own
-invariant is px/m * distance = 551 (APRIL_TAGS_DEV.md, "px/m is a free height
-gauge"), so at the agreed angled survey pose, 0.305 m from the zone centre:
+QUIET ZONE says smaller. With QUIET_ZONE_MODULES = 1.25 of white each side --
+1.0 is the spec and is measurably not enough, see block_coordinates -- a 30 mm
+face takes a 22.5 mm tag (block_coordinates.max_tag_size_for_face). --fit-face
+prints that size.
 
-    24 mm tag, flat on to the lens        43 px      5.4 px/module
-    seen as a block TOP  (x0.81)          35 px      4.4 px/module   ok
-    seen as a block SIDE (x0.59)          26 px      3.2 px/module   marginal
+PIXELS say bigger. The project's invariant is px/m * distance = 551
+(APRIL_TAGS_DEV.md, "px/m is a free height gauge"), so at the agreed angled
+survey pose, 0.305 m from the zone centre:
 
-Roughly 3 px/module is where 36h11 stops decoding reliably, so SIDE tags at
-that pose are a coin flip and TOP tags are fine. --report prints this table for
-whatever size and distance you ask about; use it before printing, not after.
+                          flat      TOP (x0.81)     SIDE (x0.59)
+    22.5 mm tag         5.1 px/m      4.1  ok        3.0  dead
+    25.4 mm tag         5.7 px/m      4.6  ok        3.4  marginal
+
+Roughly 3 px/module is where 36h11 stops decoding -- the offline sweep in
+STACKED_BLOCKS_GUIDE.md puts the decode rate there at 10%, against 95% at 4.0.
+So neither size makes SIDE tags work at that pose; 25.4 mm moves the distance
+at which they might from 0.229 m to 0.258 m, and moves TOP tags further clear.
+
+THE DEFAULT IS 25.4 mm, chosen 2026-08-04. On a 30 mm face that leaves 2.3 mm
+of white a side = 0.72 modules, UNDER the 1.00-module cliff at which a tag
+fails against any non-white background. The bet is that the white does not have
+to stop at the sticker edge for the detector's purposes, so a light-coloured
+block face carries the rest of the quiet zone itself. That is untested here and
+is the first thing to suspect if block tags decode on the sheet and not on a
+block. --fit-face is the retreat, and costs 0.5 px/module.
+
+The cut square never exceeds the face: past that point the quiet zone is
+squeezed rather than the square grown, so cutting on the line always gives a
+sticker that lies flat on the block. --report prints the whole budget for any
+size and distance; use it before printing, not after.
 
 ------------------------------------------------------------------------------
 STICKING THEM ON
@@ -49,8 +68,10 @@ block yaw it implies is silently 90 degrees out. Check the four sides read
 
 Scale does NOT have to be perfect, but it does have to be KNOWN: the tag size
 is a parameter everywhere downstream, and the tag-scale height estimate
-(block_coordinates.height_from_scale) divides by it. Measure the ruler on the
-sheet, then measure a tag.
+(block_coordinates.height_from_scale) divides by it. Measure the 150 mm ruler
+on the sheet -- not a tag, which is six times shorter and therefore six times
+worse to measure -- and either re-run with a corrected --print-correction or
+set block_detector_node's block_tag_size to the size you actually got.
 """
 import argparse
 import os
@@ -61,24 +82,79 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import block_coordinates as bc  # noqa: E402
+# For the paper these printers feed and the ruler length, which describe the
+# hardware rather than this sheet, so they get one home. NOT for CONTENT_SCALE
+# -- that is calibrated on a different print chain and measurably wrong for
+# this one, see DEFAULT_PRINT_CORRECTION. print_zone_tags.py reached the same
+# conclusions first and the long way round; its docstring is the reference.
+import print_zone_tags as pz  # noqa: E402
 
-A4_MM = (210.0, 297.0)          # portrait, (width, height)
+# Portrait, (width, height). The zone sheets are authored on LETTER because
+# that is what these printers feed, and a page-size mismatch under fit-to-page
+# is what produced non-square output there. Same default here.
+PAPER_MM = {
+    "a4": (210.0, 297.0),
+    "letter": pz.PAGE_MM,
+}
+DEFAULT_PAPER = "letter"
+A4_MM = PAPER_MM["a4"]
 MARGIN_MM = 12.0
-RULER_LENGTH_MM = 150.0
 
-# 1.0 = draw the page at true A4 and let the printer print it 1:1.
+# The tag the blocks actually wear. 25.4 mm chosen 2026-08-04 over the 22.5 mm
+# the face arithmetic gives, deliberately and with the cost known -- see
+# QUIET_ZONE_SQUEEZE below and --fit-face for the derived size.
+DEFAULT_TAG_SIZE_M = 0.0254
+
+# A 150 mm baseline measures to ~0.7% with a ruler that reads to 1 mm; a 25 mm
+# tag measures to 4%. Two rounds of this were spent measuring tags, so the
+# sheet carries the long baseline again. Same length as the zone sheets, for
+# the same reason and calibrating the same constant.
+RULER_LENGTH_MM = pz.RULER_LENGTH_MM
+
+# Multiplies the CONTENT against a page that stays the size of the paper, to
+# cancel the shrink these printers apply. 1.0 = draw at nominal size.
 #
-# MEASURED ON THIS PRINTER 2026-08-04, and it is the opposite of what
-# print_tag_sheet.py assumes. That script pre-scales by 16/14 to cancel a fixed
-# fit-to-page shrink measured on a different printer. Run through this one, a
-# 22.5 mm nominal tag came out at 19.6 mm -- and 22.5 / (16/14) = 19.69. So this
-# printer honoured fit-to-page exactly, scaling the deliberately-oversized page
-# back to true A4 and cancelling the correction perfectly. The pre-scale WAS the
-# entire error.
+# THE PRINT CHAIN, every row the same 22.5 mm nominal tag, measured off paper:
 #
-# If a tag ever comes out wrong again, set this to (nominal / measured) from a
-# print made at 1.0 -- do not guess, and do not copy print_tag_sheet.py's value.
-DEFAULT_PRINT_CORRECTION = 1.0
+#     PNG, correction 16/14              19.6  mm   0.871
+#     PNG, correction 1.0                19.58 mm   0.870   <- correction inert
+#     PDF on A4 geometry, Actual Size    21.27 mm   0.945   <- pHYs fix landed
+#     PDF, content-scaled                21    mm
+#
+# Rows 1 and 2 are the finding: two corrections 14% apart printed the SAME tag,
+# so the correction was not over-cancelling a shrink, it had no effect on
+# physical size at all. It scaled px_per_mm, which scales the canvas along with
+# the content, leaving the tag at the same FRACTION of the page -- and a
+# fraction of a page is precisely what survives a printer mapping an image onto
+# paper. print_zone_tags.py measured the identical no-op independently: a
+# 1.0926x pre-scale moved its printed tag from 23 mm to 23 mm.
+#
+# Underneath that, a cv2.imwrite PNG carries no pHYs chunk, so it never states
+# its size in mm and "Actual Size" has nothing to be actual against. write_sheet
+# emits a PDF with a real page box now, which is what row 3 recovered.
+#
+# MEASURED ON THIS CHAIN 2026-08-04, off the 150 mm ruler: a sheet drawn at
+# print_zone_tags.CONTENT_SCALE (1.0925) printed its ruler at 154.42 mm, i.e.
+# 3% OVER. So this chain -- PDF, Actual Size, this printer -- needs
+#
+#     1.0925 * 150/154.42 = 1.0612
+#
+# and that is independently corroborated: the implied shrink, 1/1.0612 = 0.942,
+# matches the 0.945 measured off the A4 PDF two prints earlier. Two different
+# papers, two different measurements, the same number -- so what is left is the
+# printer's own printable-area inset, not a paper-size fit, and it is
+# deterministic enough to cancel.
+#
+# CONTENT_SCALE is NOT wrong; it is fitted to a different chain (PNG through a
+# campus printer applying fit-to-page unconditionally, print_zone_tags.py's
+# docstring). Sharing one constant across both was tried here and this
+# measurement is what ruled it out. If the zone mat is ever reprinted through
+# THIS chain it needs recalibrating the same way -- and if it was printed
+# through this one already, its 101.6 mm square is ~3% oversized, which
+# zone_vision would silently pass into every position it reports.
+#
+# Recalibrate with --measured-ruler; do not do the arithmetic by hand.
+DEFAULT_PRINT_CORRECTION = 1.0612
 
 # Default square face the tag has to fit inside. pick_place.BLOCK_HEIGHT_M is
 # 0.030 (measured on hardware 2026-08-03) and the cube is 30 mm on every face.
@@ -90,10 +166,25 @@ DEFAULT_FACE_SIZE_M = 0.030
 # there.
 QUIET_ZONE_MODULES = bc.QUIET_ZONE_MODULES
 
+# A tag larger than the face can carry gets its quiet zone SQUEEZED to whatever
+# is left, rather than the cut square growing past the face. Cutting on the
+# line then gives a sticker exactly the size of the block face -- which is the
+# only thing that can actually be stuck on flat.
+#
+# At 25.4 mm on a 30 mm face that leaves 2.3 mm a side = 0.72 modules, under
+# the 1.00-module cliff where a tag stops decoding against any non-white
+# background (block_tags_selftest.test_quiet_zone_floor). The white does not
+# have to end at the sticker edge to work, so a light-coloured block face may
+# carry it; a dark one will not. Chosen deliberately 2026-08-04, to be settled
+# on hardware. --fit-face returns to the size the arithmetic allows.
+QUIET_ZONE_SQUEEZE_ALLOWED = True
+
 CUT_MARGIN_MM = 3.0             # paper outside the quiet zone, to cut in
 LABEL_H_MM = 12.0
 COL_GAP_MM = 22.0
 ROW_GAP_MM = 7.0
+RULER_GAP_MM = 9.0              # grid bottom to the ruler baseline
+RULER_TICK_MM = 3.2             # major tick height; minor ticks are half
 
 # Text is sized in MILLIMETRES OF CAP HEIGHT ON PAPER, not in cv2 font scale.
 # cv2's scale is relative to a ~22 px reference, so at 300 dpi a "0.38" that
@@ -213,7 +304,21 @@ SIDE_HINTS = {
 
 
 def render_sheet(block_class, dpi, tag_size_mm, face_size_mm,
-                 print_correction=1.0):
+                 print_correction=1.0, paper="a4"):
+    # print_correction draws the CONTENT larger inside a canvas that stays
+    # exactly the paper size, by shrinking the logical page it is laid out on.
+    # Everything below works in logical mm; physical mm on the sheet is logical
+    # x print_correction. Same mechanism as print_zone_tags.CONTENT_SCALE,
+    # which scales about the page centre instead.
+    #
+    # It used to scale px_per_mm alone, which also scaled the canvas -- the tag
+    # kept the same FRACTION of the page (22.5/210), so every printer that maps
+    # the image onto the paper printed the identical physical size and the
+    # correction did nothing but change the raster resolution. Measured
+    # 2026-08-04: 16/14 gave 19.6 mm and 1.0 gave 19.58 mm, the same tag from
+    # settings 14% apart. See DEFAULT_PRINT_CORRECTION.
+    paper_mm = PAPER_MM[paper]
+    page_mm = (paper_mm[0] / print_correction, paper_mm[1] / print_correction)
     px_per_mm = dpi / 25.4 * print_correction
 
     def mm(v):
@@ -222,12 +327,17 @@ def render_sheet(block_class, dpi, tag_size_mm, face_size_mm,
     def mm_to_px(x, y):
         return (mm(x), mm(y))
 
-    page = np.full((mm(A4_MM[1]), mm(A4_MM[0])), 255, dtype=np.uint8)
+    page = np.full((mm(page_mm[1]), mm(page_mm[0])), 255, dtype=np.uint8)
     put = _text_writer(page, px_per_mm)
     dictionary = _dictionary()
     _assert_module_count(dictionary)
 
+    # Squeezed to the face when the tag is too big to carry a full one, so the
+    # cut square never exceeds the block face -- see QUIET_ZONE_SQUEEZE_ALLOWED.
     quiet_mm = tag_size_mm / MODULES_ACROSS * QUIET_ZONE_MODULES
+    if QUIET_ZONE_SQUEEZE_ALLOWED and tag_size_mm + 2 * quiet_mm > face_size_mm:
+        quiet_mm = max(0.0, (face_size_mm - tag_size_mm) / 2.0)
+
     cell_w_mm = tag_size_mm + 2 * quiet_mm + 2 * CUT_MARGIN_MM
     cell_h_mm = cell_w_mm + LABEL_H_MM
 
@@ -245,15 +355,16 @@ def render_sheet(block_class, dpi, tag_size_mm, face_size_mm,
 
     header_mm = TITLE_MM * 1.8 + ARROW_CLEARANCE_MM
     grid_total_mm = header_mm + grid_h_mm
-    x0_mm = (A4_MM[0] - grid_w_mm) / 2.0
+    x0_mm = (page_mm[0] - grid_w_mm) / 2.0
     # Centre the whole block vertically too, so nothing lands near an edge --
     # page margins are where a fit-to-page shrink does its damage.
-    y0_mm = max(MARGIN_MM + header_mm, (A4_MM[1] - grid_total_mm) / 2.0 + header_mm)
+    y0_mm = max(MARGIN_MM + header_mm, (page_mm[1] - grid_total_mm) / 2.0 + header_mm)
     if x0_mm < MARGIN_MM:
         raise SystemExit(
-            "a %.1f mm tag does not fit two across A4 at this layout "
-            "(%.1f mm needed, %.1f available)"
-            % (tag_size_mm, grid_w_mm, A4_MM[0] - 2 * MARGIN_MM))
+            "a %.1f mm tag does not fit two across the page at this layout "
+            "(%.1f mm needed, %.1f available at --print-correction %.4f)"
+            % (tag_size_mm, grid_w_mm, page_mm[0] - 2 * MARGIN_MM,
+               print_correction))
 
     put(title, x0_mm, y0_mm - header_mm + TITLE_MM, TITLE_MM, bold=True)
 
@@ -298,14 +409,42 @@ def render_sheet(block_class, dpi, tag_size_mm, face_size_mm,
         put(SIDE_HINTS[info.face], cx_mm + 1.0,
             label_y_mm + HINT_MM * LINE_LEADING + 0.6, HINT_MM)
 
-    # The ruler. Without it a fit-to-page shrink is undetectable, and a tag that
-    # decodes perfectly at the wrong size is exactly the silent failure the zone
-    # sheet was designed around.
-    bottom_mm = y0_mm + grid_h_mm
-    if bottom_mm > A4_MM[1] - MARGIN_MM:
+    # The calibration ruler, back on the sheet 2026-08-04 after three prints
+    # were diagnosed by measuring a ~22 mm tag with a ruler that reads to 1 mm,
+    # i.e. to 4%. Over 150 mm the same reading error is 0.7%. It is the same
+    # instrument, and the same length, as the one on the zone sheets, and it
+    # calibrates the same constant. Scaling the sheet scales the ruler with it,
+    # which is exactly what makes it work.
+    ruler_y_mm = y0_mm + grid_h_mm + RULER_GAP_MM
+    ruler_x_mm = (page_mm[0] - RULER_LENGTH_MM) / 2.0
+    bottom_mm = ruler_y_mm + RULER_TICK_MM + BODY_MM * 2.2
+
+    if ruler_x_mm < MARGIN_MM:
         raise SystemExit(
-            "layout overflows the page by %.1f mm at a %.1f mm tag"
-            % (bottom_mm - A4_MM[1] + MARGIN_MM, tag_size_mm))
+            "the %.0f mm ruler does not fit the page at --print-correction %.4f"
+            % (RULER_LENGTH_MM, print_correction))
+    if bottom_mm > page_mm[1] - MARGIN_MM:
+        raise SystemExit(
+            "layout overflows the page by %.1f mm at a %.1f mm tag "
+            "(--print-correction %.4f)"
+            % (bottom_mm - page_mm[1] + MARGIN_MM, tag_size_mm, print_correction))
+
+    cv2.line(page, mm_to_px(ruler_x_mm, ruler_y_mm),
+             mm_to_px(ruler_x_mm + RULER_LENGTH_MM, ruler_y_mm),
+             0, max(1, mm(0.3)), cv2.LINE_AA)
+    for tick_mm in range(0, int(RULER_LENGTH_MM) + 1, 10):
+        major = tick_mm % 50 == 0
+        h_mm = RULER_TICK_MM if major else RULER_TICK_MM * 0.5
+        x_mm = ruler_x_mm + tick_mm
+        cv2.line(page, mm_to_px(x_mm, ruler_y_mm), mm_to_px(x_mm, ruler_y_mm + h_mm),
+                 0, max(1, mm(0.3 if major else 0.2)), cv2.LINE_AA)
+        if major:
+            put("%d" % (tick_mm // 10), x_mm - 1.2,
+                ruler_y_mm + h_mm + BODY_MM + 0.5, BODY_MM)
+    put("%.0f mm nominal -- MEASURE ME. If it is not, rerun with "
+        "--measured-ruler <mm>  [correction %.4f]"
+        % (RULER_LENGTH_MM, print_correction),
+        ruler_x_mm, ruler_y_mm - 1.8, BODY_MM)
 
     return page
 
@@ -346,13 +485,45 @@ def legibility_report(tag_size_mm, distance_m):
     return "\n".join(lines)
 
 
+def write_sheet(page, png_path, dpi):
+    """Write the sheet as PNG *and* PDF, both carrying their physical size.
+
+    This is the half of the sizing problem that no amount of --print-correction
+    could reach. A PNG from cv2.imwrite has no pHYs chunk, i.e. no statement of
+    how large it is in millimetres -- so "Actual Size" has nothing to be actual
+    against and every print dialog falls back to fitting the pixels to the
+    paper. That is why the tag came out the same 19.6 mm from two different
+    corrections.
+
+    The PDF is the one to print. Its page box is true A4 geometry (2480 px at
+    300 dpi = 210.0 mm), so 100%/Actual Size is well defined and any remaining
+    error is the printer's own scaling, which --print-correction can then
+    cancel. Returns both paths.
+    """
+    from PIL import Image                      # only needed to write, not draw
+
+    img = Image.fromarray(page)
+    img.save(png_path, dpi=(dpi, dpi))
+    pdf_path = os.path.splitext(png_path)[0] + ".pdf"
+    img.save(pdf_path, "PDF", resolution=dpi)
+    return png_path, pdf_path
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out-dir", default=".",
-                        help="directory for block_tags_<class>_A4.png "
+                        help="directory for block_tags_<class>_<paper>.pdf/.png "
                              "(default %(default)s)")
+    parser.add_argument("--paper", choices=sorted(PAPER_MM),
+                        default=DEFAULT_PAPER,
+                        help="page size to emit (default %(default)s, which is "
+                             "what these printers feed and what the zone sheets "
+                             "are authored on). Set it to what is actually in "
+                             "the tray -- a page-size mismatch under fit-to-page "
+                             "is its own scale error, on top of the one "
+                             "--print-correction cancels.")
     parser.add_argument("--block", choices=list(bc.BLOCK_CLASSES) + ["both"],
                         default="both", help="which sheet(s) (default %(default)s)")
     parser.add_argument("--dpi", type=float, default=300.0)
@@ -360,14 +531,30 @@ def main():
                         help="square face the tag must fit, METRES "
                              "(default %(default)s). The cuboid's is its SQUARE "
                              "top/bottom face, not its length.")
-    parser.add_argument("--tag-size", type=float, default=None,
-                        help="printed tag size in METRES; overrides the size "
-                             "derived from --face-size")
+    parser.add_argument("--tag-size", type=float, default=DEFAULT_TAG_SIZE_M,
+                        help="printed tag size in METRES (default %(default)s "
+                             "= 1 inch)")
+    parser.add_argument("--fit-face", action="store_true",
+                        help="ignore --tag-size and use the largest tag that "
+                             "keeps a full %.2f-module quiet zone on the face "
+                             "(%.1f mm on a 30 mm face)"
+                             % (QUIET_ZONE_MODULES,
+                                bc.max_tag_size_for_face(DEFAULT_FACE_SIZE_M,
+                                                         QUIET_ZONE_MODULES) * 1000))
     parser.add_argument("--print-correction", type=float,
                         default=DEFAULT_PRINT_CORRECTION,
-                        help="pre-scale to cancel a printer's fixed shrink: "
-                             "(nominal / measured) from a 1.0 print. "
-                             "Default %(default).4f matches print_tag_sheet.py.")
+                        help="scale the CONTENT on a page that stays the paper "
+                             "size, to cancel the printer's shrink. Default "
+                             "%(default).4f, measured on this chain. A PLAIN "
+                             "NUMBER -- to recalibrate use --measured-ruler "
+                             "instead of doing the arithmetic here.")
+    parser.add_argument("--measured-ruler", type=float, default=None,
+                        metavar="MM",
+                        help="what the %.0f mm ruler on the last sheet actually "
+                             "measured. Rescales --print-correction by "
+                             "%.0f/MM and reprints, which is the entire "
+                             "calibration loop." % (RULER_LENGTH_MM,
+                                                    RULER_LENGTH_MM))
     parser.add_argument("--report", action="store_true",
                         help="print the px/module legibility table and exit "
                              "without drawing anything")
@@ -376,9 +563,20 @@ def main():
                              "(default %(default)s = the angled survey pose)")
     args = parser.parse_args()
 
-    tag_size_m = (args.tag_size if args.tag_size is not None
-                  else bc.max_tag_size_for_face(args.face_size,
-                                                QUIET_ZONE_MODULES))
+    if args.measured_ruler is not None:
+        if args.measured_ruler <= 0:
+            raise SystemExit("--measured-ruler must be a positive length in mm")
+        was = args.print_correction
+        args.print_correction *= RULER_LENGTH_MM / args.measured_ruler
+        print("ruler measured %.2f mm against %.0f nominal (%.1f%% %s): "
+              "--print-correction %.4f -> %.4f\n"
+              % (args.measured_ruler, RULER_LENGTH_MM,
+                 abs(args.measured_ruler / RULER_LENGTH_MM - 1.0) * 100,
+                 "over" if args.measured_ruler > RULER_LENGTH_MM else "under",
+                 was, args.print_correction))
+
+    tag_size_m = (bc.max_tag_size_for_face(args.face_size, QUIET_ZONE_MODULES)
+                  if args.fit_face else args.tag_size)
     tag_size_mm = tag_size_m * 1000.0
     face_size_mm = args.face_size * 1000.0
 
@@ -389,6 +587,30 @@ def main():
             % (tag_size_mm, face_size_mm))
 
     print(legibility_report(tag_size_mm, args.distance))
+
+    # The quiet zone the face can actually carry at this tag size, stated
+    # before anything is printed. Below 1.00 module a tag stops decoding
+    # against a non-white background, and nothing about the sheet will say so.
+    quiet_mm = min(tag_size_mm / MODULES_ACROSS * QUIET_ZONE_MODULES,
+                   max(0.0, (face_size_mm - tag_size_mm) / 2.0))
+    quiet_modules = quiet_mm / (tag_size_mm / MODULES_ACROSS)
+    print("\nquiet zone on a %.0f mm face: %.2f mm a side = %.2f modules"
+          % (face_size_mm, quiet_mm, quiet_modules))
+    if quiet_modules < 1.0:
+        print("  BELOW THE 1.00-MODULE CLIFF. Measured in "
+              "block_tags_selftest.test_quiet_zone_floor:\n"
+              "  at exactly 1.00 a 48 px-or-larger tag fails against ANY "
+              "non-white background\n"
+              "  and succeeds against white. The failure is total, not "
+              "gradual. A light block\n"
+              "  face may carry it anyway, since the white does not have to "
+              "stop at the sticker\n"
+              "  edge; a dark one will not. --fit-face gives the size that "
+              "keeps the margin.")
+    elif quiet_modules < QUIET_ZONE_MODULES:
+        print("  under the %.2f modules this project uses, but above the "
+              "1.00 cliff." % QUIET_ZONE_MODULES)
+
     if args.report:
         return
 
@@ -399,24 +621,39 @@ def main():
     print()
     for block_class in classes:
         page = render_sheet(block_class, args.dpi, tag_size_mm, face_size_mm,
-                            args.print_correction)
-        path = os.path.join(out_dir, "block_tags_%s_A4.png" % block_class)
-        if not cv2.imwrite(path, page):
-            raise SystemExit("could not write %s" % path)
+                            args.print_correction, args.paper)
+        path = os.path.join(out_dir, "block_tags_%s_%s.png"
+                            % (block_class, args.paper.upper()))
+        _, pdf_path = write_sheet(page, path, args.dpi)
         ids = bc.tag_ids_for_block(block_class)
-        print("wrote %s  (%dx%d px)" % (path, page.shape[1], page.shape[0]))
+        print("wrote %s  (%dx%d px)" % (pdf_path, page.shape[1], page.shape[0]))
+        print("       %s" % path)
         print("  %-6s ids %s"
               % (block_class,
                  ", ".join("%d=%s" % (i, bc.describe(i).face.upper())
                            for i in ids)))
 
+    paper_mm = PAPER_MM[args.paper]
+    print("\nPRINT THE PDF, not the PNG, and at 100%% / Actual Size / Scale 100"
+          "\n-- NOT 'fit to page', 'shrink to fit' or 'scale to paper size'."
+          "\nThe PDF is the only one of the two that states its own size in mm."
+          "\nPage is %s, %.1f x %.1f mm: LOAD THAT PAPER. A page fitted to a "
+          "different\nsize is the whole reason --print-correction exists."
+          % (args.paper.upper(), paper_mm[0], paper_mm[1]))
     if args.print_correction != 1.0:
-        print("\nPage drawn %.4fx oversized to cancel a printer shrink. Print it "
-              "TO FIT THE PAGE, not at 100%%." % args.print_correction)
-    else:
-        print("\nPrint at 100%% / Actual Size. Then measure one tag's black square:"
-              "\nit must be %.1f mm. If it is not, re-run with"
-              "\n  --print-correction %.1f/<measured_mm>" % (tag_size_mm, tag_size_mm))
+        print("\nContent drawn %.4fx oversized on a page that is still true %s, "
+              "to cancel\na measured printer shrink. It is deliberately the "
+              "wrong size on screen." % (args.print_correction,
+                                         args.paper.upper()))
+    print("\nTHEN MEASURE THE RULER, not a tag: %.0f mm over a %.0f mm baseline "
+          "reads to\n0.7%%, the same 1 mm error on a %.1f mm tag reads to %.0f%%. "
+          "If it is not %.0f mm,\nre-run with the SAME paper and dialog "
+          "settings, adding"
+          "\n  --measured-ruler <what you measured, mm>"
+          "\nwhich redoes the correction for you. A correct sheet then has "
+          "%.1f mm tags."
+          % (RULER_LENGTH_MM, RULER_LENGTH_MM, tag_size_mm,
+             100.0 / tag_size_mm, RULER_LENGTH_MM, tag_size_mm))
 
     # The placement rules used to be printed on the sheet. They are here instead:
     # anything on the page is content a fit-to-page printer scales the tags

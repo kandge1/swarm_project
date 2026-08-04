@@ -59,33 +59,126 @@ cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
 python3 print_block_tags.py --out-dir ../../../../print_sheets
 ```
 
-Writes `block_tags_cube_A4.png` and `block_tags_cuboid_A4.png` — six tags each,
-with cut lines, centre cross-hairs, an orientation arrow, per-face placement
-hints and a 150 mm ruler.
+Writes `block_tags_cube_LETTER` and `block_tags_cuboid_LETTER` as **both `.pdf`
+and `.png`** — six **25.4 mm (1 in)** tags each, with cut lines, centre
+cross-hairs, an orientation arrow, a per-face placement hint and a **150 mm
+calibration ruler**. `--paper a4` and `--fit-face` (22.5 mm tags) are the other
+two configurations.
 
-Print **to fit the page, not at 100%** — the default `--print-correction`
-(16/14) pre-scales the page to cancel the lab printer's fixed shrink, the same
-trick `print_tag_sheet.py` uses. Then **measure the ruler**. If it is not
-150 mm the print is scaled; that is survivable, but the true size must be
-*known*, because the tag-scale height estimate divides by it.
+**Print the PDF, at 100% / Actual Size**, on the paper named in the filename —
+never "fit to page" or "shrink to fit". Then **measure the ruler**, not a tag.
+
+### The print chain, measured — read this before touching `--print-correction`
+
+Four prints, all of the same nominal 22.5 mm tag:
+
+| what was printed | printed tag | ratio |
+|---|---|---|
+| PNG, `--print-correction` 16/14 | 19.6 mm | 0.871 |
+| PNG, `--print-correction` 1.0 | 19.58 mm | 0.870 |
+| PDF on A4 geometry, Actual Size | 21.27 mm | 0.945 |
+| PDF, content-scaled | 21 mm | |
+
+**Rows 1 and 2 are the finding.** Two corrections 14% apart produced the same
+physical tag, so the correction was not over-cancelling a shrink — it had no
+effect on physical size *at all*. It scaled `px_per_mm`, which scales the canvas
+along with the content, so the tag kept the same **fraction** of the page either
+way, and a fraction of a page is exactly what survives a printer mapping an
+image onto paper. `print_zone_tags.py` measured the same no-op independently: a
+1.0926× pre-scale moved its printed tag from 23 mm to 23 mm.
+
+Underneath it, **a `cv2.imwrite` PNG carries no `pHYs` chunk** and so never
+states how many millimetres it is meant to be. "Actual Size" has nothing to be
+actual against, and the dialog can only fit pixels to paper whatever it is set
+to. What landed 2026-08-04:
+
+1. **PDF output** with a real page box (verified by reading `/MediaBox`), so
+   Actual Size is well defined. The PNG carries 300 dpi metadata now too.
+2. **`--print-correction` scales content inside a page that keeps the paper's
+   size**, so it changes the tag's fraction of the page and survives the
+   mapping — the same mechanism as `print_zone_tags.CONTENT_SCALE`.
+3. **The page is authored on Letter**, like the zone sheets, because that is
+   what these printers feed. A page-size mismatch is a second scale error
+   stacked on the first, and under a non-aspect-preserving fit it is what made
+   the zone sheet come out *non-square* before.
+4. **A 150 mm ruler on the sheet**, and `--measured-ruler` to close the loop.
+
+### Recalibrating
+
+Measure the ruler on the printed sheet. If it is not 150 mm, re-run with the
+same paper and dialog settings, adding what you measured:
+
+```bash
+python3 print_block_tags.py --out-dir ../../../../print_sheets \
+    --measured-ruler 154.42
+```
+
+That rescales the correction by 150/measured for you. `--print-correction`
+itself takes a **plain number** — it cannot evaluate `1.0925*150/154.42`.
+
+**Measure the ruler, not a tag.** A ruler that reads to 1 mm is 0.7% over a
+150 mm baseline and 4% over a 25 mm tag — and four rounds of this loop were
+spent measuring tags. The ruler scales with the content, which is exactly what
+makes it a valid instrument.
+
+### The correction is 1.0612, and it is NOT the zone sheets' number
+
+Sharing one constant across both sheets was tried and this measurement ruled it
+out. A block sheet drawn at `print_zone_tags.CONTENT_SCALE` (1.0925) printed its
+ruler at **154.42 mm — 3% over**. This chain needs 1.0925 × 150/154.42 = **1.0612**.
+
+Corroborated independently: the implied shrink 1/1.0612 = **0.942** matches the
+**0.945** measured off the A4 PDF two prints earlier. Two papers, two
+measurements, one number — so the residual is the printer's own printable-area
+inset rather than a paper-size fit, and it is deterministic enough to cancel.
+
+`CONTENT_SCALE` is not wrong; it is fitted to a **different chain** — a PNG
+through a campus printer that applies fit-to-page unconditionally. **If the zone
+mat was printed through the chain used here, its 101.6 mm square is ~3%
+oversized**, and `zone_vision` takes `DEFAULT_ZONE_SIZE` as ground truth, so that
+error would pass silently into every position it reports. Worth measuring the mat
+before trusting millimetres out of the detector.
+
+The correction is a property of printer + paper, so once found it stays put
+until the tray changes.
+
+If you choose to live with an off-size print instead, the true size must be
+*known*, because the tag-scale height estimate divides by it:
+`block_detector_node.py`'s `block_tag_size` must be set to what you measured,
+not to the nominal 25.4.
 
 `--report` prints the pixel budget without drawing anything, and
 `--face-size` / `--tag-size` re-derive it for a different block.
 
-### Sizing: two measured constraints, not guesses
+### Sizing: the constraint that was traded away, on purpose
 
 **A 36h11 tag is 8 modules across the black square** (6×6 data + a one-module
 black border). `print_tag_sheet.py:67` says `tag_size/10`; that comment is
 wrong. The script asserts the real number against OpenCV at run time.
 
-**The quiet zone must be ≥ 1.25 modules, not the spec's 1.0.** Swept against
+**The quiet zone wants ≥ 1.25 modules, not the spec's 1.0.** Swept against
 background grey level, the failure is a cliff rather than a gradient: at
 *exactly* 1.00 module a 48 px-or-larger tag fails against **any** non-white
 background and succeeds against white. 1.25 decodes at every background and
 size tried. Covered by `block_tags_selftest.test_quiet_zone_floor`.
 
-Together those give **22.5 mm on a 30 mm face**, rounded down to 0.5 mm so it
-can be confirmed with a ruler.
+That arithmetic gives **22.5 mm on a 30 mm face** — and **the default is 25.4 mm
+anyway**, decided 2026-08-04:
+
+| | quiet zone | TOP px/module | SIDE px/module |
+|---|---|---|---|
+| 22.5 mm (`--fit-face`) | 1.25 modules | 4.1 | 3.0 |
+| **25.4 mm (default)** | **0.72 modules** | **4.6** | **3.4** |
+
+0.72 modules is **under the cliff**. The bet is that the white does not have to
+stop at the sticker edge — a light-coloured block face carries the rest of the
+quiet zone itself — and it is **untested**. If block tags decode on the sheet
+and not on a block, this is the first thing to suspect, and `--fit-face` is the
+retreat at a cost of 0.5 px/module.
+
+The cut square never exceeds the face: past that point the quiet zone is
+squeezed rather than the square grown, so cutting on the printed line always
+gives a sticker that lies flat on a 30 mm face.
 
 ---
 
@@ -104,15 +197,19 @@ Rendering a tag foreshortened like a side face, blurred and noised:
 | **4.0** | **95%** ← survives realistic blur |
 
 Against the project's own `px/m × distance = 551` invariant, at the agreed
-angled pose `107 49 -103 0 0 135` (0.305 m from the zone centre):
+angled pose `107 49 -103 0 0 135` (0.305 m from the zone centre), at both tag
+sizes:
 
-| | apparent | px/module | |
-|---|---|---|---|
-| block TOP (×0.81) | 32.9 px | **4.1** | fine |
-| block SIDE (×0.59) | 24.0 px | **3.0** | **10% decode rate** |
+| | 22.5 mm | | **25.4 mm** | |
+|---|---|---|---|---|
+| block TOP (×0.81) | 32.9 px | 4.1 | **37.2 px** | **4.6** fine |
+| block SIDE (×0.59) | 24.0 px | 3.0 | **27.1 px** | **3.4** marginal |
 
-**Conclusion: the angled pose can read TOP tags and cannot read SIDE tags.**
-For side tags the lens has to come in to **~0.23 m**. Options, unchanged from
+**Conclusion: the angled pose can read TOP tags and cannot read SIDE tags —
+at either size.** Going to 1 in moves the distance at which side tags become
+comfortable from 0.229 m to 0.258 m; it does not make that pose work.
+
+For side tags the lens has to come in to **~0.26 m**. Options, unchanged from
 `APRIL_TAGS_DEV.md`: pull the vantage closer and pan over more views, or use a
 coarser dictionary for block tags only (a 4×4 ArUco family is 6 modules instead
 of 8, cutting the requirement by 25%), or use bigger blocks.
@@ -128,8 +225,8 @@ identity, position and the stacking signal. It constrains stage 2's design.
 `/detect_block` call, in its own log and on the debug image:
 
 ```
-  block tag id 8  cube TOP    32.9 px (4.1 px/module, ok)  zone (+12.0, -5.1) mm  implies h +29.2 mm
-  block tag id 12 cube SIDE2  24.0 px (3.0 px/module, MARGINAL)
+  block tag id 8  cube TOP    37.2 px (4.6 px/module, ok)  zone (+12.0, -5.1) mm  implies h +29.2 mm
+  block tag id 12 cube SIDE2  27.1 px (3.4 px/module, MARGINAL)
 ```
 
 Independent of the zone result: a frame can show block tags and **no** zone
@@ -204,6 +301,24 @@ Both selftests expect `0 failure(s)`.
 Answers one question: **at what pose are the block tags actually readable?**
 It does not use `/detect_block`, so THE OPEN BUG does not block it.
 
+### THE POSE IS `107 49 -103 0 0 135`
+
+Settled on hardware 2026-08-04. Earlier drafts of this file proposed folding the
+arm in closer (`107 95 -149`, `107 84 -138`) to win pixels. **Those poses drive
+the camera into the arm's own links** — found by trying it.
+
+The analysis behind them was wrong in a specific, worth-recording way: it
+computed fingertip height and checked clearance over the *blocks*, and never
+checked link-against-link **self-collision**. Driving joint angles directly is
+what makes this survey robust — it bypasses IK, where everything fragile in this
+project lives — but it also bypasses MoveIt's collision model, so nothing was
+checking. A high `J2` with a strongly negative `J3` folds the forearm back over
+the shoulder, and the flange position alone says nothing about that.
+
+If a closer vantage is ever wanted, screen candidates through
+`check_state_validity.py` (which does consult the collision model) before
+putting them in a table.
+
 ### Setup
 
 One tagged block at the pickup zone centre. Arm terminals 1 and 2 as usual.
@@ -211,44 +326,58 @@ One tagged block at the pickup zone centre. Arm terminals 1 and 2 as usual.
 the camera.
 
 ```bash
-# robot, terminal 4 (in place of block_detector_node)
-python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_tag_probe.py
-```
-
-It prints a line twice a second. Leave it running and drive the arm from mars:
-
-```bash
-# mars, terminal 5
-cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+# mars: drive the arm there first, no IK involved
 python3 joint_trajectory_test.py --degrees 107 49 -103 0 0 135
+
+# robot, terminal 4 (in place of block_detector_node)
+python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_tag_probe.py --show
 ```
 
-Then walk in through the sweep below, watching the probe. `--once` gives a full
-report at a pose; `--save /tmp/probe.png` writes an annotated frame.
+`--show` opens a live window with every tag boxed and named, coloured by
+whether it is actually decoding. Needs a display — run it over `ssh -X`. Without
+one it says so and falls back to the text feed, which carries the same numbers.
 
-### The sweep
+| key | |
+|---|---|
+| `q` | quit |
+| `s` | save an annotated snapshot |
+| `r` | reset the decode rates — **do this after every arm move**, or the window is still averaging in the old pose |
 
-All at tool tilt 36° with `J1=107 J4=0 J5=0 J6=135`, so only the two pitch
-joints change and the view angle stays constant — the only variable is
-distance. Joint angles are driven directly, no IK.
+`--once` prints a full report for a single frame; `--save PATH` writes one
+annotated frame and exits, which is the headless option.
 
-| pose | flange→zone | fingertip z | clears a 3-stack | TOP px/module (19.6 mm) | (22.5 mm) |
-|---|---|---|---|---|---|
-| `107 95 -149 0 0 135` | 0.253 | 82.7 mm | **−3 mm — collides** | 4.3 | 5.0 |
-| `107 90 -144 0 0 135` | 0.260 | 92.3 mm | +6 mm | 4.2 | 4.8 |
-| `107 84 -138 0 0 135` | 0.269 | 103.8 mm | +18 mm | 4.1 | 4.7 |
-| `107 75 -129 0 0 135` | 0.281 | 120.9 mm | +35 mm | 3.9 | 4.5 |
-| `107 66 -120 0 0 135` | 0.291 | 137.2 mm | +51 mm | 3.8 | 4.3 |
-| `107 49 -103 0 0 135` | 0.307 | 164.7 mm | +79 mm | 3.6 | 4.1 |
+### Read the DECODE RATE, not the pixel count
 
-The last row is the pose `APRIL_TAGS_DEV.md` agreed on. **It is the worst one in
-the table for legibility**, and the top rows buy real pixels — but the gripper
-comes down as the arm reaches in, and the top row would strike a 3-stack.
+The window's main panel is the fraction of the last 40 frames in which each tag
+decoded. **That is the primary instrument**, because the pixel measurement is
+not trustworthy at the sizes being judged:
 
-**`107 84 -138 0 0 135` is the recommendation**: 4.1 px/module on TOP tags even
-with your undersized print, and 18 mm of clearance over the tallest stack the
-plan allows. Testing today with a single block on the mat, clearance is 78 mm
-at every row, so start at the top and work down.
+> On a small tag OpenCV's corner refinement frequently locks onto the outer
+> edge of the **white quiet zone** instead of the black square. Measured: a
+> 24 px tag reported as 32.2 px — which is exactly the 34 px quiet-zone square.
+> A **+34% over-read**, in the direction that makes a dead tag look fine.
+
+Readings below 28 px are marked `?` for this reason. A decode rate has none of
+that problem: it is the exact question — *will this tag be read from this pose*
+— answered by counting. Hold the arm still and let the percentages settle.
+
+### What to expect at this pose
+
+| | 19.6 mm (your first print) | 22.5 mm (reprinted) |
+|---|---|---|
+| TOP | 3.6 px/module — intermittent | **4.1 — ok** |
+| SIDE | 2.6 — dead | 3.0 — dead |
+
+**Reprinting matters now.** Having settled on the far pose, tag size is the only
+lever left, and 19.6 → 22.5 mm moves TOP tags out of the intermittent band. With
+`--print-correction` now defaulting to 1.0 a reprint should come out right.
+
+If TOP tags still will not hold a high decode rate at 22.5 mm, the next lever is
+the one `APRIL_TAGS_DEV.md` already suggests: **a coarser dictionary for block
+tags only.** A 4×4 ArUco family is 6 modules across instead of 8, so the same
+22.5 mm tag at the same pose gives 5.5 px/module instead of 4.1 — a 33%
+improvement for a one-line change, and the id space needed here is tiny. Zone
+tags stay 36h11.
 
 ### What to expect
 

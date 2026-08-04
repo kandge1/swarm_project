@@ -94,11 +94,19 @@ class BlockDetector(Node):
         # is routinely darker or blurrier than the third.
         self.declare_parameter("warmup_frames", 3)
         self.declare_parameter("frame_timeout_sec", 4.0)
-        # Printed size of a BLOCK tag, which is not the zone tag size: block
-        # tags are limited by the 30 mm block face and come off
-        # print_block_tags.py at 24 mm. Only used to turn a tag's pixel size
-        # into a px/m scale for the height estimate; detection does not care.
-        self.declare_parameter("block_tag_size", 0.024)
+        # Printed size of a BLOCK tag, which is not the zone tag size. Block
+        # tags come off print_block_tags.py at 25.4 mm -- 1 inch, chosen
+        # 2026-08-04 over the 22.5 mm the face arithmetic allows, for the extra
+        # 0.5 px/module. Only used to turn a tag's pixel size into a px/m scale
+        # for the height estimate; detection does not care.
+        #
+        # This is the MEASURED size of the sheet actually stuck on the blocks,
+        # not the nominal one -- three prints in a row came out 8-13% small
+        # before the print chain was understood (print_block_tags.
+        # DEFAULT_PRINT_CORRECTION). Measure the ruler on each new sheet. It was
+        # 0.024 until 2026-08-04, the pre-1.25-module quiet zone value, which
+        # never matched anything printed.
+        self.declare_parameter("block_tag_size", 0.0254)
         # Lens height above the mat at the pose the still was taken from. The
         # height estimate is linear in it, so a wrong value scales the answer
         # rather than breaking it. 0.2235 is the surveyed detection hover.
