@@ -75,9 +75,19 @@ OFFSETS needs a per-tag rotation and the homography residual will be the thing
 that tells you -- it will be large and roughly tag-sized.
 """
 import math
+import os
+import sys
 
 import cv2
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import block_coordinates as bc  # noqa: E402
+
+# Modules across a 36h11 tag's black square: 6x6 of data plus a one-module black
+# border. Verified against OpenCV in print_block_tags._assert_module_count
+# rather than assumed -- every px/module judgement divides by it.
+BLOCK_TAG_MODULES = 8
 
 # ---------------------------------------------------------------------------
 # Zone geometry
@@ -454,8 +464,101 @@ def detect_all_tags(gray):
     wants to know about the zone it was asked about. Tooling that wants to
     show everything the camera can see -- a live diagnostic viewer, say --
     wants the unfiltered set instead.
+
+    DUPLICATE IDS COLLAPSE. Being a dict, two tags in the frame sharing an id
+    leave only one behind, silently. That is harmless for zone tags, which are
+    unique by construction, but not for anything that may legitimately see the
+    same id twice -- use detect_all_tags_list() there.
     """
     return dict(_aruco_detect(gray))
+
+
+def detect_all_tags_list(gray):
+    """[(tag_id, 4x2 px corners)] for EVERY tag, DUPLICATES PRESERVED.
+
+    The list form of detect_all_tags(), for callers that may see one id more
+    than once in a frame -- two identically-tagged blocks in the pickup zone,
+    say. Verified, not assumed: two copies of tag 8 in one frame give two
+    entries here and one from detect_all_tags().
+    """
+    return list(_aruco_detect(gray))
+
+
+class BlockTagSighting(object):
+    """One block face tag seen in one frame.
+
+    px_per_module is the number that decides whether to believe the decode: a
+    36h11 tag is BLOCK_TAG_MODULES across its black square, and measured against
+    foreshortened, blurred and noised renders the hard floor is about 3.0 with
+    reliability arriving around 4.0.
+
+    zone_xy is filled in ONLY for a mat-parallel face (top/bottom) and only when
+    a homography was fitted. A side tag stands perpendicular to the mat, so
+    projecting it through a mat-plane homography would return a plausible
+    position that means nothing -- so it stays None rather than being computed
+    and caveated. Even for a top tag it is a RAISED point projected onto the
+    mat, carrying the parallax offset in APRIL_TAGS_DEV.md's "Known systematic
+    errors": good for identifying a block, not for aiming at one.
+    """
+
+    __slots__ = ("face", "corners", "px", "px_per_module", "zone_xy")
+
+    def __init__(self, face, corners, px, px_per_module, zone_xy):
+        self.face = face                  # block_coordinates.BlockFace
+        self.corners = corners            # 4x2 px
+        self.px = px
+        self.px_per_module = px_per_module
+        self.zone_xy = zone_xy
+
+    def __iter__(self):
+        """Unpack as (face, corners, px, px_per_module, zone_xy)."""
+        return iter((self.face, self.corners, self.px, self.px_per_module,
+                     self.zone_xy))
+
+    def __repr__(self):
+        return "<%s %.1f px (%.1f px/module)>" % (self.face.label, self.px,
+                                                  self.px_per_module)
+
+
+def find_block_tags(gray, H_px_to_zone=None):
+    """[BlockTagSighting] for every block face tag in the frame, biggest first.
+
+    Independent of any zone: a frame can show block tags and no zone tags at all
+    -- the angled survey pose looks ACROSS the mat rather than down at it -- and
+    that is a useful answer, not a failure.
+
+    Uses the LIST form of the detector deliberately. Two blocks may carry the
+    same id, and detect_all_tags() would keep only one of them, silently.
+    """
+    found = []
+    for tag_id, corners in detect_all_tags_list(gray):
+        face = bc.describe(tag_id)
+        if face is None:                  # a zone tag, or something stray
+            continue
+        px = tag_pixel_size(corners)
+        zone_xy = None
+        if face.is_mat_parallel and H_px_to_zone is not None:
+            centre = corners.mean(axis=0).reshape(1, 2)
+            zone_xy = tuple(px_to_zone(H_px_to_zone, centre)[0])
+        found.append(BlockTagSighting(face, corners, px,
+                                      px / BLOCK_TAG_MODULES, zone_xy))
+    found.sort(key=lambda sighting: sighting.px, reverse=True)
+    return found
+
+
+def tag_pixel_size(corners):
+    """Mean edge length of a tag quad, in pixels.
+
+    The four edges differ under perspective, so the mean is the honest single
+    number; the spread between them is itself a foreshortening measure. Used to
+    judge whether a tag is big enough to have been decoded reliably (roughly
+    3 px per module is the floor for 36h11, and a 36h11 tag is 8 modules across
+    its black square) and, for a mat-parallel tag, to read its height off the
+    scale it implies.
+    """
+    corners = np.asarray(corners, dtype=np.float64).reshape(4, 2)
+    edges = np.linalg.norm(corners - np.roll(corners, -1, axis=0), axis=1)
+    return float(edges.mean())
 
 
 def _build_tag_zone_lookup():

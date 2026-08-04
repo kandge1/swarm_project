@@ -57,7 +57,24 @@ from swarm_interfaces.msg import BlockDetection
 from swarm_interfaces.srv import DetectBlock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import block_coordinates as bc  # noqa: E402
 import zone_vision as zv  # noqa: E402
+
+# Pixels per tag module, the number that says whether to believe a decode.
+# Measured, not folklore -- block_tags_selftest.test_px_per_module_floor renders
+# a tag foreshortened like a block side face, blurs and noises it, and counts
+# decodes:
+#
+#     2.5 px/module    0% decoded
+#     3.0 px/module   10% decoded     <- MIN: a sharp-image floor only
+#     4.0 px/module   95% decoded     <- GOOD: survives realistic blur
+#
+# So MIN is the point below which nothing works even in ideal conditions, and
+# GOOD is the point where the tag stops being the limiting factor. A tag between
+# them decodes intermittently, which presents as a flaky vision bug rather than
+# a sizing problem -- which is the reason to report the number per tag at all.
+TAG_PX_PER_MODULE_MIN = 3.0
+TAG_PX_PER_MODULE_GOOD = 4.0
 
 
 class BlockDetector(Node):
@@ -77,6 +94,15 @@ class BlockDetector(Node):
         # is routinely darker or blurrier than the third.
         self.declare_parameter("warmup_frames", 3)
         self.declare_parameter("frame_timeout_sec", 4.0)
+        # Printed size of a BLOCK tag, which is not the zone tag size: block
+        # tags are limited by the 30 mm block face and come off
+        # print_block_tags.py at 24 mm. Only used to turn a tag's pixel size
+        # into a px/m scale for the height estimate; detection does not care.
+        self.declare_parameter("block_tag_size", 0.024)
+        # Lens height above the mat at the pose the still was taken from. The
+        # height estimate is linear in it, so a wrong value scales the answer
+        # rather than breaking it. 0.2235 is the surveyed detection hover.
+        self.declare_parameter("lens_height_hint", 0.2235)
 
         self._lock = threading.Lock()
         self._frame = None
@@ -210,6 +236,26 @@ class BlockDetector(Node):
             method=str(self.get_parameter("method").value),
             max_rms_px=float(self.get_parameter("max_homography_rms_px").value))
 
+        # Block face tags, found whatever the zone detection did -- a frame can
+        # show block tags and no zone tags at all, and that is a useful answer
+        # rather than a failure.
+        #
+        # THIS IS NOT IN THE SERVICE RESPONSE, deliberately. The obvious move is
+        # a BlockTag[] field on DetectBlock.srv; do not. APRIL_TAGS_DEV.md's
+        # OPEN BUG is that populating a nested message containing a STRING makes
+        # rcl_send_response fail on this machine ('string data is not
+        # null-terminated', serdata.cpp:354), and a BlockTag carrying a face
+        # name is exactly that shape -- on an interface whose build is already
+        # the prime suspect, needing a coordinated rebuild on both machines. The
+        # question this exists to answer, are the tags legible at the survey
+        # pose, is answered entirely by this node's log and the debug image,
+        # neither of which crosses DDS. If mars ever does need them, add
+        # PARALLEL PRIMITIVE ARRAYS (uint16[] ids, float64[] px, ...), never a
+        # nested message with a string -- that document's own fallback.
+        gray_frame = frame if frame.ndim == 2 else cv2.cvtColor(
+            frame, cv2.COLOR_BGR2GRAY)
+        block_tags = zv.find_block_tags(gray_frame, result.H_px_to_zone)
+
         response.success = result.success
         response.message = result.message
 
@@ -224,8 +270,7 @@ class BlockDetector(Node):
         # second full detector pass, which is not worth paying for on every
         # successful call.
         if not result.tag_ids:
-            gray = frame if frame.ndim == 2 else cv2.cvtColor(
-                frame, cv2.COLOR_BGR2GRAY)
+            gray = gray_frame
             others = zv.detect_all_tags(gray)
             # Laplacian variance is the standard cheap focus metric: sharp edges
             # produce large second derivatives, a defocused frame does not.
@@ -235,10 +280,14 @@ class BlockDetector(Node):
             diag = (" | frame %dx%d, mean %.0f (range %.0f-%.0f), focus %.0f"
                     % (gray.shape[1], gray.shape[0], mean, lo, hi, focus))
             if others:
+                # Naming them matters now that block tags are expected in shot:
+                # a frame showing only ids 8-19 is the angled survey pose
+                # working exactly as intended, not a zone mismatch.
                 diag += (" | %d AprilTag(s) of OTHER ids visible: %s -- the "
                          "camera CAN see tags, so this is a zone/id mismatch, "
                          "not an image problem"
-                         % (len(others), sorted(t for t, _ in others)))
+                         % (len(others),
+                            ", ".join(bc.label(t) for t in sorted(others))))
             else:
                 diag += " | NO AprilTag of any id anywhere in the frame"
                 if focus < 100:
@@ -269,7 +318,8 @@ class BlockDetector(Node):
             response.blocks.append(entry)
 
         if request.save_debug_image and request.debug_image_path:
-            self._write_debug_image(frame, result, zone, request.debug_image_path)
+            self._write_debug_image(frame, result, zone,
+                                    request.debug_image_path, block_tags)
 
         elapsed = time.monotonic() - started
         # TWO call sites, not one variable-severity call. Found 2026-07-31 on
@@ -298,14 +348,43 @@ class BlockDetector(Node):
                 % (index, block.zx * 1000, block.zy * 1000,
                    block.zyaw * 57.2958, block.width * 1000,
                    block.length * 1000, block.shape, block.symmetry))
+        self._log_block_tags(block_tags, result)
         return response
 
-    def _write_debug_image(self, frame, result, zone, path):
+    # -- block tags ----------------------------------------------------------
+    def _log_block_tags(self, block_tags, result):
+        if not block_tags:
+            self.get_logger().info("  no block tags (ids %d-%d) in frame"
+                                   % (bc.BLOCK_TAG_ID_MIN, bc.BLOCK_TAG_ID_MAX))
+            return
+        for face, _corners, px, per_module, zone_xy in block_tags:
+            verdict = ("ok" if per_module >= TAG_PX_PER_MODULE_GOOD
+                       else "MARGINAL" if per_module >= TAG_PX_PER_MODULE_MIN
+                       else "TOO SMALL -- decoded, but do not rely on it")
+            extra = ""
+            if zone_xy is not None:
+                extra = "  zone (%+.1f, %+.1f) mm" % (zone_xy[0] * 1000,
+                                                      zone_xy[1] * 1000)
+                # Scale relative to the mat plane is a height readout that needs
+                # no intrinsics -- there are none in this repo. Only valid for a
+                # mat-parallel tag, which is why it is inside this branch.
+                if result.scale_px_per_m > 0:
+                    tag_scale = px / float(self.get_parameter("block_tag_size").value)
+                    height = bc.height_from_scale(
+                        tag_scale, result.scale_px_per_m,
+                        float(self.get_parameter("lens_height_hint").value))
+                    extra += "  implies h %+.1f mm" % (height * 1000)
+            self.get_logger().info(
+                "  block tag id %-2d %-14s %5.1f px (%.1f px/module, %s)%s"
+                % (face.tag_id, face.label, px, per_module, verdict, extra))
+
+    def _write_debug_image(self, frame, result, zone, path, block_tags=None):
         """Best effort -- a debug image failing must never fail a detection."""
         try:
             import cv2
             import zone_view
-            cv2.imwrite(path, zone_view.annotate(frame, result, zone))
+            cv2.imwrite(path, zone_view.annotate(frame, result, zone,
+                                                 block_tags=block_tags))
             self.get_logger().info("wrote debug image %s" % path)
         except Exception as exc:                       # noqa: BLE001
             self.get_logger().warn("debug image failed (detection is unaffected): %s" % exc)

@@ -37,10 +37,17 @@ COLOR_ZONE = (0, 255, 0)        # green
 COLOR_BLOCK = (255, 80, 80)     # blue
 COLOR_BAD = (0, 0, 255)         # red
 COLOR_TEXT = (255, 255, 255)
+COLOR_BLOCK_TAG = (255, 0, 255)  # magenta -- distinct from the amber zone tags
 
 
-def annotate(image, result, zone):
-    """BGR overlay of everything analyze() decided."""
+def annotate(image, result, zone, block_tags=None):
+    """BGR overlay of everything analyze() decided.
+
+    block_tags is the optional output of BlockDetector._find_block_tags: block
+    face tags are not part of analyze()'s job, so they are drawn only when a
+    caller has already found them. Each is labelled with its px/module, which is
+    the number that says whether a decode can be trusted at this distance.
+    """
     canvas = image.copy() if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
     # Dim everything outside the searched region, so a mask that is in the wrong
@@ -80,9 +87,20 @@ def annotate(image, result, zone):
                     (centre[0] + 10, centre[1]),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_BLOCK, 1, cv2.LINE_AA)
 
+    for face, corners, px, per_module, _zone_xy in (block_tags or []):
+        pts = corners.astype(np.int32)
+        cv2.polylines(canvas, [pts], True, COLOR_BLOCK_TAG, 2)
+        top = pts[pts[:, 1].argmin()]
+        cv2.putText(canvas, "%s %.1fpx/mod" % (face.label, per_module),
+                    (top[0], max(12, top[1] - 6)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, COLOR_BLOCK_TAG, 1,
+                    cv2.LINE_AA)
+
     header = "%s | tags %d %s | rms %.2f px | %.0f px/m" % (
         "OK" if result.success else "FAIL", result.tags_seen,
         result.tag_ids, result.homography_rms, result.scale_px_per_m)
+    if block_tags:
+        header += " | %d block tag(s)" % len(block_tags)
     cv2.putText(canvas, header, (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                 COLOR_TEXT if result.success else COLOR_BAD, 1, cv2.LINE_AA)
     if not result.success:
