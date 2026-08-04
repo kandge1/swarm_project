@@ -25,7 +25,7 @@ hardware session:
 
   Hand columns (meas_*, from --interactive) are the only thing that can see a
   disagreement between the URDF and the physical robot. A wrong GRASP_OFFSET_Z,
-  a wrong JAW_LATERAL_OFFSET, a gripper that hangs 3 mm off where the model
+  a wrong JAW_RADIAL_OFFSET_M, a gripper that hangs 3 mm off where the model
   says -- FK is blind to all of it, by construction. It reports the model's
   opinion of where the tool is, and the model is the thing under test.
 
@@ -197,15 +197,19 @@ def max_zone_centre_radius(side, zone_name="pickup", flange_z=0.1508):
     well inside it can still fail because the WRIST runs out of travel at that
     bearing (see YAW_RETRIES_DEG). Advisory. IK decides.
 
-    `push` is a WORLD vector, not a radial one (see JAW_LATERAL_OFFSET), so it
-    points away from the base at +Y and toward it at -Y. That makes the pickup
-    zone the harder of the two by 2*push, which is why the sign is carried
-    rather than dropped.
+`push` is RADIAL (see JAW_RADIAL_OFFSET_M -- it was modelled as world-frame
+    until the place survey proved otherwise), so it points outward at both zones
+    and the sign no longer differs between them. It is still sampled per zone
+    because the tilt, and therefore the tip swing folded into it, does differ.
     """
     half = side / 2.0
-    push_x, push_y, _ = pp.compensate_for_tip_swing(0.0, 0.0, 0.0)
-    if zone_name == "place":
-        push_y = -push_y
+    # Sampled ON the zone's own bearing, not at the origin. The lateral terms
+    # are RADIAL now, so r_hat has to be defined -- at (0, 0) they are dropped
+    # entirely and this would read a push of zero.
+    probe_y = -0.2 if zone_name == "place" else 0.2
+    px, py, _ = pp.compensate_for_tip_swing(0.0, probe_y, 0.0)
+    push_x = px
+    push_y = abs(py - probe_y)   # outward along this zone's radius
     # push_x is small but signed, so it pushes one of the two far corners
     # further out than the other -- take the worse one, or this reports a
     # limit at which one corner is still a fraction of a millimetre over.
@@ -454,7 +458,7 @@ def summarise(rows):
     """What the survey says about the constants, rather than about one pose.
 
     A CONSTANT error across the zone is a calibration offset and belongs in
-    DESCENT_BIAS_Z / JAW_LATERAL_OFFSET. An error that SWINGS with position is
+    DESCENT_BIAS_Z / JAW_RADIAL_OFFSET_M. An error that SWINGS with position is
     pose-dependent -- droop that varies with reach -- and no single constant
     will fix it; that is the part a feedforward lookup table has to carry.
     """
@@ -498,7 +502,7 @@ def summarise(rows):
     # ------------------------------------------------------------------
     verdict("height (dz)", [r["err_z_mm"] for r in rows], "DESCENT_BIAS_Z")
     verdict("lateral (dy)", [r["err_y_mm"] for r in rows],
-            "JAW_LATERAL_OFFSET[1]")
+            "JAW_RADIAL_OFFSET_M")
 
     # dx IS NOT A TOOL OFFSET, and calling it one was a bug. At every waypoint
     # here the bearing is near +Y, so world X is TANGENTIAL -- and a tangential
@@ -549,13 +553,14 @@ def summarise(rows):
             deltas.append(d)
             print(f"    {r['label']:<8} measured {float(r['meas_radius_in']) * 25.4:5.1f} "
                   f"vs target {tgt:5.1f} mm  ({d:+.1f})")
-        mean = verdict("    jaw radius", deltas, "JAW_LATERAL_OFFSET[1]")
-        print(f"    -> implied JAW_LATERAL_OFFSET[1] = "
-              f"{pp.JAW_LATERAL_OFFSET[1] + mean / 1000.0:.4f} "
-              f"(currently {pp.JAW_LATERAL_OFFSET[1]:.4f}).")
-        print(f"    CAVEAT: every waypoint here sits within ~6 deg of +Y, so "
-              f"this CANNOT separate a world-frame offset from a radial one. "
-              f"Survey the place zone to settle that.")
+        mean = verdict("    jaw radius", deltas, "JAW_RADIAL_OFFSET_M")
+        print(f"    -> implied JAW_RADIAL_OFFSET_M = "
+              f"{pp.JAW_RADIAL_OFFSET_M + mean / 1000.0:.4f} "
+              f"(currently {pp.JAW_RADIAL_OFFSET_M:.4f}).")
+        print(f"    NOTE: a single zone cannot separate a world-frame offset "
+              f"from a radial one -- every waypoint in one zone shares a "
+              f"bearing to within a few degrees. Surveying BOTH zones settled "
+              f"it on 2026-08-04: radial.")
 
 
 def parse_args():

@@ -685,8 +685,8 @@ GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
 # of jaw offset at the 0.056 m lever, against ~7 mm of J1 backlash still in the
 # system. It is not the limiting error anywhere, and chasing it further means
 # fitting how IK happens to distribute the wrist that run.
-GRIPPER_MOUNT_TILT_X_DEG = -1.96   # about the flange's local X
-GRIPPER_MOUNT_TILT_Y_DEG = -2.42   # about the flange's local Y
+GRIPPER_MOUNT_TILT_X_DEG = -0.51   # about the flange's local X
+GRIPPER_MOUNT_TILT_Y_DEG = -0.63   # about the flange's local Y
 
 # gripper_controller's URDF effort limit is 1000 (an unset-default value, not
 # a real spec), so nothing in sim stops the gripper from driving straight
@@ -893,7 +893,39 @@ GRASP_QW = 0.0
 # antisymmetric term and belongs in the unidirectional-approach work instead.
 # If it still varies with reach, the feedforward coefficients are wrong rather
 # than incomplete.
-SAG_PRECOMP_RADIAL_DEG = 0.0           # empty gripper
+# THE TILT CORRECTION IS TWO THINGS AND WAS BEING APPLIED AS ONE (2026-08-04).
+#
+# All 3.11 deg of it lived in GRIPPER_MOUNT_TILT_*, a TOOL-frame rotation. The
+# jaws hold a fixed world yaw, so a tool-frame rotation is world-fixed -- and
+# decomposed against the bearing it comes out as
+#
+#     pick  (0, +0.2286)   +3.10 deg radial
+#     place (0, -0.2286)   -3.10 deg radial
+#
+# It flips. Gravity sag does not: the arm droops outward at every bearing. So the
+# one correction cancelled the sag at the pick and ADDED to it at the place,
+# which is why the gripper hung visibly askew there while looking perfect at the
+# pick.
+#
+# THE SPLIT, from the held-upright measurement at five place waypoints. With A
+# applied, m the genuine tool-frame mount error (flips) and s the radial sag
+# (does not), the pick being correct gives m + s = 3.10, and the place residual
+# is then 2s. Measured: 4.57 deg (spread 2.11) -> s = 2.29, m = 0.81.
+#
+# GRIPPER_MOUNT_TILT_* is scaled to that 0.81 deg, keeping its direction:
+# (-1.96, -2.42) x 0.26 = (-0.51, -0.63).
+#
+# THE PICK IS DELIBERATELY UNCHANGED. 2.29 + 0.81 = 3.10 radial there, exactly
+# what the verified configuration commanded. Only the place moves, from -3.10 to
+# +1.48 -- a swing of 4.58 deg, which is the 4.57 that was measured. The one
+# thing this must not do is break the zone that already works.
+#
+# CONFIDENCE IS IN THE DIRECTION, NOT THE MAGNITUDE. The radius data implies a
+# smaller physical tilt at the place (~1.7 deg) than the held-upright reading
+# (4.57), probably because "upright" by feel overshoots or the radius was taken
+# at the gripper body rather than the fingertips. The sign and the bearing
+# dependence are beyond doubt; s could be 20-50% high. Re-measure at the place.
+SAG_PRECOMP_RADIAL_DEG = 2.29           # empty gripper
 SAG_PRECOMP_TANGENTIAL_DEG = 0.0       # empty gripper
 # Added ON TOP of the above while a block is held.
 SAG_PRECOMP_PAYLOAD_RADIAL_DEG = 0.0
@@ -2637,7 +2669,13 @@ def mount_tilt_tip_offset(block_yaw_deg=0.0):
 
     Returns (dx, dy, dz) the tip moves. SUBTRACT it from the target so the TIP,
     not the flange, lands where the caller asked. Zero when the tilt is zero,
-    so this is inert if the correction is ever disabled."""
+    so this is inert if the correction is ever disabled.
+
+    SUPERSEDED by tool_tip_offset(), which does the same thing against the FULL
+    commanded orientation instead of the mount tilt alone. Kept only because the
+    reasoning above is the reasoning for both. Once SAG_PRECOMP_* carries part of
+    the tilt, this function sees only half the rotation and under-compensates by
+    the rest -- so nothing should call it."""
     if not GRIPPER_MOUNT_TILT_X_DEG and not GRIPPER_MOUNT_TILT_Y_DEG:
         return (0.0, 0.0, 0.0)
     if not block_yaw_deg:
@@ -2654,6 +2692,31 @@ def mount_tilt_tip_offset(block_yaw_deg=0.0):
         tilted = quat_multiply(tilted, (v[0], v[1], v[2], math.cos(half)))
     plain = _quat_rotate_z(base)
     swung = _quat_rotate_z(tilted)
+    return tuple(GRASP_OFFSET_Z * (swung[i] - plain[i]) for i in range(3))
+
+
+def tool_tip_offset(x, y, block_yaw_deg=0.0, holding_block=False):
+    """World displacement of the JAW TIP caused by EVERY orientation correction
+    in force at (x, y) -- the tool-frame mount tilt and the world-frame sag
+    pre-compensation alike.
+
+    Same lever argument as mount_tilt_tip_offset above, which this replaces: IK
+    aims the FLANGE, the tip hangs GRASP_OFFSET_Z below it, so any tilt swings
+    the tip while the flange stays put. The difference is that this measures the
+    swing against the orientation actually commanded, so it stays correct however
+    the total is split between the two mechanisms.
+
+    Taking it from grasp_quat_for rather than re-deriving it is the point: there
+    is then exactly one definition of the commanded orientation, and the tip
+    compensation cannot drift out of step with it."""
+    if not block_yaw_deg:
+        plain_q = (GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ,
+                   GRIPPER_LOCK_QW)
+    else:
+        plain_q = gripper_yaw_quat(GRIPPER_YAW_DEG + block_yaw_deg)
+    tilted_q = grasp_quat_for(block_yaw_deg, x, y, holding_block)
+    plain = _quat_rotate_z(plain_q)
+    swung = _quat_rotate_z(tilted_q)
     return tuple(GRASP_OFFSET_Z * (swung[i] - plain[i]) for i in range(3))
 
 
@@ -2696,7 +2759,26 @@ def mount_tilt_tip_offset(block_yaw_deg=0.0):
 # of +Y, so world-frame and radial are indistinguishable in this data -- the
 # measurement that would separate them is the PLACE zone, at -Y, where the two
 # predictions differ by 2 x 27 mm. Until then this stays world-frame, as before.
-JAW_LATERAL_OFFSET = (-0.0003, -0.0271)
+# RESOLVED 2026-08-04, AND IT WAS RADIAL. The place-zone survey was the
+# measurement, exactly as the note above predicted. Flange-to-jaw, measured at
+# ten waypoints across both zones:
+#
+#     read as RADIAL     pick -20.8 mm   place -16.9 mm   <- same sign
+#     read as WORLD +Y   pick -20.0 mm   place +15.9 mm   <- flips
+#
+# A world-frame vector cannot change sign between two poses; a radial one must,
+# in world terms. So the jaws hang inboard along the RADIUS, and modelling that
+# as world +Y pushed the flange the wrong way at the place zone -- inward by
+# ~20 mm instead of outward -- which with the ~19 mm inboard hang put the jaws
+# 39 mm short. That is the "nowhere close" the place survey showed.
+#
+# Split into radial and tangential rather than x and y. The values are chosen so
+# the PICK zone is bit-identical to the verified configuration -- at +Y, r_hat is
+# +Y and t_hat is -X, so these reproduce the old (-0.0003, -0.0271) exactly
+# there. Only the place zone changes, which is the only place the old model was
+# wrong.
+JAW_RADIAL_OFFSET_M = -0.0271      # negative = jaws hang INBOARD of the flange
+JAW_TANGENTIAL_OFFSET_M = 0.0003
 
 
 # RESIDUAL DESCENT BIAS, measured 2026-08-03.
@@ -2737,14 +2819,23 @@ JAW_LATERAL_OFFSET = (-0.0003, -0.0271)
 DESCENT_BIAS_Z = -0.001
 
 
-def compensate_for_tip_swing(x, y, z, block_yaw_deg=0.0):
+def compensate_for_tip_swing(x, y, z, block_yaw_deg=0.0, holding_block=False):
     """(x, y, z) shifted so the JAW TIP lands on the caller's point, correcting
-    the GRIPPER_MOUNT_TILT_* swing, the measured lateral offset between the
-    flange and where the jaws actually hang, and the arm's residual tendency to
-    stop high."""
-    dx, dy, dz = mount_tilt_tip_offset(block_yaw_deg)
-    dx += JAW_LATERAL_OFFSET[0]
-    dy += JAW_LATERAL_OFFSET[1]
+    the tilt-induced tip swing, the offset between the flange and where the jaws
+    actually hang, and the arm's residual tendency to stop high.
+
+    Both lateral terms are now RADIAL, resolved against the bearing to (x, y),
+    because that is what they measured as -- see JAW_RADIAL_OFFSET_M. On the
+    base axis, where r_hat is undefined, the lateral terms are simply dropped;
+    nothing in this project grasps there, and the tilt and height terms still
+    apply."""
+    dx, dy, dz = tool_tip_offset(x, y, block_yaw_deg, holding_block)
+    r = math.hypot(x, y)
+    if r > 1e-6:
+        rx, ry = x / r, y / r
+        # t_hat = z_hat x r_hat = (-ry, rx)
+        dx += JAW_RADIAL_OFFSET_M * rx + JAW_TANGENTIAL_OFFSET_M * -ry
+        dy += JAW_RADIAL_OFFSET_M * ry + JAW_TANGENTIAL_OFFSET_M * rx
     dz -= DESCENT_BIAS_Z
     return x - dx, y - dy, z - dz
 
@@ -2793,7 +2884,7 @@ def make_grasp_pose(x, y, z, block_yaw_deg=0.0, holding_block=False):
     # mount_tilt_tip_offset. The orientation still uses the ORIGINAL x, y: they
     # only pick the radial direction for the sag term, and 5 mm does not move
     # a bearing enough to matter.
-    px, py, pz = compensate_for_tip_swing(x, y, z, block_yaw_deg)
+    px, py, pz = compensate_for_tip_swing(x, y, z, block_yaw_deg, holding_block)
     pose.position.x = px
     pose.position.y = py
     pose.position.z = clamp_flange_z(pz, "grasp-pose")
@@ -3219,7 +3310,8 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
     # descent exists to avoid. Skipped for orientation_override callers (the
     # detection hovers), which are not aiming the jaws at anything.
     if orientation_override is None:
-        x, y, z = compensate_for_tip_swing(x, y, z, block_yaw_deg)
+        x, y, z = compensate_for_tip_swing(x, y, z, block_yaw_deg,
+                                           holding_block)
         z = clamp_flange_z(z, "move_arm_to")
 
     ik_state = None

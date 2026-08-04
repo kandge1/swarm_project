@@ -8,6 +8,9 @@ right now, and the exact commands to reproduce and fix it.
 Written 2026-08-02. If you are a fresh session picking this up, read "Where we
 are" and "THE OPEN BUG" first — everything else is reference.
 
+**Picking up new work?** Go to "THE STACKED-BLOCK PLAN" — that is the agreed
+direction, with its constraints and the experiment that has to come first.
+
 ---
 
 ## Vocabulary, because this caused real confusion
@@ -1141,6 +1144,42 @@ the link sits below it, so FK is blind to it by construction. No constant remove
 it. After the mean correction the residual is roughly ±4 mm across the zone,
 which a 30 mm block tolerates — this is the term a lookup table would carry.
 
+### VERIFIED ON HARDWARE — the re-run
+
+Same five waypoints with the four corrections live
+(`zone_calibration.csv` at the repo root):
+
+| | before | after |
+|---|---|---|
+| J1 tangential | **+4.61 mm** (spread 1.66) | **−0.69 mm** (spread **0.37**) |
+| jaw radius vs target | **−7.29 mm** | **−1.58 mm** |
+| tip height vs 15 mm target | +6.20 mm (spread 7.00) | −2.30 mm (spread 6.00) |
+
+The J1 angular bias is the standout: the residual dropped 6.7× and its *spread*
+dropped 4.5×, which is the part that says the model was the right shape. A
+Cartesian correction could not have done that across a 200–272 mm span of radius.
+
+### The whole remaining error is at the far corners
+
+| | centre + near | far |
+|---|---|---|
+| tip height vs target | **0.00 mm** (spread 0.00) | **−5.75 mm** (spread 0.50) |
+
+Three waypoints landed on the block midline exactly; the two far ones sit
+5.75 mm low, and repeatably so. **The constants are done — what is left is one
+pose-dependent term**, and it is now isolated and measured rather than inferred.
+
+It is post-encoder compliance, and the encoders prove it. At the far corners FK
+reports the flange *closer* to its commanded z than at the centre (+0.25 mm vs
++0.63 mm) while the tips are physically 5.75 mm lower. The joint is where it says
+it is; the link is not. The arm is much straighter out there
+(j2 −1.01 rad against −0.74 at the centre), so the moment arm is longest exactly
+where the deflection appears.
+
+This is the lookup table's first real data point: **flat to ~248 mm of flange
+radius, −5.75 mm by 272 mm.** Two clusters is not yet a curve — `--repeats 3` and
+intermediate radii would give it shape.
+
 ### Two bugs in `summarise()` that the data exposed
 
 1. **It compared fingertip measurements against `fk_grip_*`** — the
@@ -1155,8 +1194,249 @@ envelope left the far corners +0.5 mm, and the Cartesian retreat back up to it
 re-imposes exact vertical. 3 mm of radius costs ~8 mm of hover height and buys a
 descent that can be reversed.
 
-**None of this is hardware-verified yet.** The constants are measured; their
-effect is not. Re-run the survey.
+**The constants are verified; the compliance term is not corrected.** Next
+measurement is the PLACE zone (`--zone place`), which settles the
+`JAW_LATERAL_OFFSET` frame question: at the place centre the jaws read **9.00 in
+if world-frame, 7.15 in if radial** — 47 mm apart. That survey is also
+comfortably inside the envelope, every waypoint clearing by 33–94 mm with no
+hover clamping at all.
+
+---
+
+## THE CORRECTIONS WERE BEARING-BLIND (found and fixed 2026-08-04)
+
+The place-zone survey came back with the gripper visibly sagging and the jaws
+~39 mm short of target at every waypoint. Both symptoms are one root cause, and
+it is the trap `GRIPPER_MOUNT_TILT_X_DEG`'s own comment warns about.
+
+**The jaws hold a fixed WORLD yaw, so a tool-frame correction is world-fixed.
+Gravity sag is not — the arm droops outward at every bearing.** The pickup zone
+is at +Y and the place zone at −Y, so a correction fitted at one lands backwards
+at the other. It cancelled the sag at the pick and *added* to it at the place.
+
+### The lateral offset: radial, not world-frame
+
+Open since it was first fitted, and the place survey settles it. Flange-to-jaw
+across ten waypoints:
+
+| read as | pick | place |
+|---|---|---|
+| **radial** | −20.8 mm | **−16.9 mm** — same sign |
+| world +Y | −20.0 mm | **+15.9 mm** — flips |
+
+A world vector cannot change sign between two poses; a radial one must, in world
+terms. So `JAW_LATERAL_OFFSET` (x, y) becomes `JAW_RADIAL_OFFSET_M` = −0.0271
+and `JAW_TANGENTIAL_OFFSET_M` = 0.0003, resolved against the bearing.
+
+Modelling it as world +Y pushed the place flange ~20 mm *inward* when it needed
+~24 mm outward; with the ~19 mm inboard hang, that is the 39 mm shortfall.
+
+### The tilt: two effects, applied as one
+
+Decomposed against the bearing, the 3.11° in `GRIPPER_MOUNT_TILT_*` reads
+**+3.10° radial at the pick and −3.10° at the place.** With `A` applied, `m` the
+genuine tool-frame mount error (flips) and `s` the radial sag (does not), the
+pick being correct gives `m + s = 3.10`, and the place residual is then `2s`.
+
+From the held-upright measurement at five place waypoints — **4.57°, spread
+2.11** — that gives **s = 2.29°** into `SAG_PRECOMP_RADIAL_DEG` (world-frame,
+bearing-aware, and already built for exactly this) and **m = 0.81°** left in
+`GRIPPER_MOUNT_TILT_*`, scaled to (−0.51, −0.63).
+
+**The pick is deliberately unchanged**: 2.29 + 0.81 = 3.10 radial, exactly what
+the verified configuration commanded. Only the place moves, −3.10 → +1.48, a
+swing of 4.58° against the 4.57° measured. Verified: pick flange radii identical
+to 0.1 mm at all five waypoints.
+
+### `mount_tilt_tip_offset` → `tool_tip_offset`
+
+Once `SAG_PRECOMP_*` carries part of the tilt, a tip-swing compensation that
+looks only at `GRIPPER_MOUNT_TILT_*` sees half the rotation and under-compensates
+by the rest. `tool_tip_offset(x, y, ...)` takes the swing from `grasp_quat_for`
+itself, so there is one definition of the commanded orientation and the
+compensation cannot drift out of step with it. `holding_block` is now threaded
+into both, or the tip swing is computed against a different orientation than the
+one commanded.
+
+### The place zone is now the TIGHTER of the two
+
+Fixing the sign costs reach. The radial push now goes outward at both zones, and
+because the place tilt is smaller (+1.48° vs +3.10°) it swings the tip out less,
+so it needs *more* lateral push — 23.6 mm against 19.6. Place far corners land at
+flange radius 0.2764, 4.3 mm inside the envelope, and the hover clamps to a 4 mm
+descent, tripping `MIN_USEFUL_DESCENT_M`. Blocks at the far corners of the place
+zone will be set down with almost no vertical approach.
+
+### Confidence
+
+**The direction and the bearing dependence are beyond doubt** — a sign flip
+across ten measurements in two zones is not noise. The *magnitude* of `s` is
+weaker: the radius data implies a smaller physical tilt at the place (~1.7°) than
+the held-upright reading (4.57°), probably because "upright" by feel overshoots,
+or the radius was taken at the gripper body rather than the fingertips. `s` could
+be 20–50% high. Re-survey the place zone.
+
+---
+
+## THE STACKED-BLOCK PLAN (agreed 2026-08-04) — START HERE FOR NEW WORK
+
+The pick side is calibrated and verified. This is the next build. Stages 0, 1
+and 3 are sound as written; stage 2 needs its Z signal chosen deliberately, and
+there are two hard constraints below that shape the whole design.
+
+### The plan
+
+0. **Stop calibrating the place zone.** Place is now a 4 in x 4 in box that
+   blocks are TOSSED into. Tolerance goes from ±2 mm to ±25 mm, which retires
+   the entire place-calibration problem. Verify PICK once with blocks all around
+   the pickup area, localise them with the existing code, pick them up with the
+   existing path.
+1. **Pan and look.** From rest `0 0 0 0 0 -45`, pan left toward +Y over the
+   family `[90, d, 2d, 0, 0, -45]`. The chosen angled view is
+   **`107 49 -103 0 0 135`**.
+2. **Work out the +Z topology** — which blocks sit on which — from tags on the
+   blocks, the zone tags, and edge information. Blocks carry a TOP tag and a
+   SIDE tag; which tags are visible and where they sit relative to each other
+   gives the stacking order.
+3. **Go top-down** for precise X-Y, combine with the Z from stage 2, and pick.
+
+**Constraint: stacks are at most 3 tall.**
+
+### CONSTRAINT 1 — stacking costs reach, and 3 tall is exactly the ceiling
+
+The reach envelope shrinks with height (`FLANGE_REACH_ENVELOPE`) and a stacked
+block is a higher grasp. Margins inside the envelope, pickup zone:
+
+| stack level | block centre | flange z | at 9 in centre | at far corner |
+|---|---|---|---|---|
+| 0 (on the mat) | 15 mm | 0.1443 | +32.3 mm | **+8.2 mm** |
+| 1 | 45 mm | 0.1743 | +22.6 mm | **−1.5 mm** |
+| 2 (top of a 3-stack) | 75 mm | 0.2043 | **+7.5 mm** | −16.7 mm |
+| 3 | 105 mm | 0.2343 | **−14.6 mm** | −38.8 mm |
+
+**The 3-tall constraint is not arbitrary — it is the hardware limit.** A 4-stack
+cannot be picked anywhere in the zone. And the ceiling is tighter than "3": the
+top of a 3-stack clears by only 7.5 mm **at the zone centre**, and is out of
+reach at the far corners. From level 1 upward the far corners are already gone.
+
+Design consequence: **tall stacks must live near the zone centre.** If the demo
+needs 3-stacks anywhere in the zone, the mat has to come inward — the one place
+the earlier "move the zone in" idea genuinely applies.
+
+Also: `DESCENT_BIAS_Z` and the −5.75 mm far-corner compliance term were both
+measured at level 0. Higher grasps put the arm in a different configuration with
+different droop, so **stacked picks need their own verification pass.** Do not
+assume the level-0 calibration transfers.
+
+### CONSTRAINT 2 — tag legibility at the angled view
+
+`107 49 -103 0 0 135` is inside every joint limit and geometrically sensible:
+
+```
+flange        (+0.0373, +0.0954, +0.2735)   r 0.1025   277.5 mm above the mat
+tool tilt     36.0 deg from vertical  (pitch sum -54)
+tool axis meets the mat at r 0.2891 = 11.38 in, i.e. 63 mm past the zone centre
+flange -> zone centre                 0.305 m
+```
+
+A high, pulled-in vantage looking down and outward at 36°. Both the top and side
+faces of a block are visible (foreshortened x0.81 and x0.59), which is what
+makes the two-tag scheme possible at all. Pointing 63 mm past the centre is
+probably fine or even deliberate — the camera has a FOV and is offset from the
+tool axis — but it has not been checked against a real still.
+
+**The problem is scale.** The project's own numbers give the invariant
+`px/m x distance = 551` (2466 px/m at 0.2235 m; 2891 at 0.1906). At 0.305 m that
+is **1807 px/m**. `DICT_APRILTAG_36h11` is 8 modules across the black square, and
+a 30 mm block face fits at most a ~22 mm tag once `QUIET_ZONE_MM = 4` is
+respected:
+
+| tag | apparent | px across | px/module |
+|---|---|---|---|
+| zone tag, 25.4 mm flat | 20.6 mm | 37 | 4.6 |
+| block TOP tag, 22 mm | 17.8 mm | 32 | **4.0** |
+| block SIDE tag, 22 mm | 12.9 mm | 23 | **2.9** |
+
+The side tag is **not viable** at this pose and the top tag is marginal. For a
+~30 px side tag the camera needs to be about **0.24 m** from the block, not
+0.305 m.
+
+Options, in the order worth trying:
+- **Pull the vantage closer** and pan over more views to cover the zone.
+- **A coarser dictionary for the block tags only.** The id space needed is tiny;
+  a 4x4 ArUco family needs 6 modules instead of 8, cutting the pixel requirement
+  by 25%. The zone tags stay 36h11.
+- Bigger blocks.
+
+**Test this before building on it**: print block tags, put a block in the zone,
+run the pose, and count detections. It is a 20-minute experiment that decides
+the architecture of stage 2.
+
+### Stage 2 — prefer tag evidence over edge continuity
+
+The two-tag idea (top tag hidden => something is on top of it) is much stronger
+than the edge heuristic, and it should be primary:
+
+- **Occlusion is not only caused by stacking.** Two blocks side by side occlude
+  each other at a 36° view, so "broken edges" does not cleanly mean "underneath".
+- **The edge path is already known to be unreliable at exactly this geometry.**
+  See `MAX_BLOCK_LENGTH_M`: measured block size over-reads on real stills, with
+  shadow at the tilted camera angle as the likely cause, unfixed. Stage 2 would
+  be leaning on edge detection in the one condition it is documented to fail.
+
+**A third signal, free and needing no new calibration: tag SCALE.** A tag on a
+raised block appears larger than the mat-plane homography predicts, by
+`d / (d - h)`. At a 0.22 m lens height a 30 mm block reads **~16% larger** —
+about 8 px on a 50 px tag. This is the same reasoning `tag_pick_place.py`
+already uses in reverse to detect that the lens is too low. Inverted, it is a
+direct height readout, and it cross-checks the tag-visibility logic.
+
+**`solvePnP` is NOT available.** There are no camera intrinsics anywhere in the
+repo — `zone_vision.py` is built on a plane homography specifically so it never
+needs them, and uses the image centre as the principal point. Per-tag 6DOF pose
+would require a camera-calibration campaign first. The scale trick needs none.
+
+### Stage 3 — the two-view split is load-bearing, not an optimisation
+
+A tag above the mat plane projects to the WRONG mat-plane position. The error is
+`h x tan(theta)`:
+
+- at the 36° angled view, a 30 mm block lands **22 mm** off
+- top-down, parallax is ~0 on-axis and a few mm at the zone edge
+
+So the angled view genuinely cannot give X-Y for a raised block, and the
+top-down view genuinely can. Better still: once stage 2 gives `h`, the residual
+off-axis parallax at the top view is analytically correctable, so the two stages
+close on each other. Keep them separate.
+
+### Stage 1 — the pan family, and one correction
+
+`[90, d, 2d, 0, 0, -45]` is a clean one-parameter sweep: the pitch sum is `3d`,
+so the tool tilt is exactly `3d + 90`.
+
+| d | flange r | flange z | tool tilt |
+|---|---|---|---|
+| −10 | 0.157 | 0.371 | 60° |
+| −20 | 0.217 | 0.287 | 30° |
+| −25 | 0.231 | 0.238 | 15° |
+| **−30** | 0.233 | 0.189 | **0° (top-down)** |
+
+Driving joint angles directly sidesteps IK, which is where everything fragile in
+this project has lived. Worth keeping for the whole survey.
+
+**J1 leads the bearing by ~15.7°**, so `J1 = 90` aims at bearing 74°, not 90°.
+The chosen view already corrects for this (`J1 = 107` → bearing ~91°). Any other
+hand-written pose must too.
+
+### Where to start
+
+1. **Stage 0 first, it is nearly free.** Blocks at several spots in the pickup
+   zone, `tag_pick_place.py --dry-run`, then a real pick. This exercises the
+   whole verified calibration through the vision path and is the baseline
+   everything else is measured against. It goes through `/detect_block`, so THE
+   OPEN BUG has to be cleared first.
+2. **The tag-legibility experiment** above, because it decides stage 2's design.
+3. Only then build the pan/survey.
 
 ---
 
@@ -1191,9 +1471,20 @@ bugs against synthetic ground truth. Run it after any `zone_vision.py` change.
 
 ## Immediate next steps
 
+These belong to THE OPEN BUG (the `/detect_block` serialization failure), not to
+the stacked-block plan. Stage 0 of that plan needs step 3 below working first,
+since it goes through `/detect_block`.
+
 1. Run the 5-second serialization check on the robot. Confirm or refute.
 2. Clean-rebuild `swarm_interfaces` on the robot; restart Terminal 4.
 3. `ros2 service call /detect_block ...` from Terminal 5 with the zone in view —
    it should return a populated reply.
 4. `tag_pick_place.py --dry-run` from Terminal 5. Look at the jaws.
 5. Drop `--dry-run`. **First descent ever attempted.** Watch it.
+
+
+## Shift in plan 08/04/2026
+
+Superseded in place by **"THE STACKED-BLOCK PLAN"** above, which carries the same
+four stages and the 3-tall constraint verbatim, plus the reach and tag-legibility
+numbers that constrain them. Kept as a heading only so the date is findable.
