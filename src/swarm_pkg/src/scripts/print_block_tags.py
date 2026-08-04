@@ -66,12 +66,19 @@ A4_MM = (210.0, 297.0)          # portrait, (width, height)
 MARGIN_MM = 12.0
 RULER_LENGTH_MM = 150.0
 
-# Same fixed fit-to-page shrink print_tag_sheet.py documents: a nominal 1.000 in
-# tag came off the lab printer at 14/16 in, and the 4 in zone square at 3.5 in --
-# the same ratio, so it is a uniform page scale. Pre-scaling by the inverse makes
-# the page draw oversized on screen and land correct on paper. Recalibrate with
-# --print-correction = (nominal / measured) from a --print-correction 1.0 print.
-DEFAULT_PRINT_CORRECTION = 16.0 / 14.0
+# 1.0 = draw the page at true A4 and let the printer print it 1:1.
+#
+# MEASURED ON THIS PRINTER 2026-08-04, and it is the opposite of what
+# print_tag_sheet.py assumes. That script pre-scales by 16/14 to cancel a fixed
+# fit-to-page shrink measured on a different printer. Run through this one, a
+# 22.5 mm nominal tag came out at 19.6 mm -- and 22.5 / (16/14) = 19.69. So this
+# printer honoured fit-to-page exactly, scaling the deliberately-oversized page
+# back to true A4 and cancelling the correction perfectly. The pre-scale WAS the
+# entire error.
+#
+# If a tag ever comes out wrong again, set this to (nominal / measured) from a
+# print made at 1.0 -- do not guess, and do not copy print_tag_sheet.py's value.
+DEFAULT_PRINT_CORRECTION = 1.0
 
 # Default square face the tag has to fit inside. pick_place.BLOCK_HEIGHT_M is
 # 0.030 (measured on hardware 2026-08-03) and the cube is 30 mm on every face.
@@ -228,34 +235,27 @@ def render_sheet(block_class, dpi, tag_size_mm, face_size_mm,
     grid_w_mm = cols * cell_w_mm + (cols - 1) * COL_GAP_MM
     grid_h_mm = rows * cell_h_mm + (rows - 1) * ROW_GAP_MM
 
-    header_lines = [
-        "Nominal tag %.1f mm on a %.1f mm face (%.1f mm quiet zone = %.1f module)."
-        % (tag_size_mm, face_size_mm, quiet_mm, QUIET_ZONE_MODULES),
-        "Cut on the dashed line. KEEP THE WHITE BORDER - it is the quiet zone the",
-        "detector needs. Stick each tag flat and centred on its face.",
-        "Stand the block TOP tag up, arrow pointing AWAY from you: SIDE0 is the FAR face,",
-        "then counter-clockwise SEEN FROM ABOVE - SIDE1 left, SIDE2 near, SIDE3 right.",
-    ]
-    header_mm = (TITLE_MM * 2.2 + len(header_lines) * BODY_MM * LINE_LEADING
-                 + ARROW_CLEARANCE_MM)
+    # ONE short title line and nothing else. Every paragraph, note and ruler was
+    # removed 2026-08-04: they are content a fit-to-page printer will scale the
+    # tags around, and the tags are the only thing on this page whose size has
+    # to be right. What they said is in this file's docstring and in the console
+    # output, both of which are free.
+    ids = bc.tag_ids_for_block(block_class)
+    title = "%s  36h11  id %d-%d" % (block_class.upper(), min(ids), max(ids))
+
+    header_mm = TITLE_MM * 1.8 + ARROW_CLEARANCE_MM
+    grid_total_mm = header_mm + grid_h_mm
     x0_mm = (A4_MM[0] - grid_w_mm) / 2.0
-    y0_mm = MARGIN_MM + header_mm
+    # Centre the whole block vertically too, so nothing lands near an edge --
+    # page margins are where a fit-to-page shrink does its damage.
+    y0_mm = max(MARGIN_MM + header_mm, (A4_MM[1] - grid_total_mm) / 2.0 + header_mm)
     if x0_mm < MARGIN_MM:
         raise SystemExit(
             "a %.1f mm tag does not fit two across A4 at this layout "
             "(%.1f mm needed, %.1f available)"
             % (tag_size_mm, grid_w_mm, A4_MM[0] - 2 * MARGIN_MM))
 
-    ids = bc.tag_ids_for_block(block_class)
-    put("BLOCK TAGS  %s  -  AprilTag 36h11, ids %d-%d"
-        % (block_class.upper(), min(ids), max(ids)),
-        MARGIN_MM, MARGIN_MM + TITLE_MM, TITLE_MM, bold=True)
-    for offset, line in enumerate(header_lines):
-        width = put(line, MARGIN_MM,
-                    MARGIN_MM + TITLE_MM * 2.2 + (offset + 1) * BODY_MM * LINE_LEADING,
-                    BODY_MM)
-        if MARGIN_MM + width > A4_MM[0] - MARGIN_MM:
-            raise SystemExit("header line runs off the page: %r" % line)
+    put(title, x0_mm, y0_mm - header_mm + TITLE_MM, TITLE_MM, bold=True)
 
     for index, tag_id in enumerate(ids):
         info = bc.describe(tag_id)
@@ -301,38 +301,11 @@ def render_sheet(block_class, dpi, tag_size_mm, face_size_mm,
     # The ruler. Without it a fit-to-page shrink is undetectable, and a tag that
     # decodes perfectly at the wrong size is exactly the silent failure the zone
     # sheet was designed around.
-    ruler_y_mm = y0_mm + grid_h_mm + 13.0
-    rx0 = (A4_MM[0] - RULER_LENGTH_MM) / 2.0
-    put("SCALE CHECK - this line is exactly %.0f mm:" % RULER_LENGTH_MM,
-        rx0, ruler_y_mm - 3.0, BODY_MM)
-    cv2.line(page, mm_to_px(rx0, ruler_y_mm),
-             mm_to_px(rx0 + RULER_LENGTH_MM, ruler_y_mm), 0, max(1, mm(0.35)))
-    for tick in range(0, int(RULER_LENGTH_MM) + 1, 10):
-        big = (tick % 50 == 0)
-        cv2.line(page, mm_to_px(rx0 + tick, ruler_y_mm),
-                 mm_to_px(rx0 + tick, ruler_y_mm + (4.5 if big else 2.5)),
-                 0, max(1, mm(0.3)))
-        if big:
-            put(str(tick), rx0 + tick - 2.0, ruler_y_mm + 9.0, BODY_MM)
-
-    notes = [
-        "IF THE RULER IS NOT %.0f mm the print is scaled. Survivable, but the true size" % RULER_LENGTH_MM,
-        "must be KNOWN - measure one tag's black square edge to edge and pass it on as",
-        "--tag-size. The tag-scale height estimate divides by it.",
-        "",
-        "A wrong SIDE index is SILENT: the tag still decodes and the yaw it implies is",
-        "90 deg out. Check the sides read 0,1,2,3 counter-clockwise from above first.",
-    ]
-    notes_y = ruler_y_mm + 16.0
-    for offset, line in enumerate(notes):
-        put(line, MARGIN_MM, notes_y + offset * BODY_MM * LINE_LEADING, BODY_MM)
-
-    bottom_mm = notes_y + len(notes) * BODY_MM * LINE_LEADING
+    bottom_mm = y0_mm + grid_h_mm
     if bottom_mm > A4_MM[1] - MARGIN_MM:
         raise SystemExit(
-            "layout overflows the page by %.1f mm -- a %.1f mm tag needs a "
-            "smaller header or fewer notes." % (bottom_mm - A4_MM[1] + MARGIN_MM,
-                                                tag_size_mm))
+            "layout overflows the page by %.1f mm at a %.1f mm tag"
+            % (bottom_mm - A4_MM[1] + MARGIN_MM, tag_size_mm))
 
     return page
 
@@ -438,12 +411,26 @@ def main():
                            for i in ids)))
 
     if args.print_correction != 1.0:
-        print("\nThese pages are deliberately %.4fx LARGER than A4 so a printer's "
-              "fixed fit-to-page shrink lands them on the nominal size. Print to "
-              "fit the page -- do NOT print at 100%%. Then MEASURE THE RULER: it "
-              "must read %.0f mm." % (args.print_correction, RULER_LENGTH_MM))
+        print("\nPage drawn %.4fx oversized to cancel a printer shrink. Print it "
+              "TO FIT THE PAGE, not at 100%%." % args.print_correction)
     else:
-        print("\nPrint at 100%% / Actual Size, then measure the ruler anyway.")
+        print("\nPrint at 100%% / Actual Size. Then measure one tag's black square:"
+              "\nit must be %.1f mm. If it is not, re-run with"
+              "\n  --print-correction %.1f/<measured_mm>" % (tag_size_mm, tag_size_mm))
+
+    # The placement rules used to be printed on the sheet. They are here instead:
+    # anything on the page is content a fit-to-page printer scales the tags
+    # around, and console text costs nothing.
+    print("""
+STICKING THEM ON
+  Stand the block with its TOP tag upward and that tag's arrow pointing AWAY
+  from you. SIDE0 is the far face. Then counter-clockwise SEEN FROM ABOVE:
+      SIDE0 far      SIDE1 left      SIDE2 near      SIDE3 right
+  Keep the white border -- it is the quiet zone the detector needs.
+
+  A wrong SIDE index is SILENT: the tag still decodes and the block yaw it
+  implies is 90 deg out. Check the four sides read 0,1,2,3 counter-clockwise
+  from above before the glue dries.""")
 
 
 if __name__ == "__main__":

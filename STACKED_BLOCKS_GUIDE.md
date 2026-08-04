@@ -199,6 +199,86 @@ Both selftests expect `0 failure(s)`.
 
 ---
 
+## THE VISIBILITY TEST — run this next
+
+Answers one question: **at what pose are the block tags actually readable?**
+It does not use `/detect_block`, so THE OPEN BUG does not block it.
+
+### Setup
+
+One tagged block at the pickup zone centre. Arm terminals 1 and 2 as usual.
+**Stop `block_detector_node.py`** — V4L2 allows one reader and the probe needs
+the camera.
+
+```bash
+# robot, terminal 4 (in place of block_detector_node)
+python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_tag_probe.py
+```
+
+It prints a line twice a second. Leave it running and drive the arm from mars:
+
+```bash
+# mars, terminal 5
+cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+python3 joint_trajectory_test.py --degrees 107 49 -103 0 0 135
+```
+
+Then walk in through the sweep below, watching the probe. `--once` gives a full
+report at a pose; `--save /tmp/probe.png` writes an annotated frame.
+
+### The sweep
+
+All at tool tilt 36° with `J1=107 J4=0 J5=0 J6=135`, so only the two pitch
+joints change and the view angle stays constant — the only variable is
+distance. Joint angles are driven directly, no IK.
+
+| pose | flange→zone | fingertip z | clears a 3-stack | TOP px/module (19.6 mm) | (22.5 mm) |
+|---|---|---|---|---|---|
+| `107 95 -149 0 0 135` | 0.253 | 82.7 mm | **−3 mm — collides** | 4.3 | 5.0 |
+| `107 90 -144 0 0 135` | 0.260 | 92.3 mm | +6 mm | 4.2 | 4.8 |
+| `107 84 -138 0 0 135` | 0.269 | 103.8 mm | +18 mm | 4.1 | 4.7 |
+| `107 75 -129 0 0 135` | 0.281 | 120.9 mm | +35 mm | 3.9 | 4.5 |
+| `107 66 -120 0 0 135` | 0.291 | 137.2 mm | +51 mm | 3.8 | 4.3 |
+| `107 49 -103 0 0 135` | 0.307 | 164.7 mm | +79 mm | 3.6 | 4.1 |
+
+The last row is the pose `APRIL_TAGS_DEV.md` agreed on. **It is the worst one in
+the table for legibility**, and the top rows buy real pixels — but the gripper
+comes down as the arm reaches in, and the top row would strike a 3-stack.
+
+**`107 84 -138 0 0 135` is the recommendation**: 4.1 px/module on TOP tags even
+with your undersized print, and 18 mm of clearance over the tallest stack the
+plan allows. Testing today with a single block on the mat, clearance is 78 mm
+at every row, so start at the top and work down.
+
+### What to expect
+
+**TOP tags should decode. SIDE tags will not.** The lens cannot get close
+enough — and that conclusion is now boxed in from both sides:
+
+- side tags need the lens within ~0.23 m for a 22.5 mm tag, nearer still for
+  19.6 mm
+- the lens has a **focus floor at 0.220 m**, and blur kills a marginal tag
+  outright
+
+There is no pose that satisfies both. At the closest *focusable* distance in
+the table (0.253 m) side tags reach only 3.2 px/module at 19.6 mm, 3.6 at
+22.5 mm — neither is the 4.0 that survives blur. **Side tags at a 36° view are
+not achievable with 30 mm blocks and this camera.** Stage 2 has to lean on TOP
+tag visibility plus tag scale, which is what `APRIL_TAGS_DEV.md` already
+preferred on other grounds.
+
+Watch the `focus` column. Below ~100 the frame is soft and any marginal reading
+is worthless.
+
+### Reading the numbers honestly
+
+`tag_pixel_size` **over-reads by up to 14% below 28 px** — subpixel corner
+refinement pushes corners outward on a small tag — so the probe flags those
+with `(*)`. The bias flatters exactly the marginal cases. A flagged 3.0
+px/module may really be 2.6, which is dead rather than intermittent.
+
+---
+
 ## Not done
 
 - **Nothing has run on hardware.** Every number above is arithmetic or

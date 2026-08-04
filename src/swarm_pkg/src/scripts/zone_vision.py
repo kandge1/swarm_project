@@ -546,6 +546,12 @@ def find_block_tags(gray, H_px_to_zone=None):
     return found
 
 
+# Below this many pixels, tag_pixel_size() reads HIGH -- see its docstring.
+# Measured against known-size renders: accurate to 0.2% at 48 px and above,
+# -2% at 28-32 px, and +14% at 20-24 px.
+TAG_PX_MEASUREMENT_FLOOR = 28.0
+
+
 def tag_pixel_size(corners):
     """Mean edge length of a tag quad, in pixels.
 
@@ -555,6 +561,25 @@ def tag_pixel_size(corners):
     3 px per module is the floor for 36h11, and a 36h11 tag is 8 modules across
     its black square) and, for a mat-parallel tag, to read its height off the
     scale it implies.
+
+    IT OVER-READS ON SMALL TAGS, and it does so in the direction that flatters
+    them. Against renders of known size:
+
+        >= 48 px    +0.2%      trustworthy
+        28-32 px    -2%        trustworthy
+        20-24 px    +14%       OPTIMISTIC
+
+    The cause is CORNER_REFINE_SUBPIX (see _build_aruco_detector): on a tag only
+    a couple of pixels per module, refinement pushes the corners outward into
+    the quiet zone. Disabling it instead under-reads by 2-4%, and it is there to
+    hold the homography residual down, so it stays.
+
+    The consequence is what matters: the bias is largest exactly where the
+    decision is marginal. A tag reported at 24 px may really be 21, and a
+    reported 3.0 px/module may really be 2.6 -- the difference between
+    "intermittent" and "dead". Treat any reading below
+    TAG_PX_MEASUREMENT_FLOOR as an upper bound, not a measurement, and settle
+    it by moving closer rather than by believing the number.
     """
     corners = np.asarray(corners, dtype=np.float64).reshape(4, 2)
     edges = np.linalg.norm(corners - np.roll(corners, -1, axis=0), axis=1)
