@@ -64,7 +64,7 @@ from pick_place import (  # noqa: E402
     cartesian_move_to,
     go_home,
     gripper_close_until_contact,
-    hover_z,
+    hover_z_for,
     move_arm_to,
     quat_multiply,
 )
@@ -1112,7 +1112,10 @@ def run_stage1(io_client, detector, args, log):
     # hardcoded one.
     grasp_x, grasp_y = detector.zone_to_world(block.zx, block.zy)
     grasp_z = args.grasp_z              # PICK_XYZ.z + GRASP_OFFSET_Z, unchanged
-    grasp_hover = hover_z(grasp_z)
+    # Provisional: recomputed below, AFTER --verify may have moved grasp_x/y.
+    # The hover height depends on the radius, so it cannot be finalised until
+    # the target is.
+    grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z, grasp_yaw_deg)
     print("\n[stage1] block world position from the tags: (%.4f, %.4f)"
           % (grasp_x, grasp_y))
 
@@ -1187,6 +1190,12 @@ def run_stage1(io_client, detector, args, log):
               "is an extrapolation, not a measurement of the grasp pose itself."
               % (hover, detect_yaw_deg, grasp_hover, grasp_yaw_deg))
         grasp_x, grasp_y = corrected
+        # The target moved, so the radius moved, so the hover ceiling moved.
+        # Recomputed here rather than left stale: the reach envelope shrinks
+        # with height, and a correction that pushes the block outward can put a
+        # hover that was reachable outside it -- which then fails as an IK miss
+        # at the hover and reads like a reach problem at the block.
+        grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z, grasp_yaw_deg)
 
     print("\n[stage1] grasp target: world (%.4f, %.4f, %.4f), yaw %+.1f deg"
           % (grasp_x, grasp_y, grasp_z, grasp_yaw_deg))
@@ -1254,7 +1263,7 @@ def run_stage1(io_client, detector, args, log):
     place_z = place_surface_z + args.block_thickness / 2.0 + GRASP_OFFSET_Z
     print("\n[stage1] place: surface z %.4f -> release flange z %.4f (PLACE_XYZ, "
           "unchanged from pick_place.py)" % (place_surface_z, place_z))
-    place_hover = hover_z(place_z)
+    place_hover = hover_z_for(place_x, place_y, place_z)
     steps += [
         ("Move to pre-place",
          lambda: move_arm_to(io_client, place_x, place_y, place_hover)),

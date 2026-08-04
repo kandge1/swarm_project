@@ -260,15 +260,160 @@ SETTLE_QUIET_PERIOD_SEC = 1.0
 SETTLE_ACT_MARGIN_SEC = 1.0
 
 
-def hover_z(target_z):
-    """Hover height above target_z, clamped to the reachable ceiling."""
+# THE REACH ENVELOPE IS A CURVE, NOT A NUMBER (derived 2026-08-03).
+#
+# Largest flange radius at which the tool can still point straight down, per
+# flange height. Everything before this treated reach as one scalar --
+# tag_pick_place.MAX_FLANGE_RADIUS_M = 0.245 -- and that number is only true at
+# ONE height. Its own comment records where it came from: "the measured ceiling
+# at DETECT_HOVER_Z's predecessor (0.280)". Read off the table below, 0.245
+# corresponds to a flange z of about 0.220.
+#
+# Applying it at the GRASP height, z ~= 0.151, threw away 34 mm of real reach and
+# caused zone_calibrate.py to reject corners the arm can plainly get to -- before
+# the IK solver was ever asked. The arm is not the limitation there; the constant
+# was.
+#
+# DERIVATION. The tool's approach direction depends only on the SUM
+# joint3_to_joint2 + joint4_to_joint3 + joint5_to_joint4 (verified numerically),
+# and points straight down when that sum is exactly -pi/2. So the vertical-tool
+# workspace is a 2-DOF sweep, not 3: pick two of the pitch joints inside their
+# URDF limits, the third is determined. Swept at 0.25 deg over 1.1M samples,
+# taking max hypot(x, y) per 3 mm band of flange z.
+#
+# VALIDATED AGAINST HARDWARE. reach_probe.py measured, on the real arm at a
+# 0.250 radius, that z = 0.210 is reachable and z = 0.215 is not. This table
+# gives rmax(0.210) = 0.2523 and rmax(0.215) = 0.2490 -- it reproduces that
+# boundary, from the URDF alone, to within the 5 mm probe step.
+#
+# WHAT IT DOES NOT KNOW: joint6output's limit (the wrist has to absorb the fixed
+# world grasp yaw, and at some bearings it runs out -- see zone_calibrate's
+# YAW_RETRIES_DEG), self-collision, and the solver's own convergence. Treat it as
+# ADVISORY and let IK be the authority.
+#
+# AND IT IS NOT SIMPLY AN UPPER BOUND, which an earlier version of this comment
+# claimed. The table is computed with the tool EXACTLY vertical. solve_ik_state
+# allows IK_ORI_XY_TOLERANCE = 0.10 rad (5.73 deg) of tilt, and that slack buys
+# real reach -- measured by re-running the same sweep over the tolerance band:
+#
+#     flange z 0.1508 (grasp) : 0.2792 exact -> 0.2852 tilted   +6.0 mm
+#     flange z 0.1908 (hover) : 0.2637 exact -> 0.2714 tilted   +7.7 mm
+#
+# So for a HOVER, reached by solve_ik_state, the table is conservative by ~6-8 mm.
+# For a GRASP it is not, because cartesian_move_to re-imposes the exact downward
+# quaternion through make_grasp_pose: a target in that band solves at the hover
+# and then the descent has no solution to follow. See ORI_TOLERANCE_REACH_BONUS_M.
+ORI_TOLERANCE_REACH_BONUS_M = 0.006
+#
+# Regenerate if the URDF changes; the sweep is in APRIL_TAGS_DEV.md.
+FLANGE_REACH_ENVELOPE = [
+    (0.090, 0.2867), (0.095, 0.2867), (0.100, 0.2866), (0.105, 0.2865),
+    (0.110, 0.2861), (0.115, 0.2857), (0.120, 0.2852), (0.125, 0.2845),
+    (0.130, 0.2837), (0.135, 0.2828), (0.140, 0.2818), (0.145, 0.2806),
+    (0.150, 0.2793), (0.155, 0.2779), (0.160, 0.2763), (0.165, 0.2746),
+    (0.170, 0.2728), (0.175, 0.2708), (0.180, 0.2687), (0.185, 0.2664),
+    (0.190, 0.2639), (0.195, 0.2613), (0.200, 0.2585), (0.205, 0.2555),
+    (0.210, 0.2523), (0.215, 0.2490), (0.220, 0.2454), (0.225, 0.2416),
+    (0.230, 0.2375), (0.235, 0.2332), (0.240, 0.2285), (0.245, 0.2236),
+    (0.250, 0.2183),
+]
+
+
+# Below this the vertical approach has stopped being one. The descent exists so
+# the jaws come DOWN onto a block rather than in from the side; a 5 mm descent
+# does not do that. Warned about rather than enforced, because refusing the move
+# outright would be worse than a shallow approach at a target the arm can
+# otherwise reach.
+MIN_USEFUL_DESCENT_M = 0.010
+
+# Clamp the hover to this much INSIDE the envelope, not exactly onto it.
+#
+# max_flange_z() returns the height at which the radius lands precisely on the
+# boundary, so clamping to it leaves ~0 mm of margin by construction -- the far
+# pickup corners came out at +0.5 mm. The hover itself would survive that
+# (solve_ik_state has 5.73 deg of tilt to spend, worth ~8 mm there), but the
+# Cartesian RETREAT back up to it re-imposes exact vertical and would be planning
+# a path that ends on the boundary. 3 mm of radius costs about 8 mm of hover
+# height and buys a descent that can actually be reversed.
+HOVER_REACH_CLEARANCE_M = 0.003
+
+
+def max_flange_radius(z):
+    """Largest flange radius with the tool straight down, at flange height z.
+    Linear interpolation between FLANGE_REACH_ENVELOPE samples; clamped at both
+    ends rather than extrapolated."""
+    if z <= FLANGE_REACH_ENVELOPE[0][0]:
+        return FLANGE_REACH_ENVELOPE[0][1]
+    if z >= FLANGE_REACH_ENVELOPE[-1][0]:
+        return FLANGE_REACH_ENVELOPE[-1][1]
+    for (z0, r0), (z1, r1) in zip(FLANGE_REACH_ENVELOPE,
+                                  FLANGE_REACH_ENVELOPE[1:]):
+        if z0 <= z <= z1:
+            return r0 + (r1 - r0) * (z - z0) / (z1 - z0)
+    return FLANGE_REACH_ENVELOPE[-1][1]
+
+
+def max_flange_z(radius):
+    """The inverse: highest flange z at which `radius` is still reachable with
+    the tool down. rmax falls monotonically with z over the whole table, so
+    this is well defined."""
+    if radius >= FLANGE_REACH_ENVELOPE[0][1]:
+        return FLANGE_REACH_ENVELOPE[0][0]
+    if radius <= FLANGE_REACH_ENVELOPE[-1][1]:
+        return FLANGE_REACH_ENVELOPE[-1][0]
+    for (z0, r0), (z1, r1) in zip(FLANGE_REACH_ENVELOPE,
+                                  FLANGE_REACH_ENVELOPE[1:]):
+        if r1 <= radius <= r0:
+            return z0 + (z1 - z0) * (r0 - radius) / (r0 - r1)
+    return FLANGE_REACH_ENVELOPE[-1][0]
+
+
+def hover_z(target_z, radius=None):
+    """Hover height above target_z, clamped to the reachable ceiling.
+
+    radius is the flange radius the hover will sit at. Supplying it clamps the
+    hover to what the arm can actually reach THERE, which matters because the
+    reach envelope shrinks with height: at the far edge of the pick zone the
+    grasp itself is comfortably reachable while a hover 40 mm above it is not.
+    Without this the descent's starting point, not the grasp, is what fails --
+    and it fails as an IK miss at the hover, which reads like a reach problem at
+    the target and is not.
+
+    Only ever LOWERS the hover. Omitting radius keeps the previous behaviour."""
     requested = target_z + APPROACH_HEIGHT
     if requested > MAX_HOVER_Z:
         print(f"[pick_place] hover {requested:.3f} exceeds the reachable "
               f"ceiling {MAX_HOVER_Z:.3f} -- clamping (descent shortens to "
               f"{MAX_HOVER_Z - target_z:.3f}m)")
-        return MAX_HOVER_Z
+        requested = MAX_HOVER_Z
+    if radius is not None:
+        reach_ceiling = max_flange_z(radius + HOVER_REACH_CLEARANCE_M)
+        if requested > reach_ceiling:
+            clamped = max(target_z, reach_ceiling)
+            print(f"[pick_place] hover {requested:.3f} is outside the reach "
+                  f"envelope at radius {radius:.4f} (ceiling "
+                  f"{reach_ceiling:.3f}) -- clamping to {clamped:.3f}, descent "
+                  f"shortens to {clamped - target_z:.3f}m")
+            if clamped - target_z < MIN_USEFUL_DESCENT_M:
+                print(f"[pick_place] WARNING: that leaves essentially no "
+                      f"vertical approach. The arm will arrive at the grasp "
+                      f"pose directly instead of descending onto it, so the "
+                      f"jaws come in from the side and can knock the block. "
+                      f"This target is at the very edge of the envelope.")
+            return clamped
     return requested
+
+
+def hover_z_for(x, y, target_z, block_yaw_deg=0.0):
+    """hover_z at the radius a grasp on (x, y) actually puts the flange at.
+
+    The convenience form, and the one callers should reach for: the radius that
+    matters is the COMPENSATED flange radius, not hypot(x, y), because
+    compensate_for_tip_swing pushes the flange ~12 mm further out than the jaw
+    target. Getting that wrong understates the radius and the clamp does not
+    fire when it should."""
+    cx, cy, _cz = compensate_for_tip_swing(x, y, target_z, block_yaw_deg)
+    return hover_z(target_z, radius=math.hypot(cx, cy))
 
 # Vertical distance from the commanded joint6_flange position down to where
 # the gripper actually grips a block, i.e. flange_target_z = block_center_z +
@@ -312,7 +457,28 @@ def hover_z(target_z):
 # It is also large enough to be worth sanity-checking against the photo: the
 # gripper assembly really is ~150 mm from flange to fingertip. gripper_base
 # alone is 50 mm down (FK), and the fingers are the other ~97 mm.
-GRASP_OFFSET_Z = 0.147
+# 0.147 -> 0.1345 on 2026-08-03, from zone_calibrate.py: the first value measured
+# with a digital caliper at the fingertips rather than inferred.
+#
+# At five waypoints the tips sat HIGHER than the model predicted, every time:
+#
+#     centre +14.0   near-L +16.6   near-R +13.8   far-R +9.3   far-L +9.0 mm
+#
+# mean +12.6, so the offset was 12.6 mm too LARGE and every grasp landed high.
+# 0.1470 - 0.0126 = 0.1344, and the same data read the other way -- achieved
+# flange z minus measured tip height, per point -- gives 0.1330 to 0.1380, mean
+# 0.1345. Two independent reductions of the same measurements agreeing to 0.1 mm.
+#
+# History: 0.090 -> 0.112 -> 0.147 -> 0.1345. The first two were eyeballed and
+# both too SHORT, which drove the gripper into the mat. 0.147 came from
+# subtraction against FK with the tips "resting on" the mat -- better, but it
+# assumed contact it could not verify, and it overshot by 12.6 mm.
+#
+# THE 7.6 mm SPREAD IS REAL AND IS NOT THIS CONSTANT. Near waypoints read ~+15,
+# far ones ~+9: the arm hangs lower when extended. That is post-encoder
+# compliance, invisible to FK, and no single number removes it -- see
+# APRIL_TAGS_DEV.md on the lookup table.
+GRASP_OFFSET_Z = 0.1345
 
 # Cube side length, meters. Used to convert a place SURFACE height into the
 # block-center height the flange must descend to when releasing.
@@ -792,6 +958,30 @@ J1_JOINT_NAME = "joint2_to_joint1"
 J1_APPROACH_DIR = +1.0            # always arrive travelling POSITIVE
 J1_APPROACH_LEAD_DEG = 3.0
 J1_APPROACH_SEC = 1.5
+
+# The lost motion the unidirectional approach makes CONSTANT, now removed.
+#
+# Measured by zone_calibrate.py across all five pickup-zone waypoints, 2026-08-03:
+# the flange's achieved bearing sits BELOW its commanded bearing by
+#
+#     centre +1.02   near-L +1.23   near-R +0.97   far-R +1.10   far-L +1.16 deg
+#
+# mean +1.10, spread 0.26. J1 under-travels: it stops short of its target on the
+# positive approach and rests against the same flank of its own slack every time,
+# which is exactly what J1_UNIDIRECTIONAL_ENABLED was built to guarantee. Making
+# it constant was the hard part; subtracting it is arithmetic.
+#
+# AN ANGLE, NOT A DISTANCE, and that is not a detail. The same five samples read
+# +3.69 to +5.35 mm of tangential error -- 36% spread. Divided by radius they
+# read 0.97 to 1.23 deg -- 24%. The error lives at the joint, so a Cartesian
+# correction would only be right at the radius it was fitted at, and the pickup
+# zone spans 200 to 265 mm.
+#
+# ONLY VALID WHERE THE APPROACH DIRECTION IS GUARANTEED, which is why it is
+# applied here and nowhere else: arrive on J1 from the other side and the lost
+# motion lands on the other flank, so this bias would double the error instead of
+# cancelling it.
+J1_RESIDUAL_BIAS_DEG = 1.10
 J1_LIMIT_RAD = (-2.9321, 2.9321)  # from the URDF, same as the bridge's table
 
 CARTESIAN_MAX_STEP = 0.005       # 5mm interpolation resolution
@@ -2489,7 +2679,24 @@ def mount_tilt_tip_offset(block_yaw_deg=0.0):
 # radial and this constant is the wrong shape.
 #
 # Set to (0.0, 0.0) to disable and recover the previous behaviour.
-JAW_LATERAL_OFFSET = (-0.0003, -0.0198)
+# -0.0198 -> -0.0271 on 2026-08-03. zone_calibrate.py measured the jaw radius by
+# hand at five waypoints and found it SHORT of the target at every one:
+#
+#     centre -6.3   near-L -6.8   near-R -6.8   far-R -8.3   far-L -8.3 mm
+#
+# mean -7.3, spread 1.9. So the jaws hang 7.3 mm further inward than the old
+# value said, and the flange has to be pushed that much further out.
+#
+# NOTE THE FK RADIUS ERROR WAS ONLY -0.3 TO -0.5 mm on the same runs. The arm's
+# encoders put the flange where it was asked to be; it is the TOOL MODEL that is
+# wrong. That is precisely the split FK cannot make and a tape measure can, and
+# the reason the hand columns exist.
+#
+# THE FRAME IS STILL UNRESOLVED. Every waypoint in that survey sits within ~6 deg
+# of +Y, so world-frame and radial are indistinguishable in this data -- the
+# measurement that would separate them is the PLACE zone, at -Y, where the two
+# predictions differ by 2 x 27 mm. Until then this stays world-frame, as before.
+JAW_LATERAL_OFFSET = (-0.0003, -0.0271)
 
 
 # RESIDUAL DESCENT BIAS, measured 2026-08-03.
@@ -2507,13 +2714,27 @@ JAW_LATERAL_OFFSET = (-0.0003, -0.0198)
 # NEGATIVE = aim lower. Applied to the flange target, so it lowers the jaws by
 # the same amount.
 #
-# -0.005 -> -0.007 on 2026-08-03: at -0.005 the jaws sat ~2 mm high of the
-# midline by eye, so the remaining 2 mm was added. That leaves only 2.8 mm
-# between the commanded flange z (0.1508) and clamp_flange_z's floor (0.1480).
-# ANY further increase hits the clamp, and the clamp is not the thing to relax
-# -- if the grasp still lands high past this point, GRASP_OFFSET_Z is what is
-# wrong, not this.
-DESCENT_BIAS_Z = -0.007
+# -0.005 -> -0.007 -> -0.001 on 2026-08-03.
+#
+# THE -0.007 WAS DOING GRASP_OFFSET_Z'S JOB. Both constants lower the commanded
+# flange, so a tool-model error and a control error are indistinguishable by eye
+# -- and the eye is what set -0.005 and -0.007. zone_calibrate.py separated them
+# by measuring each directly:
+#
+#   the ARM's residual, from FK: +0.87 mm mean (dz +0.23 to +1.40)
+#   the TOOL model's error, from a caliper: +12.6 mm
+#
+# This constant's whole justification is the first number, so it is now -0.001.
+# The 12.6 mm went where it belongs, into GRASP_OFFSET_Z.
+#
+# The decomposition checks out. Both constants push the same commanded z, and
+# the sum needed to put the tips on the block midline is 0.1338 m; 0.1345 minus
+# 0.001 is 0.1335, within 0.3 mm. What changed is that each half is now
+# separately measured rather than jointly fitted to one visual impression.
+#
+# Margin improves rather than degrades: commanded 0.1443 against a floor of
+# 0.1355 is 8.8 mm, where -0.007 with the old offset left 2.8 mm.
+DESCENT_BIAS_Z = -0.001
 
 
 def compensate_for_tip_swing(x, y, z, block_yaw_deg=0.0):
@@ -2917,11 +3138,22 @@ def j1_unidirectional_approach(io_client, joint_trajectory):
     index = names.index(J1_JOINT_NAME)
 
     final = list(joint_trajectory.points[-1].positions)
+    # Overshoot the command by the measured lost motion so the JOINT lands on
+    # target. Applied to the re-approach leg only, and to a copy -- the caller's
+    # trajectory is left alone. The back-off is taken from the biased value so
+    # the final leg still travels a full J1_APPROACH_LEAD_DEG in +J1_APPROACH_DIR.
+    bias = math.radians(J1_RESIDUAL_BIAS_DEG) * J1_APPROACH_DIR
+    final[index] += bias
     lead = math.radians(J1_APPROACH_LEAD_DEG) * J1_APPROACH_DIR
     backed = list(final)
     backed[index] = final[index] - lead
 
     low, high = J1_LIMIT_RAD
+    if not low <= final[index] <= high:
+        print(f"[j1] the {J1_RESIDUAL_BIAS_DEG:+.2f} deg lost-motion bias would "
+              f"put {J1_JOINT_NAME} at {math.degrees(final[index]):.1f} deg, "
+              f"outside its limit -- skipping")
+        return
     if not low <= backed[index] <= high:
         print(f"[j1] backing off {J1_APPROACH_LEAD_DEG:.1f} deg would put "
               f"{J1_JOINT_NAME} at {math.degrees(backed[index]):.1f} deg, "
@@ -2930,8 +3162,9 @@ def j1_unidirectional_approach(io_client, joint_trajectory):
 
     print(f"[j1] unidirectional approach: backing off "
           f"{J1_APPROACH_LEAD_DEG:.1f} deg, then re-approaching "
-          f"{'+' if J1_APPROACH_DIR > 0 else '-'}ve so the "
-          f"{1.75:.2f} deg of lost motion lands the same way every time")
+          f"{'+' if J1_APPROACH_DIR > 0 else '-'}ve with a "
+          f"{J1_RESIDUAL_BIAS_DEG:+.2f} deg lost-motion bias, so the joint "
+          f"lands ON target instead of consistently short of it")
     for label, target in (("back off", backed), ("re-approach", final)):
         leg = type(joint_trajectory)()
         leg.joint_names = names
@@ -3229,7 +3462,7 @@ def main():
         # from here. Putting it on the descents as well would insert a 3 deg
         # base rotation into a move whose whole job is not to move sideways.
         ("Move to pre-grasp (above pick)",
-         lambda: move_arm_to(io_client, px, py, hover_z(pz),
+         lambda: move_arm_to(io_client, px, py, hover_z_for(px, py, pz),
                              unidirectional=True)),
         ("Descend to grasp pose (Cartesian)",
          lambda: cartesian_move_to(io_client, px, py, pz)),
@@ -3240,10 +3473,10 @@ def main():
         # measurably more than an empty one, and the place descent is where that
         # showed up as ~2 deg of extra tilt versus the pick descent.
         ("Retreat after grasp (Cartesian)",
-         lambda: cartesian_move_to(io_client, px, py, hover_z(pz), allow_fallback=True,
+         lambda: cartesian_move_to(io_client, px, py, hover_z_for(px, py, pz), allow_fallback=True,
                                    holding_block=True)),
         ("Move to pre-place (above place)",
-         lambda: move_arm_to(io_client, lx, ly, hover_z(lz), holding_block=True,
+         lambda: move_arm_to(io_client, lx, ly, hover_z_for(lx, ly, lz), holding_block=True,
                              unidirectional=True)),
         ("Descend to place pose (Cartesian)",
          lambda: cartesian_move_to(io_client, lx, ly, lz, holding_block=True)),
@@ -3252,7 +3485,7 @@ def main():
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
         # Block released: back to the empty-gripper pre-compensation.
         ("Retreat after release (Cartesian)",
-         lambda: cartesian_move_to(io_client, lx, ly, hover_z(lz), allow_fallback=True)),
+         lambda: cartesian_move_to(io_client, lx, ly, hover_z_for(lx, ly, lz), allow_fallback=True)),
         ("Return to home pose (final)", lambda: go_home(io_client)),
     ]
 

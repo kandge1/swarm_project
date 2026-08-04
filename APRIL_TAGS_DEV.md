@@ -887,44 +887,124 @@ keeps doing its original job of not re-spamming an unchanged target.
 
 ---
 
-## THE OUTER HALF OF THE PICKUP ZONE CANNOT BE REACHED (found 2026-08-03)
+## REACH IS A CURVE, NOT A NUMBER (found and fixed 2026-08-03)
 
-Found by `zone_calibrate.py`'s pre-flight, before the arm moved. It is a
-**zone-placement** problem, not a calibration one, and no amount of tuning
-touches it.
+**The pickup zone does not need to move.** An earlier version of this section
+said it had to come in 1.17 in. That was wrong, and the way it was wrong is the
+useful part.
 
-The pickup zone centre sits at `ZONE_RADIUS_M` = 0.2286 m (9.00 in) and the tag
-square is 4 in on a side, so the zone spans **7.00 in to 11.00 in** radially.
-The flange tops out at `MAX_FLANGE_RADIUS_M` = 0.245 m.
+### What went wrong
 
-| vertex | tip radius | flange radius needed | margin |
+`zone_calibrate.py`'s pre-flight screened every waypoint against
+`tag_pick_place.MAX_FLANGE_RADIUS_M = 0.245` and **rejected failures before IK
+was ever called.** Two compounding errors:
+
+1. **0.245 is the limit at ONE height.** Its own comment says where it came
+   from — "the measured ceiling at `DETECT_HOVER_Z`'s predecessor (0.280)". It
+   is true at a flange z of about **0.220**. At the grasp height, z ≈ 0.151, the
+   real limit is **0.2793** — 34 mm further out.
+2. **The screen was a gate, not advice.** Corners the arm can plainly reach were
+   thrown out by a constant. The solver never got asked. "The solver must
+   improve if it is throwing those corners out" was the right instinct aimed at
+   the wrong component: the solver was never consulted.
+
+### The envelope, derived and validated
+
+The tool's approach direction depends **only** on the sum
+`joint3_to_joint2 + joint4_to_joint3 + joint5_to_joint4`, and points straight
+down when that sum is exactly **−π/2** (verified numerically). So the
+vertical-tool workspace is a 2-DOF sweep, not 3 — pick two pitch joints inside
+their URDF limits and the third is determined. Swept at 0.25°, 1.1M samples,
+max `hypot(x, y)` per 3 mm band of flange z. Lives in `pick_place.py` as
+`FLANGE_REACH_ENVELOPE` / `max_flange_radius(z)` / `max_flange_z(radius)`.
+
+**It reproduces a hardware measurement.** `reach_probe.py` found on the real arm
+that at radius 0.250, z = 0.210 is reachable and z = 0.215 is not. The table
+gives `rmax(0.210) = 0.2523` and `rmax(0.215) = 0.2490` — the same boundary,
+from the URDF alone, inside the 5 mm probe step.
+
+| flange z | max radius |
+|---|---|
+| 0.150 (grasp) | **0.2793** |
+| 0.190 (hover) | 0.2639 |
+| 0.220 | 0.2454 ← where `MAX_FLANGE_RADIUS_M` is true |
+| 0.250 | 0.2183 |
+
+### What the zone actually looks like at 9 in
+
+| square | far corner flange r | at grasp z | at hover |
 |---|---|---|---|
-| tag0 (−X, near) | 0.1849 | 0.1965 | **+48.5 mm** |
-| tag1 (+X, near) | 0.1849 | 0.1962 | **+48.8 mm** |
-| tag2 (+X, far) | 0.2840 | 0.2956 | **−50.6 mm** |
-| tag3 (−X, far) | 0.2840 | 0.2957 | **−50.7 mm** |
+| `tags` 4.00 in | 0.2956 | −16.5 mm | out |
+| `span` 3.00 in | 0.2811 | −2.0 mm | out |
+| **`blocks` 1.82 in** | 0.2645 | **+14.6 mm** | **+3.5 mm** |
 
-The centre itself clears by 4.5 mm — which is why every calibration so far has
-worked and this never surfaced. **A block detected in the outer half of the
-zone cannot be picked up at any orientation.** The arm is a myCobot 280: ~280 mm
-from the J1 axis, and the far corners need ~296 mm before the wrist is even
-asked to point down.
+**The block-centre square — the only one that has to be reachable — clears at
+every corner.** The 3 in clear span misses by 2 mm, which is a knife edge and
+does not matter because a block's centre cannot sit on that square's corner
+anyway. The 4 in tag square is genuinely out by 16.5 mm, and the tags are
+fiducials the arm never has to reach.
 
-`max_zone_centre_radius()` derives the fix rather than guessing it. For all four
-vertices of a 4 in square to be reachable:
+### The hover was the real constraint
 
-- **pickup zone centre must come in to 0.1769 m (6.96 in)**, from 9.00 in;
-- the place zone gets 0.2006 m (7.90 in), 0.93 in more, because
-  `JAW_LATERAL_OFFSET` is a **world** vector: it pushes the flange outward at
-  +Y and inward at −Y. Same asymmetry already noted for the grasp itself.
+Note the far corner's grasp margin (+14.6 mm) against its hover margin. The
+envelope **shrinks with height**, so a hover 40 mm above a reachable grasp can
+sit outside it. The descent's *starting point* fails, not the grasp — and it
+fails as an IK miss at the hover, which reads like a reach problem at the block
+and is not.
 
-Verified by re-running the pre-flight at the derived radius: all five waypoints
-come back reachable, the far corners with ~0.1 mm to spare.
+`hover_z(target_z, radius=None)` now clamps to `max_flange_z(radius)`. It only
+ever **lowers** the hover, and omitting `radius` keeps the old behaviour. At the
+far corner the descent shortens 40 mm → **31 mm**; the default pick and place
+hovers are **unchanged at 0.198**, confirmed.
 
-**Moving the zone means re-taping the mat**, so this is the user's call. It also
-invalidates nothing already measured — every constant was fitted at the centre
-and is radius-independent as far as anything here can tell, which is precisely
-what the survey is for.
+`hover_z_for(x, y, target_z, block_yaw_deg)` is the form callers should use — it
+takes the *compensated* flange radius, ~12 mm further out than the jaw target.
+Wired into `pick_place.main()` (4 sites) and `tag_pick_place.py`, where it
+matters most because the grasp position comes from vision and can be anywhere in
+the zone. There it is recomputed **after** `--verify` moves the target, since a
+correction that pushes the block outward also moves the hover ceiling.
+
+`MIN_USEFUL_DESCENT_M = 0.010` warns when clamping leaves essentially no
+vertical approach — the jaws would come in from the side and could knock the
+block. Warned, not enforced: refusing a target the arm can otherwise reach would
+be worse.
+
+### The envelope is NOT simply an upper bound — and that opens a gap
+
+The table is computed with the tool **exactly vertical**. `solve_ik_state` gets
+`IK_ORI_XY_TOLERANCE` = 0.10 rad (5.73°) of tilt, and re-running the same sweep
+across that band shows it buys real reach:
+
+| flange z | exact | with ±5.73° | gain |
+|---|---|---|---|
+| 0.1508 (grasp) | 0.2792 | 0.2852 | **+6.0 mm** |
+| 0.1908 (hover) | 0.2637 | 0.2714 | **+7.7 mm** |
+
+So for a **hover**, reached by `solve_ik_state`, the table is conservative by
+6–8 mm. For a **grasp** it is not: `cartesian_move_to` re-imposes the exact
+downward quaternion through `make_grasp_pose`.
+
+**That leaves a band the IK pre-flight cannot catch.** A target 0–6 mm outside
+exact vertical solves at the hover and then the descent has nothing to follow —
+the pre-flight passes, the arm gets there, and the Cartesian path falls short.
+It reads like a planner failure and is really a reach one.
+
+`ORI_TOLERANCE_REACH_BONUS_M = 0.006`, and the pre-flight now prints a
+**DESCENT RISK** line for anything in that band. It fires on the 3 in `span`
+square's far corners (+2.0 mm over exact vertical) and on nothing in the `blocks`
+square — which is exactly the distinction that matters.
+
+### The rule this leaves
+
+**The envelope is advisory. IK is the authority for the hover; exact-vertical is
+the authority for the grasp.** Neither knows about `joint6output`'s limit (the
+wrist absorbing the fixed world grasp yaw — see `YAW_RETRIES_DEG`),
+self-collision, or convergence. The pre-flight prints the radius map as ADVISORY,
+flags the descent-risk band, and gives every point to the solver regardless.
+
+`tag_pick_place.py` still uses the flat 0.245, correctly: it clamps the vision
+correction loop at the detection hover, one specific height, where one number is
+fine.
 
 ---
 
@@ -938,7 +1018,7 @@ records where they actually ended up. Mars-side, no vision, no
 ```bash
 python3 zone_calibrate.py --dry-run                    # reach map, arm untouched
 python3 zone_calibrate.py --interactive                # survey + hand measurements
-python3 zone_calibrate.py --zone-radius 0.1769         # what a moved zone would give
+python3 zone_calibrate.py --square span                # the 3 in clear area instead
 python3 zone_calibrate.py --repeats 3 --out zone3.csv  # repeatability
 ```
 
@@ -995,6 +1075,88 @@ Margins are now thin in both directions:
 **Any further increase hits the clamp**, and the clamp is not the thing to
 relax. If the grasp still lands high past this point, `GRASP_OFFSET_Z` is what
 is wrong.
+
+---
+
+## FIRST ZONE SURVEY — RESULTS (2026-08-03)
+
+Five waypoints of the `blocks` square at the 9 in pickup centre, jaws open,
+digital caliper on the fingertip height and two scales + a protractor on the
+radius. `src/swarm_pkg/testing/zone_calibration.csv`.
+
+### What the arm did vs what the tool did — the split the survey exists for
+
+| | FK (arm vs its own command) | hand (tool model vs reality) |
+|---|---|---|
+| height | **+0.87 mm** | **+12.6 mm** |
+| radius | −0.3 to −0.5 mm | **−7.3 mm** |
+| tangential | **+4.61 mm** | — |
+
+**The arm is fine.** It lands within ~1 mm of its commanded flange z and within
+0.5 mm of the commanded radius. Everything large is in the *model* — which is
+exactly the distinction FK cannot make on its own, and the reason the
+`--interactive` columns exist.
+
+### Four constants changed
+
+**`GRASP_OFFSET_Z` 0.147 → 0.1345.** Tips sat higher than predicted at all five
+points (+14.0, +16.6, +13.8, +9.3, +9.0 mm; mean +12.6). Cross-checked the other
+way — achieved flange z minus measured tip height, per point — gives mean 0.1345.
+Two reductions of the same data agreeing to 0.1 mm. This is the first value
+measured *at the fingertips* rather than inferred; the history is 0.090 → 0.112 →
+0.147 → **0.1345**.
+
+**`DESCENT_BIAS_Z` −0.007 → −0.001.** It had been doing `GRASP_OFFSET_Z`'s job.
+Both constants lower the commanded flange, so by eye a tool-model error and a
+control error are the same thing — and the eye is what set −0.005 and then
+−0.007. The survey measured them separately: the arm's residual is +0.87 mm, and
+that is this constant's entire justification. The other 12.6 mm went where it
+belongs. Sum check: the two need to total 0.1338 m to put the tips on the block
+midline; 0.1345 − 0.001 = 0.1335. Floor margin *improves*, 2.8 → **8.8 mm**.
+
+**`JAW_LATERAL_OFFSET[1]` −0.0198 → −0.0271.** Jaws short of target at every
+point (−6.3, −6.8, −6.8, −8.3, −8.3; mean −7.3) while FK's radius error was
+−0.3 to −0.5 mm. **Frame still unresolved** — every waypoint sits within ~6° of
++Y, so world-frame and radial are indistinguishable here. The place zone is the
+measurement that separates them.
+
+**`J1_RESIDUAL_BIAS_DEG` = +1.10, new.** The achieved bearing sits below the
+commanded bearing by +1.02, +1.23, +0.97, +1.10, +1.16° — J1 under-travels and
+stops short. `J1_UNIDIRECTIONAL_ENABLED` already guarantees it always rests on
+the same flank of its slack; making it constant was the hard part, subtracting it
+is arithmetic.
+
+**As an angle, not a distance.** The same samples read 3.69–5.35 mm (36% spread)
+but 0.97–1.23° (24%). The error lives at the joint, so a Cartesian correction
+would only be right at the radius it was fitted at — and the zone spans
+200–265 mm. Applied only inside `j1_unidirectional_approach`, because the sign
+depends on the approach direction that function is what guarantees.
+
+### What is genuinely pose-dependent
+
+The height error is **not** uniform: near waypoints read ~+15 mm, far ones ~+9 —
+7.6 mm of structure, systematic, with the arm hanging *lower* when extended.
+That is post-encoder compliance: the encoder reports the commanded angle while
+the link sits below it, so FK is blind to it by construction. No constant removes
+it. After the mean correction the residual is roughly ±4 mm across the zone,
+which a 30 mm block tolerates — this is the term a lookup table would carry.
+
+### Two bugs in `summarise()` that the data exposed
+
+1. **It compared fingertip measurements against `fk_grip_*`** — the
+   `gripper_base` link, ~85 mm above the fingertips — and reported the gap
+   between two different points as an error ("mean −84.5 mm"). Now compared
+   against the predicted fingertip, `flange z − GRASP_OFFSET_Z`.
+2. **It called the `dx` residual `JAW_LATERAL_OFFSET[0]`.** It is a J1 tracking
+   error, not a tool offset. Now reported as an angle, with the right knob named.
+
+Also `HOVER_REACH_CLEARANCE_M = 0.003`: clamping the hover exactly *onto* the
+envelope left the far corners +0.5 mm, and the Cartesian retreat back up to it
+re-imposes exact vertical. 3 mm of radius costs ~8 mm of hover height and buys a
+descent that can be reversed.
+
+**None of this is hardware-verified yet.** The constants are measured; their
+effect is not. Re-run the survey.
 
 ---
 
