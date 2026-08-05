@@ -369,7 +369,7 @@ class BlockDetector(Node):
             entry.area_px = float(block.area_px)
             response.blocks.append(entry)
 
-        self._publish_wire(result, zone)
+        self._publish_wire(result, zone, block_tags)
         self._show_window(frame, result, zone, block_tags)
 
         if request.save_debug_image and request.debug_image_path:
@@ -487,7 +487,7 @@ class BlockDetector(Node):
                 "window update failed, disabling it (detection is "
                 "unaffected): %s" % exc)
 
-    def _publish_wire(self, result, zone):
+    def _publish_wire(self, result, zone, block_tags=()):
         """Best effort -- the topic must never be able to fail a detection.
 
         Published BEFORE the service response is built, so it goes out even if
@@ -503,7 +503,8 @@ class BlockDetector(Node):
             data, dropped = wire.encode(
                 result.success, [int(t) for t in result.tag_ids],
                 float(result.homography_rms), float(result.scale_px_per_m),
-                float(result.camera_zx), float(result.camera_zy), blocks)
+                float(result.camera_zx), float(result.camera_zy), blocks,
+                block_tags=block_tags)
             size = wire.encoded_bytes(data)
             if size > 1300:
                 self.get_logger().warn(

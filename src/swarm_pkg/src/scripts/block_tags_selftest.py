@@ -77,8 +77,9 @@ def test_scheme():
 
     # Four distinct sides is the whole reason yaw comes for free; a shared id
     # would make these equal and the assertion below is what would catch it.
-    side_ids = {bc.tag_id_for("cube", "side%d" % k) for k in range(4)}
-    check(len(side_ids) == 4, "the cube's four sides have four distinct ids")
+    side_ids = {bc.tag_id_for("orange_cube", "side%d" % k) for k in range(4)}
+    check(len(side_ids) == 4,
+          "the orange cube's four sides have four distinct ids")
 
     # A block turned so its SIDE2 faces world 0 deg is turned 90 deg.
     check(abs(bc.block_yaw_from_side(2, 0.0) - 90.0) < 1e-9,
@@ -142,10 +143,10 @@ def test_detection_and_duplicates():
     print("\ndetection")
     dictionary = _dictionary()
     canvas = np.full((480, 640), 120, np.uint8)      # mid-grey "mat"
-    _paste(canvas, bc.tag_id_for("cube", "top"), (60, 60), 64, dictionary)
-    _paste(canvas, bc.tag_id_for("cube", "side1"), (260, 60), 64, dictionary)
+    _paste(canvas, bc.tag_id_for("orange_cube", "top"), (60, 60), 64, dictionary)
+    _paste(canvas, bc.tag_id_for("orange_cube", "side1"), (260, 60), 64, dictionary)
     # The SAME id twice: two identically-tagged cubes in one frame.
-    _paste(canvas, bc.tag_id_for("cube", "top"), (450, 260), 64, dictionary)
+    _paste(canvas, bc.tag_id_for("orange_cube", "top"), (450, 260), 64, dictionary)
 
     sightings = zv.find_block_tags(canvas)
     check(len(sightings) == 3,
@@ -154,7 +155,7 @@ def test_detection_and_duplicates():
           "the dict form loses the duplicate, which is why the list form exists")
 
     labels = sorted(s.face.label for s in sightings)
-    check(labels == ["cube SIDE1", "cube TOP", "cube TOP"],
+    check(labels == ["orange cube SIDE1", "orange cube TOP", "orange cube TOP"],
           "decoded faces are %s" % labels)
     check(all(abs(s.px - 64) < 2.0 for s in sightings),
           "measured pixel size is ~64 px (got %s)"
@@ -172,8 +173,8 @@ def test_side_tags_get_no_position():
     print("\nmat-plane projection")
     dictionary = _dictionary()
     canvas = np.full((480, 640), 120, np.uint8)
-    _paste(canvas, bc.tag_id_for("cuboid", "top"), (100, 100), 64, dictionary)
-    _paste(canvas, bc.tag_id_for("cuboid", "side3"), (320, 100), 64, dictionary)
+    _paste(canvas, bc.tag_id_for("yellow_cube", "top"), (100, 100), 64, dictionary)
+    _paste(canvas, bc.tag_id_for("yellow_cube", "side3"), (320, 100), 64, dictionary)
 
     # Any invertible homography will do; the point is which tags get used.
     H_px_to_zone = np.array([[1e-4, 0, -0.03],

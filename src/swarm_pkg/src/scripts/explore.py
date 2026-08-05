@@ -56,6 +56,23 @@ the tilt: the principal point is assumed to be the image centre (uncalibrated,
 see zone_vision.camera_in_zone), and FK is only as good as the arm's own
 positioning, which this project documents at heart as untrustworthy.
 
+ZONE_YAW IS NOT KNOWN A PRIORI, AND ASSUMING IT IS ZERO WRECKS THE RADIUS.
+camera_zx/zy are in the MAT's axes; axis_hit is in the WORLD's. R(zone_yaw) is
+the only thing connecting them, and the 2026-08-05 sweep ran with the default
+zone_yaw = 0 against a mat whose true yaw was -89 deg. The correction is ~48 mm
+of pure RADIAL offset in mat axes; rotated by the wrong 89 degrees it came out
+almost entirely TANGENTIAL, so the reported bearing stayed roughly right while
+the reported radius never got corrected at all -- it just tracked the axis-hit
+radius, a constant 196 mm that is a property of the POSE and says nothing about
+where the mat is. Eleven views smeared from 149 mm to 238 mm.
+
+So explore SOLVES for zone_yaw instead of being told it. Across a pan the mat
+is stationary and the camera is not, which makes yaw observable: pick the yaw
+that makes every view agree on one point. That is a closed-form 2-D Procrustes
+fit (see fit_zone) whose residual is then a real, self-validating quality
+number. Re-fitting the failed sweep's own numbers this way collapses all eleven
+views onto a single point 3.7 mm wide.
+
 So the answer here is COARSE ON PURPOSE -- good to a couple of centimetres. It
 does not need to be better, because tag_pick_place.py then runs its four-view
 survey and its correction loop from this starting point, and those close on the
@@ -244,6 +261,121 @@ def zone_origin_from(joints, camera_zx, camera_zy, zone_yaw=0.0):
             hit[1] - (s * camera_zx + c * camera_zy))
 
 
+# --- solving for the mat, rather than assuming half of it -------------------
+# The camera has to actually MOVE in the mat's frame for the yaw to be
+# observable at all. Two views 3 mm apart fix a point and say nothing about
+# rotation, and the fit would happily return a confident garbage angle. The
+# baseline is the widest separation between any two views measured IN THE MAT'S
+# FRAME; 25 mm is comfortably exceeded by any real pan (the 2026-08-05 fine
+# pass moved the image centre 72 mm across the mat over 25 deg of J1, the
+# coarse pass 149 mm). Yaw uncertainty is roughly residual/baseline, and it
+# only reaches the origin multiplied by the ~50 mm centre offset, so even a
+# marginal baseline costs millimetres.
+MIN_YAW_BASELINE_M = 0.025
+
+# How well the single-point model has to hold. The fine pass fits to 3.7 mm and
+# the coarse pass to 8.8 mm on real data; 20 mm is loose enough for a sloppy
+# sweep and tight enough that two mats averaged together (which lands near
+# 250 mm) can never pass.
+MAX_FIT_RESIDUAL_M = 0.020
+
+
+class ZoneFit(object):
+    """One mat, solved from several views of it."""
+
+    __slots__ = ("origin", "yaw", "residual", "baseline", "sightings")
+
+    def __init__(self, origin, yaw, residual, baseline, sightings):
+        self.origin = origin
+        self.yaw = yaw
+        self.residual = residual
+        self.baseline = baseline
+        self.sightings = list(sightings)
+
+    @property
+    def radius(self):
+        return math.hypot(*self.origin)
+
+    @property
+    def bearing_deg(self):
+        return math.degrees(math.atan2(self.origin[1], self.origin[0]))
+
+    def describe(self):
+        return ("origin (%+.4f, %+.4f)  r %.4f m = %.2f in  bearing %+.1f deg"
+                "  |  zone yaw %+.1f deg  residual %.1f mm over %d view(s)"
+                % (self.origin[0], self.origin[1], self.radius,
+                   self.radius / 0.0254, self.bearing_deg,
+                   math.degrees(self.yaw), self.residual * 1000.0,
+                   len(self.sightings)))
+
+
+def fit_zone(sightings, yaw_fixed=None):
+    """(ZoneFit, None) or (None, why not).
+
+    Least-squares over BOTH the origin and the zone yaw, closed form. Each view
+    gives  hit_i = origin + R(yaw) . p_i  with p_i = (camera_zx, camera_zy).
+    Centring both sides removes the origin, leaving a pure rotation fit:
+    maximise  cos(yaw)*A + sin(yaw)*B, i.e. yaw = atan2(B, A). No iteration, no
+    starting guess, and the leftover residual is the honest error bar.
+    """
+    rows = []
+    for sighting in sightings:
+        hit = axis_hits_mat(sighting.joints)
+        if hit is not None:
+            rows.append((hit[0], hit[1], sighting.camera_zx, sighting.camera_zy))
+    if not rows:
+        return None, "no view had the optical axis meeting the mat"
+
+    n = float(len(rows))
+    hx = sum(r[0] for r in rows) / n
+    hy = sum(r[1] for r in rows) / n
+    px = sum(r[2] for r in rows) / n
+    py = sum(r[3] for r in rows) / n
+    baseline = max((math.hypot(a[2] - b[2], a[3] - b[3])
+                    for a in rows for b in rows), default=0.0)
+
+    if yaw_fixed is not None:
+        yaw = yaw_fixed
+    elif baseline < MIN_YAW_BASELINE_M:
+        return None, ("the camera moved only %.0f mm across the mat -- too "
+                      "little to solve the zone yaw (need %.0f mm). Pan "
+                      "further, or pass --zone-yaw if you have measured it."
+                      % (baseline * 1000.0, MIN_YAW_BASELINE_M * 1000.0))
+    else:
+        a = sum((r[0] - hx) * (r[2] - px) + (r[1] - hy) * (r[3] - py)
+                for r in rows)
+        b = sum((r[1] - hy) * (r[2] - px) - (r[0] - hx) * (r[3] - py)
+                for r in rows)
+        yaw = math.atan2(b, a)
+
+    c, s = math.cos(yaw), math.sin(yaw)
+    origin = (hx - (c * px - s * py), hy - (s * px + c * py))
+    residual = math.sqrt(sum((r[0] - (origin[0] + c * r[2] - s * r[3])) ** 2 +
+                             (r[1] - (origin[1] + s * r[2] + c * r[3])) ** 2
+                             for r in rows) / n)
+    return ZoneFit(origin, yaw, residual, baseline, sightings), None
+
+
+def split_runs(sightings, step):
+    """Group sightings into contiguous stretches of J1.
+
+    Fitting is only valid over views of ONE mat, and averaging two mats
+    together produces a confident point in the empty space between them. A gap
+    in the sweep is the cheapest evidence that the tags went out of sight and
+    came back, which for a camera that only looks outward means a different
+    mat. The 2026-08-05 coarse pass split exactly here: J1 -135..-65 saw one
+    set of ids 0-3, nothing for 90 degrees, then J1 +45..+115 saw ANOTHER, and
+    fitting each separately puts them 9.5 and 10.0 in out on opposite sides.
+    """
+    runs = []
+    for sighting in sorted(sightings, key=lambda s: s.j1_deg):
+        if runs and sighting.j1_deg - runs[-1][-1].j1_deg <= step * 1.5 + 1e-6:
+            runs[-1].append(sighting)
+        else:
+            runs.append([sighting])
+    return runs
+
+
 def sweep_range(io_client, detector, args, start, end, step, label):
     """One pass over a J1 range. Returns the sightings it managed to take."""
     print("[explore] %s pass: J1 %+.1f -> %+.1f in %.1f deg steps"
@@ -306,15 +438,17 @@ def sweep(io_client, detector, args):
             j1 += args.step
             continue
 
+        # PROVISIONAL. The zone yaw is not known until the sweep is over and
+        # fit_zone has solved it, so this per-step number is only here to show
+        # the sweep is alive. The answer comes from the fit, not from this.
         origin = zone_origin_from(joints, response.camera_zx,
-                                  response.camera_zy, args.zone_yaw)
+                                  response.camera_zy, args.zone_yaw or 0.0)
         sighting = Sighting(j1, joints, response, origin, measured)
         sightings.append(sighting)
         print("[explore] J1 %+7.1f  tags %-14s rms %.2f px  centre offset "
-              "%5.1f mm  -> zone (%+.4f, %+.4f)%s"
+              "%5.1f mm  camera at zone (%+6.1f, %+6.1f) mm%s"
               % (j1, str(sighting.tag_ids), sighting.rms, sighting.offset_mm,
-                 origin[0] if origin else float("nan"),
-                 origin[1] if origin else float("nan"),
+                 sighting.camera_zx * 1000.0, sighting.camera_zy * 1000.0,
                  "" if measured else "  [commanded joints -- no /joint_states]"))
         j1 += args.step
     return sightings
@@ -346,17 +480,16 @@ def _settle(io_client, seconds):
 MIN_ZONE_RADIUS_M = 0.120
 MAX_ZONE_RADIUS_M = 0.320
 
-# Independent views of one mat must agree. Anything worse means the estimate is
-# not merely imprecise -- some input is wrong, and averaging wrong inputs is how
-# a confident wrong answer gets made.
-MAX_VIEW_SPREAD_M = 0.040
-
 # camera_zx/zy is the image centre carried through the tag homography. Inside
 # the tag square that is interpolation; well outside it is EXTRAPOLATION, and
 # zone_vision's own docstring warns a two-tag fit extrapolates ~6x across its
-# thin direction. Every sighting in the failed run sat 59-186 mm out, i.e.
-# entirely outside a 101.6 mm square.
-MAX_CENTRE_OFFSET_M = 0.070
+# thin direction. So how far out is too far depends on how well the tags span
+# the square, which is exactly what the tag count reports: measured in
+# half-diagonals of the zone (71.8 mm for a 101.6 mm square), four tags spanning
+# both directions are trusted to two of them and three tags to one. Chosen
+# against the 2026-08-05 coarse pass, where every 4-tag view out to 129 mm sits
+# on the same solved mat to within 9 mm and the 3-tag views past that do not.
+MAX_CENTRE_OFFSET_HALF_DIAGONALS = {4: 2.0, 3: 1.0}
 
 # Two tags is enough for a homography and NOT enough to trust one this far from
 # the tags. Four spans the zone in both directions.
@@ -364,40 +497,71 @@ MIN_TAGS_FOR_ORIGIN = 3
 
 
 def gate(sighting, zone_size):
-    """None if the sighting is usable, else why it is not."""
-    if sighting.zone_origin is None:
+    """None if the sighting is fit for use as INPUT, else why it is not.
+
+    Radius is deliberately not checked here. A single view's zone_origin is
+    provisional -- it is built on a zone yaw nobody has solved yet -- so
+    rejecting a view for implying an implausible radius would throw away good
+    pixels over a bad assumption. Radius is checked once, on the fit.
+    """
+    if axis_hits_mat(sighting.joints) is None:
         return "optical axis does not meet the mat"
     if len(sighting.tag_ids) < MIN_TAGS_FOR_ORIGIN:
         return ("only %d tag(s); %d needed before the homography is trusted "
                 "this far from them" % (len(sighting.tag_ids),
                                         MIN_TAGS_FOR_ORIGIN))
-    if sighting.offset_mm / 1000.0 > MAX_CENTRE_OFFSET_M:
-        return ("image centre is %.0f mm from the zone centre, outside the "
-                "%.0f mm tag square -- extrapolated, not measured"
-                % (sighting.offset_mm, zone_size * 1000.0))
-    radius = math.hypot(*sighting.zone_origin)
-    if not (MIN_ZONE_RADIUS_M <= radius <= MAX_ZONE_RADIUS_M):
-        return ("implies a zone %.0f mm from the base, outside the plausible "
-                "%.0f-%.0f mm" % (radius * 1000, MIN_ZONE_RADIUS_M * 1000,
+    half_diagonal = zone_size * math.sqrt(2.0) / 2.0
+    allowed = half_diagonal * MAX_CENTRE_OFFSET_HALF_DIAGONALS.get(
+        len(sighting.tag_ids), 1.0)
+    if sighting.offset_mm / 1000.0 > allowed:
+        return ("image centre is %.0f mm from the zone centre; %d tags are "
+                "trusted only to %.0f mm out (%.1f half-diagonals of a %.0f mm "
+                "square) -- beyond that it is extrapolated, not measured"
+                % (sighting.offset_mm, len(sighting.tag_ids), allowed * 1000.0,
+                   MAX_CENTRE_OFFSET_HALF_DIAGONALS.get(
+                       len(sighting.tag_ids), 1.0), zone_size * 1000.0))
+    return None
+
+
+def gate_fit(fit):
+    """None if the solved mat is believable, else why it is not."""
+    if fit.residual > MAX_FIT_RESIDUAL_M:
+        return ("views disagree by %.1f mm about where the mat is, past the "
+                "%.0f mm limit -- one mat cannot do that, so an input is wrong"
+                % (fit.residual * 1000.0, MAX_FIT_RESIDUAL_M * 1000.0))
+    if not (MIN_ZONE_RADIUS_M <= fit.radius <= MAX_ZONE_RADIUS_M):
+        return ("puts the mat %.0f mm from the base, outside the plausible "
+                "%.0f-%.0f mm" % (fit.radius * 1000, MIN_ZONE_RADIUS_M * 1000,
                                   MAX_ZONE_RADIUS_M * 1000))
     return None
 
 
-def choose(sightings, zone_size):
-    """(best, accepted, rejected). best is None when nothing survives.
+def choose(sightings, zone_size, step, yaw_fixed=None):
+    """(fits, rejected_sightings, rejected_fits).
 
-    Tag count ranks first because it drives the homography's conditioning --
-    four tags spanning the zone beat two spanning 25 mm of it. Centre offset
-    breaks ties, standing in for "least extrapolation".
+    fits are the believable mats, best first. More than one is not an error
+    here -- it is a finding, and the caller says so out loud rather than
+    silently picking.
     """
-    accepted, rejected = [], []
+    usable, rejected = [], []
     for sighting in sightings:
         why = gate(sighting, zone_size)
-        (rejected if why else accepted).append((sighting, why))
-    if not accepted:
-        return None, [], rejected
-    accepted.sort(key=lambda pair: (-len(pair[0].tag_ids), pair[0].offset_mm))
-    return accepted[0][0], [pair[0] for pair in accepted], rejected
+        (rejected if why else usable).append((sighting, why))
+
+    fits, rejected_fits = [], []
+    for run in split_runs([pair[0] for pair in usable], step):
+        fit, why = fit_zone(run, yaw_fixed)
+        if fit is None:
+            rejected_fits.append((run, why))
+            continue
+        why = gate_fit(fit)
+        (rejected_fits if why else fits).append((run, why) if why else fit)
+
+    # Most views first: the yaw solution improves with baseline, and a long run
+    # is also the strongest evidence that this is the mat rather than a glimpse
+    # of something else. Residual breaks ties.
+    fits.sort(key=lambda f: (-len(f.sightings), f.residual))
+    return fits, rejected, rejected_fits
 
 
 def main():
@@ -423,8 +587,11 @@ def main():
                         help="J4 in degrees; -71 aims the optical axis at a "
                              "zone 9 in out (default %(default)s)")
     parser.add_argument("--wrist", type=float, default=EXPLORE_WRIST_DEG)
-    parser.add_argument("--zone-yaw", type=float, default=0.0,
-                        help="zone rotation about +Z, radians (default 0)")
+    parser.add_argument("--zone-yaw", type=float, default=None,
+                        help="zone rotation about +Z in DEGREES. Omit it -- "
+                             "explore solves the yaw from the sweep, and a "
+                             "wrong one silently ruins the radius (this used "
+                             "to default to 0 and did exactly that).")
     parser.add_argument("--settle", type=float, default=SETTLE_SECONDS)
     parser.add_argument("--no-reset", action="store_true",
                         help="skip the move to the reset pose first")
@@ -440,6 +607,8 @@ def main():
 
     if args.step <= 0:
         raise SystemExit("--step must be positive")
+    if args.zone_yaw is not None:
+        args.zone_yaw = math.radians(args.zone_yaw)
 
     if args.dry_run:
         print("EXPLORE SWEEP, geometry only -- the arm is not touched.\n")
@@ -465,8 +634,13 @@ def main():
         io_client = pp.RobotIOClient()
         io_client.wait_for_joint_states(timeout_sec=10.0)
 
+        # The zone pose handed to the detector only affects the WORLD
+        # conversion of block positions, which explore ignores -- it reads
+        # tag_ids and camera_zx/zy, both of which are in the mat's own frame
+        # and untouched by this. Zero, not args.zone_yaw, so nothing downstream
+        # can quietly depend on a yaw that has not been solved yet.
         detector = tpp.Detector(io_client, 0.0, NOMINAL_ZONE_RADIUS_M, 0.0,
-                                args.zone_yaw, tpp.zv.DEFAULT_ZONE_SIZE
+                                0.0, tpp.zv.DEFAULT_ZONE_SIZE
                                 if hasattr(tpp, "zv") else 0.1016)
         if not detector.wait_for_service(timeout=15.0):
             return 1
@@ -500,65 +674,88 @@ def main():
             return 1
 
         zone_size = detector.zone_size
-        best, accepted, rejected = choose(sightings, zone_size)
+        step = args.step if args.single_pass else args.fine_step
+        fits, rejected, rejected_fits = choose(sightings, zone_size, step,
+                                               args.zone_yaw)
 
         if rejected:
-            print("[explore] %d sighting(s) REJECTED:" % len(rejected))
+            print("[explore] %d sighting(s) REJECTED as input:" % len(rejected))
             for sighting, why in rejected:
                 print("            J1 %+7.1f  %s" % (sighting.j1_deg, why))
-        if best is None:
-            print("\n[explore] NO USABLE SIGHTING. Nothing is handed off.\n"
-                  "  Every view failed a sanity gate, so any origin printed\n"
-                  "  here would be a guess -- and a guess sends the arm at a\n"
-                  "  physical target. Look at what the camera actually sees:\n"
+        for run, why in rejected_fits:
+            print("[explore] run J1 %+.1f..%+.1f (%d views) REJECTED: %s"
+                  % (run[0].j1_deg, run[-1].j1_deg, len(run), why))
+
+        if not fits:
+            print("\n[explore] NO USABLE MAT. Nothing is handed off.\n"
+                  "  Any origin printed here would be a guess -- and a guess\n"
+                  "  sends the arm at a physical target. Look at what the\n"
+                  "  camera actually sees:\n"
                   "    robot:  python3 block_tag_probe.py --show\n"
                   "  then drive to the most promising J1 by hand:\n"
                   "    mars :  python3 joint_trajectory_test.py --degrees "
                   "<J1> 0 0 %.0f 0 %.0f" % (args.pitch, args.wrist))
             return 1
 
-        spread = _spread(accepted)
-        print("\n[explore] %d usable sighting(s); best is J1 %+.1f with %d tags"
-              % (len(accepted), best.j1_deg, len(best.tag_ids)))
-        for sighting in accepted:
+        best = fits[0]
+        if len(fits) > 1:
+            print("\n[explore] %d SEPARATE TAG SQUARES with %s ids in the "
+                  "workspace:" % (len(fits), args.zone))
+            for fit in fits:
+                print("            J1 %+.1f..%+.1f  %s"
+                      % (fit.sightings[0].j1_deg, fit.sightings[-1].j1_deg,
+                         fit.describe()))
+            print("          Each one is internally consistent, so this is not "
+                  "noise -- there\n"
+                  "          really is more than one mat carrying these tags. "
+                  "Taking the one\n"
+                  "          with the most views; remove the other, or pass "
+                  "--start/--end to\n"
+                  "          restrict the sweep, if that is the wrong choice.")
+
+        print("\n[explore] solved from %d view(s) J1 %+.1f..%+.1f"
+              % (len(best.sightings), best.sightings[0].j1_deg,
+                 best.sightings[-1].j1_deg))
+        c, s = math.cos(best.yaw), math.sin(best.yaw)
+        for sighting in best.sightings:
+            hit = axis_hits_mat(sighting.joints)
+            here_x = hit[0] - (c * sighting.camera_zx - s * sighting.camera_zy)
+            here_y = hit[1] - (s * sighting.camera_zx + c * sighting.camera_zy)
             print("            J1 %+7.1f  %d tags  offset %5.1f mm  -> "
                   "(%+.4f, %+.4f)"
-                  % (sighting.j1_deg, len(sighting.tag_ids), sighting.offset_mm,
-                     sighting.zone_origin[0], sighting.zone_origin[1]))
+                  % (sighting.j1_deg, len(sighting.tag_ids),
+                     sighting.offset_mm, here_x, here_y))
 
-        radius = math.hypot(*best.zone_origin)
         print("\n[explore] ZONE ORIGIN  x %+.4f  y %+.4f  (r %.4f m = %.2f in, "
               "bearing %+.1f deg)"
-              % (best.zone_origin[0], best.zone_origin[1], radius,
-                 radius / 0.0254,
-                 math.degrees(math.atan2(best.zone_origin[1],
-                                         best.zone_origin[0]))))
+              % (best.origin[0], best.origin[1], best.radius,
+                 best.radius / 0.0254, best.bearing_deg))
+        print("[explore] zone yaw %+.1f deg (%s), views agree to %.1f mm over "
+              "a %.0f mm baseline"
+              % (math.degrees(best.yaw),
+                 "given" if args.zone_yaw is not None else "solved",
+                 best.residual * 1000.0, best.baseline * 1000.0))
 
-        trustworthy = True
-        if spread is not None:
-            print("[explore] independent views agree to %.1f mm" % (spread * 1000))
-            if spread > MAX_VIEW_SPREAD_M:
-                trustworthy = False
-                print("[explore] ^ that is worse than the %.0f mm limit. Views "
-                      "of ONE mat cannot\n"
-                      "          disagree this much unless an input is wrong "
-                      "-- suspect the\n"
-                      "          arm not being where FK thinks, or more than "
-                      "one tag set in\n"
-                      "          the workspace." % (MAX_VIEW_SPREAD_M * 1000))
-
-        command = ("python3 tag_pick_place.py --zone-origin %.4f %.4f 0.0"
-                   % (best.zone_origin[0], best.zone_origin[1]))
+        # --zone-yaw MUST be passed. tag_pick_place defaults it to 0, and a
+        # zone rotated 180 deg with yaw 0 assumed mirrors every block position
+        # through the zone centre -- a block 30 mm one side of centre is
+        # reached for 30 mm the other side, 60 mm out, and the correction loop
+        # closes on the CAMERA rather than the block so it never notices.
+        # Explore solves the yaw; dropping it on the floor here would waste it.
+        # Degrees, because that is what tag_pick_place's --zone-yaw takes.
+        command = ("python3 tag_pick_place.py --zone-origin %.4f %.4f 0.0 "
+                   "--zone-yaw %.1f"
+                   % (best.origin[0], best.origin[1], math.degrees(best.yaw)))
         if args.print_command or args.run_pick:
             print("\n%s --dry-run" % command)
 
         if args.run_pick:
-            if not trustworthy and not args.force:
-                print("\n[explore] NOT handing off -- the views disagree.\n"
-                      "  On 2026-08-05 a 335 mm disagreement was printed and\n"
-                      "  handed off anyway, and the arm reached for a point\n"
-                      "  next to its own base. Re-run with --force only if you\n"
-                      "  have looked at the camera and believe this number.")
+            if len(fits) > 1 and not args.force:
+                print("\n[explore] NOT handing off -- more than one mat "
+                      "matched, and picking\n"
+                      "  the wrong one sends the arm at a real point on the "
+                      "other side of\n"
+                      "  the robot. Restrict the sweep, or re-run with --force.")
                 return 1
             print("\n[explore] handing off...\n")
             here = os.path.dirname(os.path.abspath(__file__))
@@ -569,19 +766,100 @@ def main():
             rclpy.shutdown()
 
 
-def _spread(sightings):
-    """Largest disagreement between independent views, metres.
+# ---------------------------------------------------------------------------
+# Replay of the 2026-08-05 sweep
+# ---------------------------------------------------------------------------
+# Real numbers off the real arm, copied out of logs.txt: (J1 deg, camera_zx mm,
+# camera_zy mm) for every step that saw >= 3 tags. Kept here because they are
+# the only evidence this project has that the fit works on hardware rather than
+# on made-up geometry, and because they encode the two-mat surprise.
+REPLAY_COARSE = [
+    (-125.0, -96.2, -121.6), (-115.0, -76.6, -97.6), (-105.0, -61.6, -70.2),
+    (-95.0, -52.0, -41.4), (-85.0, -47.4, -11.2), (-75.0, -48.1, 19.3),
+    (55.0, 105.1, 120.1), (65.0, 86.6, 95.9), (75.0, 73.1, 68.7),
+    (85.0, 64.1, 39.7), (95.0, 60.3, 9.8), (105.0, 61.7, -20.6),
+    (115.0, 68.3, -50.3),
+]
+REPLAY_FINE = [
+    (-97.5, -52.5, -42.7), (-95.0, -52.1, -40.7), (-92.5, -50.6, -33.9),
+    (-90.0, -49.2, -25.9), (-87.5, -48.2, -17.3), (-85.0, -47.6, -9.6),
+    (-82.5, -47.4, -3.4), (-80.0, -47.4, 5.3), (-77.5, -47.7, 12.4),
+    (-75.0, -48.5, 20.9), (-72.5, -49.6, 28.8),
+]
 
-    Several views of the same mat should place it in the same spot. When they
-    do not, the estimate is not merely imprecise -- something upstream is
-    wrong (FK, the principal-point assumption, or a mis-set --zone-yaw), and a
-    single confident-looking number would hide it.
-    """
-    origins = [s.zone_origin for s in sightings if s.zone_origin is not None]
-    if len(origins) < 2:
-        return None
-    return max(math.dist(a, b) for a in origins for b in origins)
+
+class _ReplaySighting(object):
+    """Just enough of a Sighting for fit_zone and split_runs."""
+
+    def __init__(self, j1_deg, zx_mm, zy_mm, pitch, wrist):
+        self.j1_deg = j1_deg
+        self.joints = joints_for(j1_deg, pitch, wrist)
+        self.camera_zx = zx_mm / 1000.0
+        self.camera_zy = zy_mm / 1000.0
+        self.tag_ids = [0, 1, 2, 3]
+
+    @property
+    def offset_mm(self):
+        return math.hypot(self.camera_zx, self.camera_zy) * 1000.0
+
+
+def selftest(pitch=EXPLORE_PITCH_DEG, wrist=EXPLORE_WRIST_DEG):
+    failures = []
+
+    def check(name, ok, detail=""):
+        print("  %-46s %s%s" % (name, "ok" if ok else "FAIL",
+                                "" if ok else "  " + detail))
+        if not ok:
+            failures.append(name)
+
+    def replay(rows):
+        return [_ReplaySighting(j1, zx, zy, pitch, wrist) for j1, zx, zy in rows]
+
+    print("fine pass, solved yaw:")
+    fit, why = fit_zone(replay(REPLAY_FINE))
+    check("fine pass fits", fit is not None, str(why))
+    if fit:
+        print("    %s" % fit.describe())
+        # 9 in = 0.2286 m, hand-placed. 20 mm of slack covers the tape measure,
+        # MAT_SURFACE_Z and the uncalibrated principal point together.
+        check("fine radius within 20 mm of the 9 in it was placed at",
+              abs(fit.radius - 0.2286) < 0.020, "%.4f m" % fit.radius)
+        check("fine residual under the gate", gate_fit(fit) is None,
+              str(gate_fit(fit)))
+        check("solved yaw is near -90 deg",
+              abs(math.degrees(fit.yaw) + 90.0) < 5.0,
+              "%+.1f deg" % math.degrees(fit.yaw))
+
+    # The bug, reproduced. Assuming yaw = 0 leaves the radial correction
+    # unapplied, so the answer collapses onto the axis-hit radius.
+    bad, _ = fit_zone(replay(REPLAY_FINE), yaw_fixed=0.0)
+    print("\nfine pass, yaw forced to 0 (the 2026-08-05 bug):")
+    print("    %s" % bad.describe())
+    check("yaw=0 is rejected by the fit gate", gate_fit(bad) is not None,
+          "it passed, which means the gate is useless")
+
+    print("\ncoarse pass, two mats:")
+    fits, rejected, rejected_fits = choose(replay(REPLAY_COARSE), 0.1016,
+                                           J1_COARSE_STEP_DEG)
+    check("coarse pass finds exactly 2 mats", len(fits) == 2,
+          "%d found, %d runs rejected" % (len(fits), len(rejected_fits)))
+    for one in fits:
+        print("    J1 %+.1f..%+.1f  %s"
+              % (one.sightings[0].j1_deg, one.sightings[-1].j1_deg,
+                 one.describe()))
+    if len(fits) == 2:
+        apart = abs(fits[0].bearing_deg - fits[1].bearing_deg)
+        check("the two are ~180 deg apart", abs(apart - 180.0) < 5.0,
+              "%.1f deg" % apart)
+        check("both sit 9-10 in out",
+              all(0.22 < one.radius < 0.27 for one in fits),
+              str(["%.4f" % one.radius for one in fits]))
+
+    print("\n%d failure(s)" % len(failures))
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        sys.exit(selftest())
     sys.exit(main())

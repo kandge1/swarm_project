@@ -51,6 +51,8 @@ import rclpy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import block_coordinates as bc  # noqa: E402
+import detection_wire as wire  # noqa: E402
 import tool_frame_check  # noqa: E402
 import zone_vision as zv  # noqa: E402
 from pick_place import (  # noqa: E402
@@ -305,6 +307,27 @@ MAX_FLANGE_RADIUS_M = 0.245
 # to the descent or the grasp -- tilt there is the error this whole project
 # is trying to remove, and those keep the tight 0.10 rad window.
 DETECT_ORI_XY_TOLERANCE = 0.15
+
+# How long to wait for the block_detections topic after a /detect_block call.
+# The node publishes it BEFORE building the reply, so it has normally already
+# arrived and this costs nothing; it exists for the case where the executor did
+# not get a chance to deliver it during the call.
+WIRE_WAIT_SEC = 1.5
+
+# Below this a 36h11 decode is possible but not to be leaned on -- see
+# zone_vision.BLOCK_TAG_MODULES and block_detector_node's own thresholds. Only
+# used to annotate the printout; a marginal decode is still a decode, and the
+# id it produced either exists in the scheme or it does not.
+BLOCK_TAG_PX_PER_MODULE_GOOD = 4.0
+
+# How close a block tag has to be to a fused contour before it is taken to be
+# ON that block, metres. The tag is stuck to the block's TOP face, so it is a
+# RAISED point projected onto the mat plane and carries a parallax offset
+# outward from the camera -- hardware 2026-08-05 measured 7 mm of it at the
+# survey hover (contour at zone (-13.6, +2.3), its own top tag at (-20.3,
+# +0.4)). 20 mm covers that with margin while staying well inside the ~50 mm
+# that separates two blocks sitting side by side in a 4 in zone.
+BLOCK_TAG_MATCH_M = 0.020
 
 
 def _pullin_toward_base(x, y, pullin_m):
@@ -639,6 +662,16 @@ class Detector:
         self.zone_yaw = zone_yaw
         self.zone_size = zone_size
         self.client = node.create_client(DetectBlock, "detect_block")
+        # Identity travels on the topic, not in the response: DetectBlock.srv
+        # reports contours, and a contour cannot say which block it is. See
+        # detection_wire.py's "WHY BLOCK TAGS ARE ON THE WIRE AT ALL".
+        try:
+            self.wire = wire.DetectionSubscriber(node)
+        except Exception as exc:                        # noqa: BLE001
+            print("[detect] no %s subscriber (%s) -- block IDENTITY will be "
+                  "unavailable, positions are unaffected" % (wire.TOPIC, exc))
+            self.wire = None
+        self.last_block_tags = []
 
     def wait_for_service(self, timeout=15.0):
         if self.client.wait_for_service(timeout_sec=timeout):
@@ -663,6 +696,12 @@ class Detector:
         request.save_debug_image = bool(debug_image)
         request.debug_image_path = debug_image or ""
 
+        if self.wire is not None:
+            # Cleared so a stale message from the detector's own free-running
+            # loop, taken at the PREVIOUS pose, cannot be mistaken for this
+            # still. The node publishes the topic before it builds the reply,
+            # so the matching message normally lands during the call below.
+            self.wire.latest = None
         future = self.client.call_async(request)
         rclpy.spin_until_future_complete(self.node, future,
                                          timeout_sec=DETECT_SERVICE_TIMEOUT)
@@ -685,7 +724,39 @@ class Detector:
                   % (index, block.zx * 1000, block.zy * 1000,
                      math.degrees(block.yaw), block.width * 1000,
                      block.length * 1000, block.shape, block.symmetry))
+        self.last_block_tags = self._collect_block_tags()
+        for tag in self.last_block_tags:
+            where = ("zone (%+.1f, %+.1f) mm" % (tag.zone_xy[0] * 1000,
+                                                 tag.zone_xy[1] * 1000)
+                     if tag.zone_xy else "no mat-plane position (side face)")
+            print("[detect]   tag id %-2d %-22s %s  %.1f px (%.1f px/module%s)"
+                  % (tag.tag_id, tag.label, where, tag.px, tag.px_per_module,
+                     "" if tag.px_per_module >= BLOCK_TAG_PX_PER_MODULE_GOOD
+                     else ", MARGINAL"))
+        if not self.last_block_tags:
+            print("[detect]   no block tags in this still -- nothing here "
+                  "identifies which block is which")
         return response if response.success else None
+
+    def _collect_block_tags(self):
+        """Block tags from the still just taken, off the wire topic.
+
+        Best effort by design: identity failing must never break a detection
+        that otherwise worked. A missing topic degrades to "no identity", which
+        select_block reports rather than papers over.
+        """
+        if self.wire is None:
+            return []
+        deadline = time.monotonic() + WIRE_WAIT_SEC
+        while self.wire.latest is None and time.monotonic() < deadline:
+            rclpy.spin_once(self.node, timeout_sec=0.05)
+        if self.wire.error:
+            print("[detect] %s decode failed (%s) -- is detection_wire.py the "
+                  "same version on the Pi?" % (wire.TOPIC, self.wire.error))
+            return []
+        if self.wire.latest is None:
+            return []
+        return list(self.wire.latest.block_tags)
 
     def zone_to_world(self, zx, zy):
         c, s = math.cos(self.zone_yaw), math.sin(self.zone_yaw)
@@ -719,8 +790,11 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
                      holding_block=False, debug_prefix=None):
     """Several stills at different wrist yaws, fused into one answer.
 
-    Returns (fused_blocks, views_used, tag_ids_union) -- fused_blocks is a list
-    of zone_vision.FusedDetection sorted by how many views agreed on them.
+    Returns (fused_blocks, views_used, tag_ids_union, block_tags) --
+    fused_blocks is a list of zone_vision.FusedDetection sorted by how many
+    views agreed on them, and block_tags is every block face tag seen in any of
+    the stills, deduplicated by id, keeping the sighting with the most pixels
+    per module because that is the one whose position is worth trusting.
 
     A still that fails is logged and skipped rather than aborting the pass: with
     four offsets, losing one to glare or a marginal tag still leaves plenty.
@@ -728,6 +802,7 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
     per_view = []
     ids = set()
     used = 0
+    best_tag = {}
 
     for index, offset in enumerate(MULTIVIEW_YAW_OFFSETS_DEG):
         if used >= MULTIVIEW_ENOUGH_VIEWS:
@@ -761,12 +836,18 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
         used += 1
         ids.update(response.tag_ids)
         per_view.append(_response_to_detections(response))
+        for tag in detector.last_block_tags:
+            previous = best_tag.get(tag.tag_id)
+            if previous is None or tag.px_per_module > previous.px_per_module:
+                best_tag[tag.tag_id] = tag
+
+    block_tags = [best_tag[k] for k in sorted(best_tag)]
 
     if not per_view:
         print("[multiview] NO usable view. This is a framing, focus or lighting "
               "problem -- check that any tag is visible at all before "
               "suspecting the geometry.")
-        return [], 0, sorted(ids)
+        return [], 0, sorted(ids), block_tags
 
     fused = zv.fuse_detections(per_view)
     print("\n[multiview] %d usable view(s), tags seen across all of them: %s"
@@ -778,7 +859,15 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
               % (index, f.zx * 1000, f.zy * 1000, math.degrees(f.zyaw),
                  f.width * 1000, f.length * 1000, f.shape, f.n_views,
                  f.spread_m * 1000, math.degrees(f.spread_yaw_rad), flag))
-    return fused, used, sorted(ids)
+    if block_tags:
+        print("[multiview] block tags seen across the stills:")
+        for tag in block_tags:
+            where = ("zone (%+.1f, %+.1f) mm" % (tag.zone_xy[0] * 1000,
+                                                 tag.zone_xy[1] * 1000)
+                     if tag.zone_xy else "side face, no mat-plane position")
+            print("[multiview]   id %-2d %-22s %s  best %.1f px/module"
+                  % (tag.tag_id, tag.label, where, tag.px_per_module))
+    return fused, used, sorted(ids), block_tags
 
 
 class CorrectionLog:
@@ -950,7 +1039,156 @@ def hover_and_detect(io_client, detector, log, target_zone_xy, block_yaw_deg,
     return response, False, flange
 
 
-def select_block(fused):
+def drop_zone_furniture(fused, zone_size, tag_size):
+    """Fused detections that are the zone's own corner tags, not blocks.
+
+    The blob detector finds the printed AprilTags. They are dark quadrilaterals
+    on a light mat, which is exactly what it is looking for, and it has no way
+    to know they are furniture. Hardware 2026-08-05: a survey returned four
+    "blocks", of which THREE were tag corners --
+
+        [1] zone (-44.3, +44.9) mm  12.4 x 13.1 mm
+        [3] zone (+44.5, +45.0) mm  11.4 x 13.0 mm
+
+    -- sitting at the tag positions and roughly the tag's decoded size. That run
+    picked the real block only because it happened to be seen in more views. It
+    was luck, and with an empty zone the same code descends on a tag.
+
+    The test is position, not size: a candidate whose centre is outside the
+    square that the tags leave clear cannot be a graspable block anyway. A block
+    further out than this is already covering a tag (see APRIL_TAGS.md 'Usable
+    area'), which breaks the homography that measured it.
+    """
+    limit = zone_size / 2.0 - tag_size / 2.0
+    kept, dropped = [], []
+    for f in fused:
+        (dropped if max(abs(f.zx), abs(f.zy)) > limit else kept).append(f)
+    for f in dropped:
+        print("[stage1] ignoring %.1f x %.1f mm at zone (%+.1f, %+.1f) mm -- "
+              "outside the %.1f mm the tags leave clear, so it is the zone's "
+              "own furniture, not a block"
+              % (f.width * 1000, f.length * 1000, f.zx * 1000, f.zy * 1000,
+                 limit * 1000))
+    return kept
+
+
+def identify_blocks(fused, block_tags):
+    """-> {index into fused: block class}. Prints what it decided and why.
+
+    A contour says where something is; only a tag says WHAT it is. The two are
+    joined by proximity, which works here for a specific reason: a top tag is a
+    raised point projected onto the mat plane, so it lands a few millimetres
+    outward of the contour it belongs to, while two blocks in a 4 in zone are
+    tens of millimetres apart. The parallax is much smaller than the spacing --
+    see BLOCK_TAG_MATCH_M for the measured numbers.
+
+    SIDE tags are skipped, not matched loosely. A side face stands perpendicular
+    to the mat, so it has no mat-plane position at all (zone_xy is None) and
+    guessing one from the frame would invent a number. It still identifies that
+    the block is PRESENT, which is why it is reported.
+    """
+    identity = {}
+    positioned = [t for t in block_tags if t.zone_xy is not None]
+    sideways = [t for t in block_tags if t.zone_xy is None]
+
+    for tag in positioned:
+        best_index, best_distance = None, None
+        for index, f in enumerate(fused):
+            distance = math.hypot(f.zx - tag.zone_xy[0], f.zy - tag.zone_xy[1])
+            if best_distance is None or distance < best_distance:
+                best_index, best_distance = index, distance
+        if best_index is None or best_distance > BLOCK_TAG_MATCH_M:
+            print("[identify] %s sits %s from any contour -- not matched"
+                  % (tag.label,
+                     "%.0f mm" % (best_distance * 1000) if best_distance
+                     is not None else "an unmeasurable distance"))
+            continue
+        existing = identity.get(best_index)
+        if existing and existing != tag.face.block_class:
+            # Two different blocks' tags claiming one contour means the contour
+            # is not one block, or a tag was misread. Neither is safe to grasp.
+            print("[identify] CONFLICT on contour %d: both %s and %s claim it. "
+                  "Dropping its identity rather than guessing."
+                  % (best_index, existing, tag.face.block_class))
+            identity[best_index] = None
+            continue
+        if existing is None and best_index in identity:
+            continue
+        identity[best_index] = tag.face.block_class
+        print("[identify] contour %d at zone (%+.1f, %+.1f) mm is the %s "
+              "(%s, %.0f mm away)"
+              % (best_index, fused[best_index].zx * 1000,
+                 fused[best_index].zy * 1000, tag.face.block_class,
+                 tag.label, best_distance * 1000))
+
+    for tag in sideways:
+        print("[identify] %s is in frame but is a side face -- it says the %s "
+              "is here, not where" % (tag.label, tag.face.block_class))
+
+    return {k: v for k, v in identity.items() if v is not None}
+
+
+def _ask(prompt):
+    """One line from the operator. EOF (piped stdin, no tty) aborts.
+
+    Aborting on EOF rather than proceeding is deliberate: --confirm exists so a
+    human sees the number before the arm reaches at it, and a run with no human
+    attached has not satisfied that. Use --yes for unattended runs.
+    """
+    try:
+        return input(prompt).strip().lower()
+    except EOFError:
+        print("\n[confirm] stdin closed -- treating as ABORT. Use --yes to run "
+              "without a human.")
+        return "q"
+
+
+def print_block_report(block, block_yaw_world, grasp_x, grasp_y, grasp_z,
+                       grasp_yaw_deg, grasp_hover, nudge=(0.0, 0.0),
+                       block_class=None):
+    """Everything known about where the arm is about to reach, in one place.
+
+    WORLD is what matters and is printed in full -- metres from the base, plus
+    the same thing as radius and bearing, because that is how the zone gets
+    placed and measured on the bench and comparing 8.92 in against a tape is a
+    check anyone can do in five seconds. Zone-local is printed alongside because
+    it is the RAW measurement: it comes from the tag homography and owes nothing
+    to the zone survey, so when world looks wrong and zone-local looks right,
+    the zone origin is what is wrong.
+    """
+    radius = math.hypot(grasp_x, grasp_y)
+    print("\n[confirm] block  %s  %.1f x %.1f mm  %s"
+          % (block_class if block_class else "UNIDENTIFIED",
+             block.width * 1000, block.length * 1000, block.shape))
+    print("[confirm]   zone-local  (%+.1f, %+.1f) mm      <- raw, straight from "
+          "the tags" % (block.zx * 1000, block.zy * 1000))
+    print("[confirm]   WORLD       (%.4f, %.4f) m   r %.4f m = %.2f in, "
+          "bearing %+.1f deg"
+          % (grasp_x, grasp_y, radius, radius / 0.0254,
+             math.degrees(math.atan2(grasp_y, grasp_x))))
+    print("[confirm]   block yaw   %+.1f deg in world  ->  grasp yaw %+.1f deg "
+          "(symmetry %d)"
+          % (math.degrees(block_yaw_world), grasp_yaw_deg, block.symmetry))
+    print("[confirm]   flange z    hover %.4f -> grasp %.4f, a %.0f mm descent. "
+          "Z is NOT measured -- it is PICK_XYZ.z + GRASP_OFFSET_Z."
+          % (grasp_hover, grasp_z, (grasp_hover - grasp_z) * 1000))
+    if nudge[0] or nudge[1]:
+        print("[confirm]   nudged by   (%+.1f, %+.1f) mm of yours, already "
+              "included in WORLD above" % (nudge[0] * 1000, nudge[1] * 1000))
+
+
+def _parse_nudge(answer):
+    """(dx_m, dy_m) from 'dx dy' in millimetres, or None if it is not that."""
+    parts = answer.replace(",", " ").split()
+    if len(parts) != 2:
+        return None
+    try:
+        return float(parts[0]) / 1000.0, float(parts[1]) / 1000.0
+    except ValueError:
+        return None
+
+
+def select_block(fused, identity=None, want_class=None):
     """Pick the block to descend on, ranked by AGREEMENT rather than by count.
 
     zone_vision.fuse_detections sorts purely by -n_views, and taking [0] from
@@ -975,6 +1213,25 @@ def select_block(fused):
     measurement, it is a wrong one -- distinct objects averaged into a position
     matching neither. An honest single view is worth more.
     """
+    if want_class is not None:
+        identity = identity or {}
+        wanted = [f for i, f in enumerate(fused) if identity.get(i) == want_class]
+        unknown = [f for i, f in enumerate(fused) if i not in identity]
+        if not wanted:
+            print("[stage1] asked for the %s and NO contour carries its tag. "
+                  "Refusing to pick." % want_class)
+            if unknown:
+                print("[stage1]   %d contour(s) are unidentified. A block whose "
+                      "top tag did not decode looks exactly like the other "
+                      "block from above, so picking one would be a coin flip.\n"
+                      "[stage1]   Check the tag is stuck on, facing up and lit; "
+                      "block_detector_node.py logs px/module for every decode."
+                      % len(unknown))
+            return None
+        print("[stage1] %d of %d contour(s) identified as the %s"
+              % (len(wanted), len(fused), want_class))
+        fused = wanted
+
     agreeing, single, disagreeing = [], [], []
 
     for f in fused:
@@ -1061,7 +1318,7 @@ def run_stage1(io_client, detector, args, log):
                                    detector.zone_x, detector.zone_y))
     debug_prefix = (os.path.splitext(args.debug_image)[0]
                     if args.debug_image else None)
-    fused_blocks, views_used, tags_union = detect_multiview(
+    fused_blocks, views_used, tags_union, block_tags = detect_multiview(
         io_client, detector, "pickup",
         survey_flange[0], survey_flange[1], hover, 0.0,
         debug_prefix=debug_prefix)
@@ -1075,7 +1332,15 @@ def run_stage1(io_client, detector, args, log):
         print("[stage1] zone is empty -- nothing to pick.")
         return False
 
-    block = select_block(fused_blocks)
+    fused_blocks = drop_zone_furniture(fused_blocks, args.zone_size,
+                                       args.tag_size)
+    if not fused_blocks:
+        print("[stage1] every candidate was the zone's own tags -- nothing to "
+              "pick.")
+        return False
+
+    identity = identify_blocks(fused_blocks, block_tags)
+    block = select_block(fused_blocks, identity, args.block_class)
     if block is None:
         print("[stage1] no candidate survived the agreement check -- nothing "
               "here is measured well enough to descend on.")
@@ -1142,6 +1407,24 @@ def run_stage1(io_client, detector, args, log):
     # the grasp worse. Resolve it by measurement instead: --dry-run now parks
     # the arm over its own answer at grasp height, so one photo says which it is.
     # Until that photo exists, prefer the path with a track record.
+    #
+    # RESOLVED 2026-08-05 IN FAVOUR OF (b), by explore.py rather than by a photo.
+    # explore fits the zone origin from 11 views across a 25 deg base pan and
+    # lands 24 mm too far out, against a hand-placed 9 in -- same sign and
+    # essentially the same magnitude as the 22 mm here, but at a completely
+    # different pose, joint configuration and view tilt. An ARM positioning
+    # error is pose-specific and would not reproduce itself at both; a CAMERA
+    # MODEL error is carried by the camera and does. See STACKED_BLOCKS_GUIDE.md
+    # ("zone_yaw is solved, not assumed" and the section after it).
+    #
+    # The good news is in WHERE that error can reach. camera_in_zone maps the
+    # IMAGE CENTRE through the homography, and the image centre is the one point
+    # whose zone coordinate depends on the principal point being where we assume
+    # it is. A block's position does not: it is measured from the block's own
+    # pixels, interpolated inside the tag square, and the homography is fitted
+    # from the tag corners. So the open-loop target below is untouched by this
+    # 22 mm, and --verify -- which is built on camera_in_zone -- would inject it.
+    # That is now a reason, not a caution.
     if args.verify:
         # Target the camera AT the block, not at block + lens offset.
         #
@@ -1213,6 +1496,44 @@ def run_stage1(io_client, detector, args, log):
     # arm, which is 41 mm to the side and 100+ mm up -- a long diagonal through
     # the workspace rather than the vertical approach GRASP_OFFSET_Z is defined
     # against, and the one motion most likely to clip the block on the way in.
+    # --- 2c. the operator checkpoint --------------------------------------
+    #
+    # The number above is the whole answer, and until now the only way to look
+    # at it before the arm moved was --dry-run, which parks over the block and
+    # then ENDS THE RUN. So the descent could never be checked: you either
+    # inspected the hover and got nothing else, or you ran blind through the
+    # grasp. That is the gap this closes -- inspect, then continue.
+    #
+    # The nudge exists because there is a known, unresolved ~22 mm systematic
+    # offset between where the camera model says things are and where they are
+    # (see the (a)-vs-(b) note above and STACKED_BLOCKS_GUIDE.md). Typing the
+    # offset you can SEE is a measurement; it is also the only way to complete a
+    # grasp today without first calibrating it out. It is applied in world X/Y,
+    # printed, and never persisted -- nothing here writes a calibration.
+    nudge_total = [0.0, 0.0]
+    if args.confirm and not args.dry_run:
+        while True:
+            print_block_report(block, block_yaw_world, grasp_x, grasp_y,
+                               grasp_z, grasp_yaw_deg, grasp_hover,
+                               nudge_total, args.block_class)
+            answer = _ask("[confirm] ENTER = go to the hover   "
+                          "'dx dy' mm = nudge   q = abort > ")
+            if answer in ("q", "quit", "n", "no"):
+                print("[stage1] aborted before moving.")
+                return False
+            nudge = _parse_nudge(answer)
+            if nudge is not None:
+                grasp_x += nudge[0]
+                grasp_y += nudge[1]
+                nudge_total[0] += nudge[0]
+                nudge_total[1] += nudge[1]
+                grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z,
+                                          grasp_yaw_deg)
+                continue
+            if answer == "":
+                break
+            print("[confirm] did not understand %r." % answer)
+
     steps = [
         ("Move over the block",
          lambda: move_arm_to(io_client, grasp_x, grasp_y, grasp_hover,
@@ -1238,10 +1559,61 @@ def run_stage1(io_client, detector, args, log):
               "pose -- it is not derivable from anything in this log.")
         return True
 
+    if args.confirm:
+        # Park over the answer and hold there until a human agrees, re-parking
+        # after any nudge so what you approve is what you are looking at.
+        while True:
+            print("\n=== Move over the block ===")
+            if not move_arm_to(io_client, grasp_x, grasp_y, grasp_hover,
+                               block_yaw_deg=grasp_yaw_deg):
+                print("[stage1] step FAILED: Move over the block")
+                return False
+            print_block_report(block, block_yaw_world, grasp_x, grasp_y,
+                               grasp_z, grasp_yaw_deg, grasp_hover,
+                               nudge_total, args.block_class)
+            print("[confirm] parked HERE, %.0f mm above the grasp height."
+                  % ((grasp_hover - grasp_z) * 1000))
+            print("[confirm] LOOK AT THE JAWS. If they are off the block, type "
+                  "the offset you can see:")
+            print("[confirm]   'dx dy' in mm, world axes -- +x is world +X, "
+                  "+y is world +Y.")
+            answer = _ask("[confirm] ENTER = descend and grasp   'dx dy' mm = "
+                          "nudge and re-park   q = abort > ")
+            if answer in ("q", "quit", "n", "no"):
+                print("[stage1] aborted at the hover. Nothing descended.")
+                return False
+            nudge = _parse_nudge(answer)
+            if nudge is not None:
+                grasp_x += nudge[0]
+                grasp_y += nudge[1]
+                nudge_total[0] += nudge[0]
+                nudge_total[1] += nudge[1]
+                grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z,
+                                          grasp_yaw_deg)
+                print("[confirm] re-parking")
+                continue
+            if answer == "":
+                break
+            print("[confirm] did not understand %r." % answer)
+        # Already parked; do not queue the hover again below.
+        steps = []
+
+    # Straight-down Cartesian by default because GRASP_OFFSET_Z is defined
+    # against a vertical approach and a joint-space move arcs. --ik-descent
+    # trades that for a single seeded-IK goal, which is worth having on an arm
+    # where multi-waypoint trajectories have their own history (see the
+    # JTC/pymycobot note in pick_place.py): over a 40 mm drop from directly
+    # above, the arc is small and a goal that actually executes beats a
+    # perfect path that does not.
+    def descend():
+        if args.ik_descent:
+            return move_arm_to(io_client, grasp_x, grasp_y, grasp_z,
+                               block_yaw_deg=grasp_yaw_deg)
+        return cartesian_move_to(io_client, grasp_x, grasp_y, grasp_z,
+                                 block_yaw_deg=grasp_yaw_deg)
+
     steps += [
-        ("Descend to grasp",
-         lambda: cartesian_move_to(io_client, grasp_x, grasp_y, grasp_z,
-                                   block_yaw_deg=grasp_yaw_deg)),
+        ("Descend to grasp", descend),
         ("Close gripper",
          lambda: gripper_close_until_contact(io_client)),
         ("Retreat after grasp",
@@ -1327,6 +1699,27 @@ def parse_args():
                              "at the arm: the jaw-to-block offset you can see is "
                              "the arm's true error, which nothing in the log "
                              "measures")
+    parser.add_argument("--block-class", choices=bc.BLOCK_CLASSES,
+                        default=bc.BLOCK_CLASSES[0],
+                        help="which block to pick, identified by the face tags "
+                             "stuck to it (default: %(default)s)")
+    parser.add_argument("--any-block", dest="block_class", action="store_const",
+                        const=None,
+                        help="pick whatever is best measured, ignoring "
+                             "identity. Only safe with ONE block in the zone -- "
+                             "with two it is a coin flip")
+    parser.add_argument("--yes", dest="confirm", action="store_false",
+                        help="run without the operator checkpoints. By default "
+                             "the run prints where it thinks the block is and "
+                             "waits for ENTER, then parks over it and waits "
+                             "again before descending -- and at that second "
+                             "prompt you can type 'dx dy' in mm to nudge the "
+                             "target by the offset you can see")
+    parser.add_argument("--ik-descent", action="store_true",
+                        help="descend with a seeded-IK joint-space goal instead "
+                             "of a straight-down Cartesian path. Arcs slightly "
+                             "over the 40 mm drop; use it when the Cartesian "
+                             "descent does not execute")
     parser.add_argument("--verify", action="store_true",
                         help="before grasping, converge the camera over the "
                              "block and correct the grasp target by what that "

@@ -3,7 +3,7 @@
 
 PURE PYTHON. No ROS, no OpenCV. Imported by the printer (print_block_tags.py),
 the Pi-side detector (block_detector_node.py) and anything on mars that has to
-turn an id back into "the cuboid's left face" -- so there is exactly one
+turn an id back into "the yellow cube's left face" -- so there is exactly one
 definition of the scheme and the printed paper cannot drift from the code.
 
 ------------------------------------------------------------------------------
@@ -13,8 +13,16 @@ Six tags per block: one TOP, one BOTTOM, and FOUR SIDES, every one a distinct
 id. Zone tags own 0-7 (zone_vision.PICKUP_TAG_IDS / PLACE_TAG_IDS), so blocks
 start at 8:
 
-    cube    TOP  8   BOTTOM  9   SIDE0 10  SIDE1 11  SIDE2 12  SIDE3 13
-    cuboid  TOP 14   BOTTOM 15   SIDE0 16  SIDE1 17  SIDE2 18  SIDE3 19
+    orange_cube  TOP  8   BOTTOM  9   SIDE0 10  SIDE1 11  SIDE2 12  SIDE3 13
+    yellow_cube  TOP 14   BOTTOM 15   SIDE0 16  SIDE1 17  SIDE2 18  SIDE3 19
+
+A CLASS NAME IS A LABEL, NOT A MEASUREMENT. An AprilTag id carries no meaning
+of its own -- the sticker is a number and every "id 8 means X" lives in the
+table below, so renaming a class costs nothing physical and needs NO REPRINT.
+Ids 8-13 and 14-19 mean whatever BLOCK_CLASSES says they mean, in id order.
+What a rename does NOT do is change size: nothing here infers dimensions from
+the name, so if the two blocks differ physically, that is print_block_tags.py's
+--face-size, which has to be given per sheet.
 
 WHY THE FOUR SIDES ARE NOT ONE SHARED ID, which is the obvious economy:
 
@@ -55,12 +63,13 @@ i.e. outward bearing 90 + 90*k degrees. Counter-clockwise-from-above matches
 zone_vision.ZONE_CORNER_SIGNS, so the two schemes never need reconciling.
 
 ------------------------------------------------------------------------------
-THE CUBOID
+NON-CUBIC BLOCKS
 ------------------------------------------------------------------------------
-Square faces are TOP and BOTTOM; the four long faces are the SIDES. So the
-cuboid's cross-section is square and all four of its side tags are the same
-size as each other -- the tag is limited by the SQUARE's side, not by the
-cuboid's length.
+Both classes are 30 mm cubes as named, so all twelve tags are one size. If a
+class is ever a cuboid again: put the tags' square faces on TOP and BOTTOM and
+the four long faces on the SIDES, so the cross-section is square and all four
+side tags match -- the tag is then limited by the SQUARE's side, not by the
+block's length, and only that sheet needs a different --face-size.
 """
 import math
 from typing import NamedTuple, Optional
@@ -73,7 +82,10 @@ from typing import NamedTuple, Optional
 # stay in DICT_APRILTAG_36h11 rather than block tags moving to a coarser family.
 BLOCK_TAG_ID_BASE = 8
 
-BLOCK_CLASSES = ("cube", "cuboid")
+# Order matters as much as FACE_ORDER does: position in this tuple picks the
+# id block (first -> 8-13, second -> 14-19). Renaming an entry is free; MOVING
+# one means the printed stickers now say something else.
+BLOCK_CLASSES = ("orange_cube", "yellow_cube")
 
 # Order matters: it IS the id assignment. Do not reorder without reprinting.
 FACE_ORDER = ("top", "bottom", "side0", "side1", "side2", "side3")
@@ -87,15 +99,20 @@ SIDE_BEARING_DEG = (90.0, 180.0, 270.0, 0.0)
 class BlockFace(NamedTuple):
     """What a decoded block-tag id means."""
     tag_id: int
-    block_class: str          # "cube" | "cuboid"
+    block_class: str          # one of BLOCK_CLASSES
     face: str                 # "top" | "bottom" | "side0".."side3"
     kind: str                 # "top" | "bottom" | "side"
     side_index: Optional[int] # 0-3 for a side face, None otherwise
 
     @property
     def label(self) -> str:
-        """Short human string, e.g. 'cuboid SIDE2'. What the logs print."""
-        return "%s %s" % (self.block_class, self.face.upper())
+        """Short human string, e.g. 'yellow cube SIDE2'. What the logs print.
+
+        The underscore in the class id is spelled as a space here and nowhere
+        else: 'orange_cube' is the key callers pass to tag_id_for(), and this
+        is the line of prose a person reads in a log.
+        """
+        return "%s %s" % (self.block_class.replace("_", " "), self.face.upper())
 
     @property
     def is_mat_parallel(self) -> bool:

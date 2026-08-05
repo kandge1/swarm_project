@@ -366,7 +366,8 @@ def render_sheet(block_class, dpi, tag_size_mm, face_size_mm,
     # to be right. What they said is in this file's docstring and in the console
     # output, both of which are free.
     ids = bc.tag_ids_for_block(block_class)
-    title = "%s  36h11  id %d-%d" % (block_class.upper(), min(ids), max(ids))
+    title = "%s  36h11  id %d-%d" % (block_class.replace("_", " ").upper(),
+                                     min(ids), max(ids))
 
     header_mm = TITLE_MM * 1.8 + ARROW_CLEARANCE_MM
     grid_total_mm = header_mm + grid_h_mm
@@ -544,7 +545,9 @@ def main():
     parser.add_argument("--dpi", type=float, default=300.0)
     parser.add_argument("--face-size", type=float, default=DEFAULT_FACE_SIZE_M,
                         help="square face the tag must fit, METRES "
-                             "(default %(default)s). The cuboid's is its SQUARE "
+                             "(default %(default)s). Applies to EVERY sheet this "
+                             "run emits, so two blocks of different sizes need "
+                             "two runs. For a non-cubic block it is the SQUARE "
                              "top/bottom face, not its length.")
     parser.add_argument("--tag-size", type=float, default=None,
                         help="printed tag size in METRES. Default is DERIVED "

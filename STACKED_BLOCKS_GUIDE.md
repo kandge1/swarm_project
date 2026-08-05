@@ -15,11 +15,21 @@ Six tags per block — TOP, BOTTOM and **four distinct SIDE ids**. Zone tags own
 
 | | TOP | BOTTOM | SIDE0 | SIDE1 | SIDE2 | SIDE3 |
 |---|---|---|---|---|---|---|
-| **cube** | 8 | 9 | 10 | 11 | 12 | 13 |
-| **cuboid** | 14 | 15 | 16 | 17 | 18 | 19 |
+| **orange_cube** | 8 | 9 | 10 | 11 | 12 | 13 |
+| **yellow_cube** | 14 | 15 | 16 | 17 | 18 | 19 |
 
 Defined once, in `src/swarm_pkg/src/scripts/block_coordinates.py`. Nothing else
 hardcodes it.
+
+**The classes were `cube` and `cuboid` until 2026-08-05.** A tag id means
+nothing on its own — the sticker is a number, and the whole "id 8 is a TOP
+face" claim is the `BLOCK_CLASSES` tuple, in id order. So a rename is a
+one-line edit, costs nothing physical and **needs no reprint**: id 8 is still
+the first class's TOP tag, whatever that class is now called. What a rename
+does *not* carry is size — nothing infers dimensions from a name, so blocks
+that differ physically need separate `print_block_tags.py --face-size` runs.
+**Reordering** the tuple is the move to avoid: it silently repoints every
+sticker already glued to a block.
 
 **Why four side ids rather than one shared "side" tag**, which was the first
 design and is the more obvious economy:
@@ -59,7 +69,7 @@ cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
 python3 print_block_tags.py --out-dir ../../../../print_sheets
 ```
 
-Writes `block_tags_cube_LETTER` and `block_tags_cuboid_LETTER` as **both `.pdf`
+Writes `block_tags_orange_cube_LETTER` and `block_tags_yellow_cube_LETTER` as **both `.pdf`
 and `.png`** — six **25.4 mm (1 in)** tags each, with cut lines, centre
 cross-hairs, an orientation arrow, a per-face placement hint and a **150 mm
 calibration ruler**. `--paper a4` and `--fit-face` (22.5 mm tags) are the other
@@ -252,8 +262,8 @@ position and the stacking signal on its own.
 `/detect_block` call, in its own log and on the debug image:
 
 ```
-  block tag id 8  cube TOP    37.2 px (4.6 px/module, ok)  zone (+12.0, -5.1) mm  implies h +29.2 mm
-  block tag id 12 cube SIDE2  27.1 px (3.4 px/module, MARGINAL)
+  block tag id 8  orange cube TOP    37.2 px (4.6 px/module, ok)  zone (+12.0, -5.1) mm  implies h +29.2 mm
+  block tag id 12 orange cube SIDE2  27.1 px (3.4 px/module, MARGINAL)
 ```
 
 Independent of the zone result: a frame can show block tags and **no** zone
@@ -503,6 +513,81 @@ and when they do not, something upstream is wrong rather than merely imprecise.
 It reads only `tag_ids` and `camera_zx/zy`, both **primitive** response fields,
 so it is unaffected by any trouble in the nested `BlockDetection[]` path.
 
+### `zone_yaw` is solved, not assumed — and this is why the radius was wrong
+
+`camera_zx/zy` are in the **mat's** axes; `axis_hit` is in the **world's**.
+`R(zone_yaw)` is the only thing joining them, and the 2026-08-05 sweep ran with
+the old default `zone_yaw = 0` against a mat whose true yaw is **−89°**.
+
+The consequence is specific, and it is the shape of the data in `logs.txt`. In
+mat axes the correction was ~48 mm of almost pure **radial** offset (`camera_zx`
+held at −47…−52 mm across the entire fine pass while `camera_zy` swept −43 → +29
+mm — the signature of a pan: one component constant, the other tracking the
+arc). Rotated by the wrong 89°, that radial correction came out nearly all
+**tangential**. So:
+
+* **bearing survived** — it comes from FK's axis hit, which the bad correction
+  barely perturbs;
+* **radius was never corrected at all**. The reported radius just tracked the
+  axis-hit radius, a constant **196 mm** that is a property of the *pose* and
+  says nothing about where the mat is. Eleven views smeared 149 → 238 mm.
+
+Theta right, r wrong, and both for the same one reason.
+
+The fix is not to measure the yaw and type it in. Across a pan the mat is
+stationary and the camera is not, which makes yaw **observable**: choose the
+yaw that makes every view agree on one point. Centring both sides removes the
+origin and leaves a pure rotation fit — closed form, `yaw = atan2(B, A)`, no
+iteration and no starting guess (`explore.fit_zone`). The leftover residual is
+then a real error bar rather than an assumption.
+
+Re-fitting the failed sweep's own numbers:
+
+| | zone yaw | origin | radius | residual |
+|---|---|---|---|---|
+| fine pass, `zone_yaw = 0` (the bug) | +0.0° | (+0.043, −0.184) | 7.45 in | **35.5 mm** |
+| fine pass, solved | −88.9° | (+0.004, −0.243) | 9.57 in | **3.7 mm** |
+
+Eleven views collapse onto a single point 3.7 mm wide, at the 9 in the mat was
+placed at. `python3 explore.py --selftest` replays exactly this off the logged
+numbers.
+
+### The coarse pass found TWO zone sheets — RESOLVED: a printing mistake
+
+Also from 2026-08-05, and previously filed as "two clusters ~180° apart, which
+one zone cannot produce". Fitted separately, both were real:
+
+| J1 range | solved yaw | origin | radius | residual |
+|---|---|---|---|---|
+| −115°…−75° | −88.3° | (+0.003, −0.242) | 9.53 in | 5.0 mm |
+| +65°…+115° | −89.8° | (−0.002, +0.255) | 10.04 in | 6.4 mm |
+
+Same yaw, opposite sides, each internally consistent to a few mm. A camera that
+only looks outward cannot see one sheet from bearings 180° apart, so both were
+physically there. **Cause: the place sheet had been printed from the pickup
+sheet**, so both carried ids 0–3 and both answered a `--zone pickup` sweep.
+Corrected on the bench 2026-08-05; the pickup sheet is the −Y one, matching the
+placement by hand at −0.2286 m to 15 mm.
+
+Worth keeping because it is the cheapest possible confusion to create and the
+most expensive to debug from a number: a second sheet with the wrong ids does
+not look like an error anywhere — every view is sharp, every homography residual
+is under 1 px, and the only symptom is an origin that quietly belongs to the
+other side of the robot. `print_zone_tags.py --zone place` emits ids 4–7; the
+sheets should read 0,1,2,3 and 4,5,6,7 respectively, and that is a five-second
+check worth doing whenever explore reports something surprising.
+
+`explore` splits sightings into contiguous J1 runs before fitting (a gap means
+the tags left the frame and came back), fits each, reports every zone it found,
+and **refuses to hand off** when there is more than one — picking wrong sends
+the arm at a real point on the other side of the robot. With one correctly
+printed pickup sheet this never triggers.
+
+The per-sighting extrapolation gate is scaled by tag count rather than fixed, in
+half-diagonals of the zone square: 4 tags trusted to 2.0, 3 tags to 1.0. The old
+flat 70 mm threw away every 4-tag coarse view past 70 mm, and those views sit on
+the solved zone to within 9 mm — they were good data.
+
 ---
 
 ## The detection topic — the fallback for THE OPEN BUG
@@ -556,8 +641,9 @@ limit; `MAX_BLOCKS` enforces it and the node warns past 1300 B.
   `joint_trajectory_test.py --degrees 107 49 -103 0 0 135` to drive the arm to
   the survey pose meanwhile; it bypasses IK, which is where the fragile things
   in this project live.
-- **The cuboid's dimensions are assumed to be a 30 mm square cross-section.**
-  If its square face is not 30 mm, regenerate with
-  `--block cuboid --face-size <metres>`.
+- **Both classes are assumed to be 30 mm cubes**, which is what one
+  `--face-size` for the whole run means. If the yellow block is not 30 mm,
+  regenerate that sheet alone with
+  `--block yellow_cube --face-size <metres>`.
 - **`/detect_block` still times out** — THE OPEN BUG. The block-tag work does
   not depend on it (the log and debug image are robot-side), but stage 0 does.
