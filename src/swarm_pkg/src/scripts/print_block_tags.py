@@ -40,13 +40,23 @@ STACKED_BLOCKS_GUIDE.md puts the decode rate there at 10%, against 95% at 4.0.
 So neither size makes SIDE tags work at that pose; 25.4 mm moves the distance
 at which they might from 0.229 m to 0.258 m, and moves TOP tags further clear.
 
-THE DEFAULT IS 25.4 mm, chosen 2026-08-04. On a 30 mm face that leaves 2.3 mm
-of white a side = 0.72 modules, UNDER the 1.00-module cliff at which a tag
-fails against any non-white background. The bet is that the white does not have
-to stop at the sticker edge for the detector's purposes, so a light-coloured
-block face carries the rest of the quiet zone itself. That is untested here and
-is the first thing to suspect if block tags decode on the sheet and not on a
-block. --fit-face is the retreat, and costs 0.5 px/module.
+THE DEFAULT IS 22.5 mm, the face-derived size. --tag-size overrides it.
+
+25.4 mm was the default for part of 2026-08-04 and was reverted the same day,
+which is worth recording because the reasoning was sound and the answer was
+still no. On a 30 mm face a 1 in tag leaves 2.3 mm of white a side = 0.72
+modules, UNDER the 1.00-module cliff at which a tag fails against any
+non-white background. The bet was that the white does not have to stop at the
+sticker edge -- that a light-coloured block face would carry the rest of the
+quiet zone itself -- in exchange for 0.5 px/module. Printed and looked at, the
+tags were too big for the face to spare that white, so the bet lost and the
+0.5 px/module was not worth chasing: it does not move SIDE tags into range at
+the survey pose (nothing does, see STACKED_BLOCKS_GUIDE.md) and TOP tags clear
+the threshold at 22.5 mm anyway.
+
+The general shape of it stands, though, and applies to any future block: the
+quiet zone need not be paper. On a light block face a larger tag is worth
+trying; on a dark one it is not.
 
 The cut square never exceeds the face: past that point the quiet zone is
 squeezed rather than the square grown, so cutting on the line always gives a
@@ -100,10 +110,15 @@ DEFAULT_PAPER = "letter"
 A4_MM = PAPER_MM["a4"]
 MARGIN_MM = 12.0
 
-# The tag the blocks actually wear. 25.4 mm chosen 2026-08-04 over the 22.5 mm
-# the face arithmetic gives, deliberately and with the cost known -- see
-# QUIET_ZONE_SQUEEZE below and --fit-face for the derived size.
-DEFAULT_TAG_SIZE_M = 0.0254
+# The tag size is DERIVED from the block face, not fixed here: it is whatever
+# keeps a full QUIET_ZONE_MODULES of white on a --face-size face, which is
+# 22.5 mm on the 30 mm blocks. --tag-size overrides it for a one-off.
+#
+# There is deliberately no DEFAULT_TAG_SIZE_M constant. A fixed default stops
+# tracking --face-size the moment anyone changes the block, and a tag size that
+# silently no longer fits its face is the failure this whole file exists to
+# avoid. 25.4 mm sat here for part of 2026-08-04; see the docstring for why it
+# went away.
 
 # A 150 mm baseline measures to ~0.7% with a ruler that reads to 1 mm; a 25 mm
 # tag measures to 4%. Two rounds of this were spent measuring tags, so the
@@ -531,16 +546,17 @@ def main():
                         help="square face the tag must fit, METRES "
                              "(default %(default)s). The cuboid's is its SQUARE "
                              "top/bottom face, not its length.")
-    parser.add_argument("--tag-size", type=float, default=DEFAULT_TAG_SIZE_M,
-                        help="printed tag size in METRES (default %(default)s "
-                             "= 1 inch)")
-    parser.add_argument("--fit-face", action="store_true",
-                        help="ignore --tag-size and use the largest tag that "
-                             "keeps a full %.2f-module quiet zone on the face "
-                             "(%.1f mm on a 30 mm face)"
+    parser.add_argument("--tag-size", type=float, default=None,
+                        help="printed tag size in METRES. Default is DERIVED "
+                             "from --face-size: the largest tag keeping a full "
+                             "%.2f-module quiet zone, %.1f mm on a %.0f mm face."
                              % (QUIET_ZONE_MODULES,
                                 bc.max_tag_size_for_face(DEFAULT_FACE_SIZE_M,
-                                                         QUIET_ZONE_MODULES) * 1000))
+                                                         QUIET_ZONE_MODULES) * 1000,
+                                DEFAULT_FACE_SIZE_M * 1000))
+    parser.add_argument("--fit-face", action="store_true",
+                        help="force the face-derived size even when --tag-size "
+                             "is given. Already the default without --tag-size.")
     parser.add_argument("--print-correction", type=float,
                         default=DEFAULT_PRINT_CORRECTION,
                         help="scale the CONTENT on a page that stays the paper "
@@ -575,8 +591,12 @@ def main():
                  "over" if args.measured_ruler > RULER_LENGTH_MM else "under",
                  was, args.print_correction))
 
-    tag_size_m = (bc.max_tag_size_for_face(args.face_size, QUIET_ZONE_MODULES)
-                  if args.fit_face else args.tag_size)
+    # Derived unless explicitly overridden, so --face-size alone is enough to
+    # re-size everything for a different block.
+    if args.tag_size is None or args.fit_face:
+        tag_size_m = bc.max_tag_size_for_face(args.face_size, QUIET_ZONE_MODULES)
+    else:
+        tag_size_m = args.tag_size
     tag_size_mm = tag_size_m * 1000.0
     face_size_mm = args.face_size * 1000.0
 
