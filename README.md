@@ -10,7 +10,7 @@ This project assumes that the following dependencies are met:
 - [cyclonedds] (https://github.com/kandge1/swarm_project/blob/myagv/main/cyclone_dds_integration_log.md) (this is NOT installed by default on the myagv)
 
 1. On the myagv, open a new ROS2 terminal (or open a generic terminal and enter: `source /opt/ros/galactic/setup.bash`)
-2. Ensure that the myagv is connected to the internet (connecting to WiFi@OSU on the robots is surprisingly finicky) [WiFi@OSU Tutorial] ()
+2. Ensure that the myagv is connected to the internet (connecting to WiFi@OSU on the robots is surprisingly finicky) [WiFi@OSU Tutorial] (https://github.com/kandge1/swarm_project/blob/myagv/main/WiFi%40OSU_Tutorial.md)
 3. Make a new project workspace `mkdir -p ~/swarm_ws/src` `cd ~/swarm_ws/src`
 4. Clone this git repo into the src folder `git clone https://github.com/kandge1/swarm_project/myagv/main`
 5. 
