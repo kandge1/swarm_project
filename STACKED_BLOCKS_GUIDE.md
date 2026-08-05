@@ -205,17 +205,44 @@ sizes:
 | block TOP (×0.81) | 32.9 px | 4.1 | **37.2 px** | **4.6** fine |
 | block SIDE (×0.59) | 24.0 px | 3.0 | **27.1 px** | **3.4** marginal |
 
-**Conclusion: the angled pose can read TOP tags and cannot read SIDE tags —
-at either size.** Going to 1 in moves the distance at which side tags become
-comfortable from 0.229 m to 0.258 m; it does not make that pose work.
+**At that pose TOP tags read and SIDE tags do not, at either size.**
 
-For side tags the lens has to come in to **~0.26 m**. Options, unchanged from
-`APRIL_TAGS_DEV.md`: pull the vantage closer and pan over more views, or use a
-coarser dictionary for block tags only (a 4×4 ArUco family is 6 modules instead
-of 8, cutting the requirement by 25%), or use bigger blocks.
+### …but a dedicated SIDE pose changes that, and how is worth knowing
 
-This does not block stage 1 — a survey that reads TOP tags still gives block
-identity, position and the stacking signal. It constrains stage 2's design.
+This section previously concluded flatly that side tags were "not achievable".
+That was measured *at the 36° survey pose, against a block on the mat*, and
+generalised too far. At the dedicated side-view pose
+`[θ, 60, -120, 20, 0, 135]` — tool tilt **50°** from vertical, i.e. 40° above
+horizontal — a vertical face is foreshortened 0.56–0.67 rather than 0.59, and
+the lens sits nearer:
+
+| stack level | lens distance | 19.6 mm (current print) | 22.5 mm (reprinted) |
+|---|---|---|---|
+| 0, on the mat | 0.267 m | 2.8 — dead | 3.2 — intermittent |
+| 1 | 0.244 m | 3.4 — intermittent | **3.9 — usable** |
+| 2, top of a 3-stack | 0.222 m | **4.1 — ok** | **4.7 — ok** |
+
+**Stack level dominates, not the pose** — a higher block is both nearer the lens
+and less foreshortened. That is the right way round: *a block on the mat does
+not need a side tag to prove it is on the mat*, because the top-down view
+already says so. Side tags exist for **stacked** blocks, and those are precisely
+the legible ones.
+
+So the side stage is viable, with two caveats:
+
+- **Level 2 sits on the focus floor** — 0.222 m against the measured ~0.220 m
+  limit. It has the most pixels and may be the blurriest. If level 2 misreads
+  while level 1 is clean, that is the cause, and the fix is to back the pose
+  off, not to add pixels.
+- **`J2=60, J3=-120` is a fold** — the same shape as the pose that drove the
+  camera into the arm on 2026-08-04. Joint angles bypass MoveIt's collision
+  model, so **validate with `check_state_validity.py` before running it.**
+
+Reprinting at 22.5 mm matters more here than anywhere else: it is what moves
+level 1 from intermittent to usable, and level 1 is the common case.
+
+Stage 1 is unaffected either way — a top-down survey gives block identity,
+position and the stacking signal on its own.
 
 ---
 
@@ -405,6 +432,119 @@ is worthless.
 refinement pushes corners outward on a small tag — so the probe flags those
 with `(*)`. The bias flatters exactly the marginal cases. A flagged 3.0
 px/module may really be 2.6, which is dead rather than intermittent.
+
+---
+
+## EXPLORE MODE — finding the zone instead of assuming it
+
+`explore.py`, mars-side. It replaces **one hard-coded number**:
+`tag_pick_place.py`'s `--zone-origin`, which has always been the hand-surveyed
+`(0, 0.2286, 0)` — the mat taped down where the code was told it would be.
+Everything downstream of that number is already calibrated, so explore does not
+localise blocks or plan grasps. It produces that coordinate pair and stops.
+
+```bash
+python3 explore.py --dry-run              # sweep geometry, arm untouched
+python3 explore.py --zone pickup          # the sweep
+python3 explore.py --zone place
+python3 explore.py --zone pickup --run-pick   # hand off to tag_pick_place --dry-run
+```
+
+### The pose
+
+```
+[J1, 0, 0, -71, 0, -135]
+```
+
+**J2 and J3 stay at zero**, so the arm is straight up and only the wrist bends.
+That is the configuration least able to collide with itself while J1 sweeps
+270°, and it is deliberate — joint angles are commanded directly, so MoveIt's
+collision model is not consulted and the pose has to be safe by construction.
+
+**`J4 = -71`, not `-50`.** At `-50` the optical axis lands **15.5 in** from the
+base while the zone sits at 9 in, putting the near third of the zone outside the
+frame (28.8° off-axis against a ±23.5° vertical FOV). At `-71` the axis lands on
+the zone and all four tags sit at 4.2–5.1 px/module.
+
+**bearing = J1 − 6.9°**, so the pickup zone (+Y) is near `J1 = +97` and the
+place zone (−Y) near `J1 = −83`. Both fall inside the sweep. That 6.9° uses the
+true lens pose and `CAMERA_MOUNT_FLIPPED`; a flange-only figure is ~11° out.
+
+Ten steps of 30° against a ±30.1° horizontal FOV means consecutive views overlap
+by half — a zone cannot fall between two steps unseen.
+
+### How the origin is recovered
+
+The detector reports `camera_zx/camera_zy`: the **zone-local** coordinates of the
+image centre, straight from the tag homography. FK gives where the optical axis
+meets the mat in **world**. The zone origin is the difference:
+
+```
+zone_origin_world = axis_hit_world − R(zone_yaw) · (camera_zx, camera_zy)
+```
+
+Exact for a plane homography **regardless of viewing tilt** — the image centre
+maps to a real mat point at any angle, which is the whole appeal of the
+homography design. Round-tripped offline at seven poses including two non-zero
+zone yaws: error `0.00e+00`. That test exists because a sign error here produces
+a *confident wrong answer*, the worst failure mode available.
+
+Accuracy is limited by the assumed principal point (uncalibrated, see
+`zone_vision.camera_in_zone`) and by FK inheriting the arm's own positioning
+error — **not** by the tilt. So the answer is coarse on purpose, good to a
+couple of centimetres, and `tag_pick_place.py`'s four-view survey and correction
+loop close the rest from there. Explore's job is the right postcode.
+
+Two details that matter: it uses **achieved** joint states rather than commanded
+(J1 under-travels by over a degree, `J1_RESIDUAL_BIAS_DEG`), and it reports the
+**spread between independent views** — several views of one mat should agree,
+and when they do not, something upstream is wrong rather than merely imprecise.
+
+It reads only `tag_ids` and `camera_zx/zy`, both **primitive** response fields,
+so it is unaffected by any trouble in the nested `BlockDetection[]` path.
+
+---
+
+## The detection topic — the fallback for THE OPEN BUG
+
+`detection_wire.py` plus a publisher in `block_detector_node.py`. Every
+detection is also published on **`/block_detections`** as a
+`std_msgs/Float64MultiArray`.
+
+The service reply carries `BlockDetection[]` — a nested message containing a
+**string**, which is exactly what `rcl_send_response` fails on. An empty list
+serialises as a 4-byte zero and never enters that typesupport, which is why a
+call over an empty zone returns and one over a full zone does not.
+
+This path has no nested message and no string:
+
+- **no `swarm_interfaces` change, so no rebuild on either machine** — on an
+  interface whose build was the prime suspect for the bug
+- float64 only, so the failing code path is unreachable
+- a topic, so a slow or absent subscriber cannot hang the detector
+
+**It publishes unconditionally, not only when the service struggles**, and
+*before* the reply is built — so when `rcl_send_response` fails, mars still has
+the answer. A fallback first exercised during a failure is not a fallback.
+
+Receiving on mars:
+
+```python
+import detection_wire as wire
+sub = wire.DetectionSubscriber(node)      # /block_detections
+detection = sub.wait(timeout_sec=10.0)    # -> WireDetection or None
+for block in detection.blocks:
+    print(block.zx, block.zy, block.shape, block.symmetry)
+```
+
+`shape` travels as a **code**, not a string — that is the entire point, so do
+not add a string field to it later. `decode()` is strict and raises rather than
+returning an empty result, because an empty zone is a legitimate, actionable
+answer and silence must not look like it. Payload is ~212 B for a real
+one-block detection and ~932 B at the 10-block cap, both inside the ~1400 B DDS
+limit; `MAX_BLOCKS` enforces it and the node warns past 1300 B.
+
+`python3 detection_wire.py` runs its selftest offline.
 
 ---
 

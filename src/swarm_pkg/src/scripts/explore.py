@@ -94,9 +94,22 @@ EXPLORE_WRIST_DEG = -135.0
 
 J1_START_DEG = -135.0
 J1_END_DEG = 135.0
-# 30 deg against a +-30.1 deg horizontal FOV, so consecutive views overlap by
-# half. A zone cannot fall between two steps unseen.
-J1_STEP_DEG = 30.0
+
+# COARSE step. 30 deg was the first value and it was too big -- reasoning from
+# the +-30.1 deg horizontal FOV, which is the wrong number. The FOV is what the
+# camera can SEE; what matters is the much smaller window in which ALL FOUR tags
+# are in frame at once, because that is what the homography needs. The mat
+# subtends ~28 deg at this distance, so its centre has to sit within roughly
+# 9 deg of the optical axis for the corners to survive -- and the 2026-08-05
+# sweep duly caught the mat at three bearings, missed it entirely at the one
+# aimed straight at it, and produced estimates disagreeing by 335 mm.
+J1_COARSE_STEP_DEG = 10.0
+
+# FINE step, swept +-J1_FINE_SPAN_DEG either side of the best coarse hit. At
+# this radius 2.5 deg is about 10 mm of arc, below the tolerance the downstream
+# survey then closes anyway.
+J1_FINE_STEP_DEG = 2.5
+J1_FINE_SPAN_DEG = 12.5
 
 MOVE_SECONDS = 3.0
 STEP_SECONDS = 1.6          # shorter hops between adjacent pan steps
@@ -177,15 +190,25 @@ def achieved_joints(io_client, commanded):
     pose inherits every bit of this arm's tracking error -- J1 alone under-
     travels by over a degree (pick_place.J1_RESIDUAL_BIAS_DEG), which at the
     zone's radius is several millimetres of bearing error.
+
+    current_joint_positions() takes joint_names and returns 0.0 for anything it
+    has not heard about, so "missing" cannot be detected from the values -- an
+    all-zeros arm is a legitimate pose. wait_for_joint_states() in main() is
+    what establishes the topic is live; this only reads it.
+
+    NOTE: the first version of this called current_joint_positions() with NO
+    arguments, which is a TypeError, which the except below swallowed -- so
+    every sighting in the 2026-08-05 sweep silently used commanded joints while
+    reporting that /joint_states was unavailable. The except is now narrow and
+    logs, because a broad silent one is exactly how that hid.
     """
     try:
-        current = io_client.current_joint_positions()
-    except Exception:                                   # noqa: BLE001
+        current = io_client.current_joint_positions(ARM_JOINT_NAMES)
+    except Exception as exc:                            # noqa: BLE001
+        print("[explore] /joint_states read failed (%s: %s) -- falling back to "
+              "commanded joints" % (type(exc).__name__, exc))
         return list(commanded), False
-    values = [current.get(name) for name in ARM_JOINT_NAMES]
-    if any(v is None for v in values):
-        return list(commanded), False
-    return [float(v) for v in values], True
+    return [float(current[name]) for name in ARM_JOINT_NAMES], True
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +242,45 @@ def zone_origin_from(joints, camera_zx, camera_zy, zone_yaw=0.0):
     c, s = math.cos(zone_yaw), math.sin(zone_yaw)
     return (hit[0] - (c * camera_zx - s * camera_zy),
             hit[1] - (s * camera_zx + c * camera_zy))
+
+
+def sweep_range(io_client, detector, args, start, end, step, label):
+    """One pass over a J1 range. Returns the sightings it managed to take."""
+    print("[explore] %s pass: J1 %+.1f -> %+.1f in %.1f deg steps"
+          % (label, start, end, step))
+    saved_start, saved_end, saved_step = args.start, args.end, args.step
+    args.start, args.end, args.step = start, end, step
+    try:
+        return sweep(io_client, detector, args)
+    finally:
+        args.start, args.end, args.step = saved_start, saved_end, saved_step
+
+
+def coarse_then_fine(io_client, detector, args):
+    """Coarse pass to find the zone, fine pass to sit on its centre.
+
+    Two passes rather than one fine pass over the whole 270 deg because a fine
+    pass everywhere costs ~110 detect calls at a couple of seconds each. The
+    coarse pass only has to answer "roughly which way", which surviving on 3-4
+    tags does not require -- one tag is enough to know the mat is over there.
+    """
+    coarse = sweep_range(io_client, detector, args, args.start, args.end,
+                         args.step, "coarse")
+    if not coarse:
+        return coarse, []
+
+    # Centre the fine pass on the coarse hit with the MOST TAGS, not on the one
+    # with the best origin estimate -- at coarse spacing the origin is expected
+    # to be poor, and tag count is the honest measure of "the mat is this way".
+    anchor = sorted(coarse, key=lambda s: (-len(s.tag_ids), s.offset_mm))[0]
+    print("\n[explore] coarse best: J1 %+.1f with %d tag(s) -- refining +-%.1f "
+          "deg around it\n" % (anchor.j1_deg, len(anchor.tag_ids),
+                               args.fine_span))
+    fine = sweep_range(io_client, detector, args,
+                       anchor.j1_deg - args.fine_span,
+                       anchor.j1_deg + args.fine_span,
+                       args.fine_step, "fine")
+    return coarse, fine
 
 
 def sweep(io_client, detector, args):
@@ -271,19 +333,71 @@ def _settle(io_client, seconds):
             time.sleep(max(0.0, end - time.monotonic()))
 
 
-def choose(sightings):
-    """Best sighting: most tags, then closest to the zone centre.
+# --- gates -----------------------------------------------------------------
+# Nothing below is a tuning parameter; each one exists because its absence
+# produced a specific bad outcome on 2026-08-05, when explore handed
+# tag_pick_place an origin of (-0.003, -0.113) -- bearing -92 deg, radius
+# 4.4 in -- and the arm dutifully went home, opened the gripper and reached for
+# a point next to its own base. The estimate was already known to be bad: the
+# view-to-view spread printed 334.8 mm on the same run. It was printed and then
+# ignored. These turn that warning into a refusal.
 
-    Tag count first because it drives the homography's conditioning -- four
-    tags spanning the zone beat two tags spanning 25 mm of it, and
-    zone_vision's own docstring is explicit that a two-tag fit extrapolates
-    ~6x across its thin direction. Centre offset only breaks ties, where it
-    stands in for "least extrapolation and least lens distortion".
+# The mat is reachable and on a bench, not on the robot and not across the room.
+MIN_ZONE_RADIUS_M = 0.120
+MAX_ZONE_RADIUS_M = 0.320
+
+# Independent views of one mat must agree. Anything worse means the estimate is
+# not merely imprecise -- some input is wrong, and averaging wrong inputs is how
+# a confident wrong answer gets made.
+MAX_VIEW_SPREAD_M = 0.040
+
+# camera_zx/zy is the image centre carried through the tag homography. Inside
+# the tag square that is interpolation; well outside it is EXTRAPOLATION, and
+# zone_vision's own docstring warns a two-tag fit extrapolates ~6x across its
+# thin direction. Every sighting in the failed run sat 59-186 mm out, i.e.
+# entirely outside a 101.6 mm square.
+MAX_CENTRE_OFFSET_M = 0.070
+
+# Two tags is enough for a homography and NOT enough to trust one this far from
+# the tags. Four spans the zone in both directions.
+MIN_TAGS_FOR_ORIGIN = 3
+
+
+def gate(sighting, zone_size):
+    """None if the sighting is usable, else why it is not."""
+    if sighting.zone_origin is None:
+        return "optical axis does not meet the mat"
+    if len(sighting.tag_ids) < MIN_TAGS_FOR_ORIGIN:
+        return ("only %d tag(s); %d needed before the homography is trusted "
+                "this far from them" % (len(sighting.tag_ids),
+                                        MIN_TAGS_FOR_ORIGIN))
+    if sighting.offset_mm / 1000.0 > MAX_CENTRE_OFFSET_M:
+        return ("image centre is %.0f mm from the zone centre, outside the "
+                "%.0f mm tag square -- extrapolated, not measured"
+                % (sighting.offset_mm, zone_size * 1000.0))
+    radius = math.hypot(*sighting.zone_origin)
+    if not (MIN_ZONE_RADIUS_M <= radius <= MAX_ZONE_RADIUS_M):
+        return ("implies a zone %.0f mm from the base, outside the plausible "
+                "%.0f-%.0f mm" % (radius * 1000, MIN_ZONE_RADIUS_M * 1000,
+                                  MAX_ZONE_RADIUS_M * 1000))
+    return None
+
+
+def choose(sightings, zone_size):
+    """(best, accepted, rejected). best is None when nothing survives.
+
+    Tag count ranks first because it drives the homography's conditioning --
+    four tags spanning the zone beat two spanning 25 mm of it. Centre offset
+    breaks ties, standing in for "least extrapolation".
     """
-    usable = [s for s in sightings if s.zone_origin is not None]
-    if not usable:
-        return None
-    return sorted(usable, key=lambda s: (-len(s.tag_ids), s.offset_mm))[0]
+    accepted, rejected = [], []
+    for sighting in sightings:
+        why = gate(sighting, zone_size)
+        (rejected if why else accepted).append((sighting, why))
+    if not accepted:
+        return None, [], rejected
+    accepted.sort(key=lambda pair: (-len(pair[0].tag_ids), pair[0].offset_mm))
+    return accepted[0][0], [pair[0] for pair in accepted], rejected
 
 
 def main():
@@ -293,7 +407,18 @@ def main():
     parser.add_argument("--zone", choices=("pickup", "place"), default="pickup")
     parser.add_argument("--start", type=float, default=J1_START_DEG)
     parser.add_argument("--end", type=float, default=J1_END_DEG)
-    parser.add_argument("--step", type=float, default=J1_STEP_DEG)
+    parser.add_argument("--step", type=float, default=J1_COARSE_STEP_DEG,
+                        help="coarse step in degrees (default %(default)s)")
+    parser.add_argument("--fine-step", type=float, default=J1_FINE_STEP_DEG,
+                        help="fine step in degrees (default %(default)s)")
+    parser.add_argument("--fine-span", type=float, default=J1_FINE_SPAN_DEG,
+                        help="how far either side of the best coarse hit the "
+                             "fine pass sweeps (default %(default)s deg)")
+    parser.add_argument("--single-pass", action="store_true",
+                        help="one sweep at --step, no fine refinement")
+    parser.add_argument("--force", action="store_true",
+                        help="hand off even when the views disagree. Look at "
+                             "the camera first.")
     parser.add_argument("--pitch", type=float, default=EXPLORE_PITCH_DEG,
                         help="J4 in degrees; -71 aims the optical axis at a "
                              "zone 9 in out (default %(default)s)")
@@ -353,9 +478,15 @@ def main():
                                MOVE_SECONDS, "reset"):
                 return 1
 
-        print("[explore] sweeping J1 %+.0f -> %+.0f in %.0f deg steps, "
-              "pitch %.0f\n" % (args.start, args.end, args.step, args.pitch))
-        sightings = sweep(io_client, detector, args)
+        print("[explore] pitch %.0f\n" % args.pitch)
+        if args.single_pass:
+            sightings = sweep(io_client, detector, args)
+        else:
+            coarse, fine = coarse_then_fine(io_client, detector, args)
+            # The fine pass replaces the coarse one rather than adding to it.
+            # Mixing them would let a coarse sighting -- taken specifically
+            # where the framing is worst -- win on tag count by luck.
+            sightings = fine or coarse
 
         print()
         if not sightings:
@@ -368,26 +499,67 @@ def main():
                      "0-3" if args.zone == "pickup" else "4-7"))
             return 1
 
-        best = choose(sightings)
-        spread = _spread(sightings)
-        print("[explore] %d sighting(s); best is J1 %+.1f with %d tags"
-              % (len(sightings), best.j1_deg, len(best.tag_ids)))
-        if spread is not None:
-            print("[explore] estimates from separate views agree to %.1f mm"
-                  % (spread * 1000.0))
-        print("[explore] ZONE ORIGIN  x %+.4f  y %+.4f  (r %.4f m = %.2f in, "
+        zone_size = detector.zone_size
+        best, accepted, rejected = choose(sightings, zone_size)
+
+        if rejected:
+            print("[explore] %d sighting(s) REJECTED:" % len(rejected))
+            for sighting, why in rejected:
+                print("            J1 %+7.1f  %s" % (sighting.j1_deg, why))
+        if best is None:
+            print("\n[explore] NO USABLE SIGHTING. Nothing is handed off.\n"
+                  "  Every view failed a sanity gate, so any origin printed\n"
+                  "  here would be a guess -- and a guess sends the arm at a\n"
+                  "  physical target. Look at what the camera actually sees:\n"
+                  "    robot:  python3 block_tag_probe.py --show\n"
+                  "  then drive to the most promising J1 by hand:\n"
+                  "    mars :  python3 joint_trajectory_test.py --degrees "
+                  "<J1> 0 0 %.0f 0 %.0f" % (args.pitch, args.wrist))
+            return 1
+
+        spread = _spread(accepted)
+        print("\n[explore] %d usable sighting(s); best is J1 %+.1f with %d tags"
+              % (len(accepted), best.j1_deg, len(best.tag_ids)))
+        for sighting in accepted:
+            print("            J1 %+7.1f  %d tags  offset %5.1f mm  -> "
+                  "(%+.4f, %+.4f)"
+                  % (sighting.j1_deg, len(sighting.tag_ids), sighting.offset_mm,
+                     sighting.zone_origin[0], sighting.zone_origin[1]))
+
+        radius = math.hypot(*best.zone_origin)
+        print("\n[explore] ZONE ORIGIN  x %+.4f  y %+.4f  (r %.4f m = %.2f in, "
               "bearing %+.1f deg)"
-              % (best.zone_origin[0], best.zone_origin[1],
-                 math.hypot(*best.zone_origin),
-                 math.hypot(*best.zone_origin) / 0.0254,
+              % (best.zone_origin[0], best.zone_origin[1], radius,
+                 radius / 0.0254,
                  math.degrees(math.atan2(best.zone_origin[1],
                                          best.zone_origin[0]))))
+
+        trustworthy = True
+        if spread is not None:
+            print("[explore] independent views agree to %.1f mm" % (spread * 1000))
+            if spread > MAX_VIEW_SPREAD_M:
+                trustworthy = False
+                print("[explore] ^ that is worse than the %.0f mm limit. Views "
+                      "of ONE mat cannot\n"
+                      "          disagree this much unless an input is wrong "
+                      "-- suspect the\n"
+                      "          arm not being where FK thinks, or more than "
+                      "one tag set in\n"
+                      "          the workspace." % (MAX_VIEW_SPREAD_M * 1000))
 
         command = ("python3 tag_pick_place.py --zone-origin %.4f %.4f 0.0"
                    % (best.zone_origin[0], best.zone_origin[1]))
         if args.print_command or args.run_pick:
             print("\n%s --dry-run" % command)
+
         if args.run_pick:
+            if not trustworthy and not args.force:
+                print("\n[explore] NOT handing off -- the views disagree.\n"
+                      "  On 2026-08-05 a 335 mm disagreement was printed and\n"
+                      "  handed off anyway, and the arm reached for a point\n"
+                      "  next to its own base. Re-run with --force only if you\n"
+                      "  have looked at the camera and believe this number.")
+                return 1
             print("\n[explore] handing off...\n")
             here = os.path.dirname(os.path.abspath(__file__))
             return subprocess.call(command.split() + ["--dry-run"], cwd=here)

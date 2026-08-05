@@ -53,11 +53,13 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
+from std_msgs.msg import Float64MultiArray
 from swarm_interfaces.msg import BlockDetection
 from swarm_interfaces.srv import DetectBlock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import block_coordinates as bc  # noqa: E402
+import detection_wire as wire  # noqa: E402
 import zone_vision as zv  # noqa: E402
 
 # Pixels per tag module, the number that says whether to believe a decode.
@@ -75,6 +77,26 @@ import zone_vision as zv  # noqa: E402
 # a sizing problem -- which is the reason to report the number per tag at all.
 TAG_PX_PER_MODULE_MIN = 3.0
 TAG_PX_PER_MODULE_GOOD = 4.0
+
+_WINDOW_NAME = "detect_block -- what the detector sees"
+
+
+class _WireView(object):
+    """A zone_vision block plus its world pose, in the shape detection_wire
+    expects. zone_vision blocks carry only zone-local coordinates -- the world
+    pose needs the ZoneSpec -- so the two are joined here rather than teaching
+    detection_wire about zones, which would give it a second job and a reason
+    to import something."""
+
+    __slots__ = ("zx", "zy", "zyaw", "x", "y", "yaw", "width", "length",
+                 "shape", "symmetry")
+
+    def __init__(self, block, world_x, world_y, world_yaw):
+        self.zx, self.zy, self.zyaw = block.zx, block.zy, block.zyaw
+        self.x, self.y, self.yaw = world_x, world_y, world_yaw
+        self.width, self.length = block.width, block.length
+        self.shape = block.shape
+        self.symmetry = int(block.symmetry)
 
 
 class BlockDetector(Node):
@@ -111,10 +133,22 @@ class BlockDetector(Node):
         # height estimate is linear in it, so a wrong value scales the answer
         # rather than breaking it. 0.2235 is the surveyed detection hover.
         self.declare_parameter("lens_height_hint", 0.2235)
+        # Show every analysed frame in a window, annotated exactly as the debug
+        # image is. Off by default because the Pi is normally headless and the
+        # window costs ~15 ms a call.
+        #
+        # This is a DIAGNOSTIC OF LAST RESORT and it earns its place: on
+        # 2026-08-05 an explore sweep reported the pickup mat at two bearings
+        # 180 deg apart, which one mat cannot do. No amount of reading numbers
+        # settles that -- seeing the frame does, immediately.
+        self.declare_parameter("show_window", False)
+        self.declare_parameter("window_scale", 1.0)
 
         self._lock = threading.Lock()
         self._frame = None
         self._frame_seq = 0          # bumped per frame; how freshness is judged
+        # None = not tried yet, "open", or "unavailable" (never retried).
+        self._window_state = None
 
         device = self.get_parameter("video_device").value
         self._cap = cv2.VideoCapture(device)
@@ -147,6 +181,16 @@ class BlockDetector(Node):
         self._service = self.create_service(
             DetectBlock, "detect_block", self._on_request,
             callback_group=self._service_group)
+
+        # Every detection also goes out as a flat float array, ALWAYS, not only
+        # when the service struggles. Two reasons it is unconditional: a
+        # fallback exercised for the first time in the middle of a failure is
+        # not a fallback, and a caller that prefers the topic should not have to
+        # ask the robot to switch modes. Costs one small publish per request.
+        # See detection_wire.py for why this path can carry what the service
+        # reply cannot.
+        self._wire_pub = self.create_publisher(
+            Float64MultiArray, wire.TOPIC, 1)
 
         self.get_logger().info(
             "block_detector up: reading %s directly, serving /detect_block"
@@ -325,6 +369,9 @@ class BlockDetector(Node):
             entry.area_px = float(block.area_px)
             response.blocks.append(entry)
 
+        self._publish_wire(result, zone)
+        self._show_window(frame, result, zone, block_tags)
+
         if request.save_debug_image and request.debug_image_path:
             self._write_debug_image(frame, result, zone,
                                     request.debug_image_path, block_tags)
@@ -386,6 +433,94 @@ class BlockDetector(Node):
                 "  block tag id %-2d %-14s %5.1f px (%.1f px/module, %s)%s"
                 % (face.tag_id, face.label, px, per_module, verdict, extra))
 
+    def _show_window(self, frame, result, zone, block_tags):
+        """Live annotated view of the frame that was just analysed.
+
+        Best effort and never able to fail a detection: this is a diagnostic,
+        and a diagnostic that can break the thing it observes is worse than no
+        diagnostic.
+
+        The display is checked UP FRONT rather than caught, because with no
+        display cv2.namedWindow does not raise -- Qt fails to load its xcb
+        plugin and calls abort(), which no try/except can survive. Verified
+        while building block_tag_probe.py. On a headless Pi this would
+        otherwise take the detector node down on the first request.
+        """
+        if not bool(self.get_parameter("show_window").value):
+            return
+        if self._window_state == "unavailable":
+            return
+        if self._window_state is None:
+            if not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+                self._window_state = "unavailable"
+                self.get_logger().warn(
+                    "show_window is set but neither DISPLAY nor "
+                    "WAYLAND_DISPLAY is -- no window can be opened. Reconnect "
+                    "with `ssh -X`, or use save_debug_image. Detection is "
+                    "unaffected.")
+                return
+            try:
+                cv2.namedWindow(_WINDOW_NAME, cv2.WINDOW_NORMAL)
+                self._window_state = "open"
+            except cv2.error as exc:                   # noqa: BLE001
+                self._window_state = "unavailable"
+                self.get_logger().warn(
+                    "a display is set but OpenCV cannot open a window (%s) -- "
+                    "this build may lack GUI support. Detection is unaffected."
+                    % str(exc).strip().splitlines()[-1][:100])
+                return
+        try:
+            import zone_view
+            canvas = zone_view.annotate(frame, result, zone,
+                                        block_tags=block_tags)
+            scale = float(self.get_parameter("window_scale").value)
+            if scale and abs(scale - 1.0) > 1e-6:
+                canvas = cv2.resize(canvas, None, fx=scale, fy=scale,
+                                    interpolation=cv2.INTER_NEAREST)
+            cv2.imshow(_WINDOW_NAME, canvas)
+            # Pumps the GUI event loop. Without it the window paints once and
+            # then freezes, which looks exactly like the detector having hung.
+            cv2.waitKey(1)
+        except Exception as exc:                       # noqa: BLE001
+            self._window_state = "unavailable"
+            self.get_logger().warn(
+                "window update failed, disabling it (detection is "
+                "unaffected): %s" % exc)
+
+    def _publish_wire(self, result, zone):
+        """Best effort -- the topic must never be able to fail a detection.
+
+        Published BEFORE the service response is built, so it goes out even if
+        the reply is the thing that cannot be sent. That ordering is the entire
+        value of this path: when rcl_send_response fails, mars still has the
+        answer.
+        """
+        try:
+            blocks = []
+            for block in result.blocks:
+                wx, wy, wyaw = block.world_pose(zone)
+                blocks.append(_WireView(block, wx, wy, wyaw))
+            data, dropped = wire.encode(
+                result.success, [int(t) for t in result.tag_ids],
+                float(result.homography_rms), float(result.scale_px_per_m),
+                float(result.camera_zx), float(result.camera_zy), blocks)
+            size = wire.encoded_bytes(data)
+            if size > 1300:
+                self.get_logger().warn(
+                    "detection payload %d B is close to the ~1400 B DDS limit; "
+                    "lower detection_wire.MAX_BLOCKS" % size)
+            message = Float64MultiArray()
+            message.data = data
+            self._wire_pub.publish(message)
+            if dropped:
+                self.get_logger().warn(
+                    "%d block(s) past detection_wire.MAX_BLOCKS were not "
+                    "published (smallest first)" % dropped)
+        except Exception as exc:                       # noqa: BLE001
+            self.get_logger().warn(
+                "could not publish the detection topic (the service reply is "
+                "unaffected): %s" % exc)
+
     def _write_debug_image(self, frame, result, zone, path, block_tags=None):
         """Best effort -- a debug image failing must never fail a detection."""
         try:
@@ -404,6 +539,11 @@ class BlockDetector(Node):
         self._capture_stop.set()
         self._capture_thread.join(timeout=2.0)
         self._cap.release()
+        if self._window_state == "open":
+            try:
+                cv2.destroyAllWindows()
+            except Exception:                          # noqa: BLE001
+                pass
 
 
 def main():
