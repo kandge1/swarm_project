@@ -1,0 +1,4 @@
+topics:
+  - topic: /chatter
+    type: std_msgs/msg/String
+    queue_size: 10
