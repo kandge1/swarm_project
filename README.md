@@ -1,4 +1,4 @@
-# ** THIS IS THE MAIN BRANCH FOR THE MYAGVS **
+# ** THIS IS THE MAIN BRANCH FOR THE MYAGV **
 # ** FOR THE MYCOBOT, GO TO mycobot_main **
 
 ## myagv swarm project setup
@@ -25,7 +25,30 @@ This project assumes that the following dependencies are met:
 6. Once these are stopped, go down to the bottom left corner of the app by the Test section. Click the dropdown menu which says Motor and change it to 2D Camera. Next, click the blue Start Detection button. You should be able to view the output of the front facing camera.
 7. Once you have completed these steps, you have verified that the myagv_ros package is working correctly.
 
-## ros1_bridge
+### ros1_bridge
 Make sure you have installed the ros1_bridge package. Follow the instructions on the project repo: [ros1_bridge] (https://github.com/ros2/ros1_bridge)
+
+** talker-listener demo **
+Terminal A:
+`source /opt/ros/noetic/setup.bash`
+`roscore`
+
+Terminal B:
+`source /opt/ros/noetic/setup.bash`
+`source /opt/ros/galactic/setup.bash`
+`source ~/ros1_bridge/install/setup.bash`
+`export ROS_MASTER_URI=http://localhost:11311`
+`ros2 run ros1_bridge dynamic_bridge`
+
+Terminal C:
+`source /opt/ros/noetic/setup.bash`
+`rosrun rospy_tutorials talker`
+
+Terminal D:
+`source /opt/ros/galactic/setup.bash`
+`ros2 run demo_nodes_cpp listener`
+
+Now Terminal C should be publishing messages and Terminal D should be receiving them.
+
 
 
