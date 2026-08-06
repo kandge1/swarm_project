@@ -52,6 +52,7 @@ import rclpy
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import block_coordinates as bc  # noqa: E402
+import calibration  # noqa: E402
 import detection_wire as wire  # noqa: E402
 import tool_frame_check  # noqa: E402
 import zone_vision as zv  # noqa: E402
@@ -369,45 +370,52 @@ def _pullin_toward_base(x, y, pullin_m):
 #
 # Four offsets at 90 deg was the professor's suggestion and it is a good one in
 # principle: it guarantees every tag is visible in at least one still regardless
-# of which pair the gripper starts out hiding. It was measured on hardware
-# 2026-07-31 and it does not survive contact with THIS camera mount.
+# of which pair the gripper starts out hiding. Two hardware runs have now shaped
+# it into something the arm can actually do.
 #
-# The lens sits ~40 mm off the flange axis, so as the wrist turns, the lens
-# swings around a circle of that radius. The survey flange is pulled
-# DETECT_HOVER_PULLIN_M toward the base, so the two only cancel at one yaw.
-# Measured distance from the lens to the zone centre, at the survey flange
-# (zone at 0.254, pull-in 54 mm -- the run this was decided from):
+# The lens sits ~40 mm off the flange axis, so as the wrist turns the lens swings
+# around a circle of that radius, and there is no single flange position that
+# frames the zone at more than one yaw. survey_flange_for_yaw() therefore moves
+# the flange per still. What that costs is REACH, and the cost is not symmetric:
+# at yaw 90 the offset points radially outward, so the flange pulls IN and the
+# radius DROPS; at 0 and 180 the offset is lateral and the radius goes up
+# whatever you do; at 270 the flange is pushed out past the zone entirely.
 #
-#     yaw    0 deg -> 85.8 mm off centre, 18.9 deg of aiming tilt
-#     yaw   90 deg -> 62.2 mm off centre, 13.6 deg
-#     yaw  180 deg -> 13.2 mm off centre,  2.9 deg
-#     yaw  270 deg -> 61.9 mm off centre, 13.5 deg
+#     yaw   flange that centres the lens     radius    measured
+#       0   (0.2287, +0.0399)                0.2321    ALL 19 IK SEEDS FAILED
+#      30   (0.2087, +0.0346)                0.2115
+#      60   (0.1941, +0.0200)                0.1951
+#      90   (0.1887, +0.0001)                0.1887    reached, 4 of 4 tags
+#     120   (0.1940, -0.0199)                0.1950
+#     150   (0.2085, -0.0345)                0.2114
+#     180   (0.2285, -0.0399)                0.2320    ALL 19 IK SEEDS FAILED
+#     270   (0.2685, -0.0001)                0.2685
 #
-# and the four debug stills from that run match exactly: yaw 180 framed all four
-# tags and decoded three, while yaw 90 and 270 clipped tags off the frame edge
-# and decoded one each. The 6 in zone is NOT too big -- the camera is simply not
-# over it at three of the four offsets.
+# (Zone at (0.2286, 0), DETECT_HOVER_Z. Recompute with survey_flange_for_yaw if
+# the zone moves -- the shape of the curve is fixed, its position is not.)
 #
-# At the time the fix could not be to push the flange out to re-centre the lens:
-# that needed y ~ 0.286, and the same run had ALL 19 IK seeds fail at y = 0.245
-# already. Reaching outward was not available at DETECT_HOVER_Z. So instead
-# cluster the offsets near 180, where the lens offset points TOWARD the zone and
-# the flange we can actually reach is the one that centres the camera.
+# So the yaws are ORDERED NEAREST-FIRST around 90, and the first three are all
+# within 7 mm of the one radius hardware has actually reached. 30 and 150 are
+# held in reserve: at 0.2115 they are plausible and untested, and they only get
+# tried if one of the first three fails. MULTIVIEW_ENOUGH_VIEWS stops the pass
+# as soon as three stills have produced a usable homography.
 #
-# THE CLUSTERING STAYS after the 2026-08-02 zone move, and it is worth saying why
-# rather than assuming. Moving the zone in to 0.2286 lets the pull-in drop to
-# 41 mm and genuinely centre the lens (0.4 mm off at yaw 180, was 13.2), and it
-# shrinks the off-centre distance at every other yaw too -- but only by that same
-# ~13 mm, because the lens still swings on a 40 mm circle whatever the flange
-# radius. yaw 0 would still land ~73 mm off centre over a zone that is now 4 in
-# across, i.e. still off the mat. The zone move fixed the REACH problem; it does
-# not fix the lens-swing problem, and those were always two separate things.
-#
-# This keeps the property the design actually depends on -- see the note above:
-# the angles do not need to be accurate or known, they only have to CHANGE which
-# tags the gripper hides. A 90 deg spread still rotates the occlusion shadow by
-# 90 deg; it just does it without walking the lens off the mat.
-MULTIVIEW_YAW_OFFSETS_DEG = (180.0, 150.0, 210.0, 120.0)
+# 60 deg of wrist rotation looks like less occlusion diversity than 90, and the
+# 2026-08-05 run says that is not the binding constraint: with the lens actually
+# ON the zone centre, ONE still at yaw 90 decoded all four tags. Framing was
+# doing the damage, not the gripper's shadow.
+MULTIVIEW_YAW_OFFSETS_DEG = (90.0, 60.0, 120.0, 30.0, 150.0)
+
+# A still resting on fewer than this many zone tags is not fused in. Two tags
+# make a homography that is over-determined and badly conditioned across the
+# thin direction of the pair (zone_vision.MIN_TAGS has the arithmetic), and its
+# residual comes out LOW because 8 correspondences against 8 DOF nearly fit by
+# construction -- so a bad still looks like a good one. On 2026-08-05 two such
+# stills, taken from poses the arm never reached, pulled the fused block 3 mm
+# off a known truth and pushed the view spread past its gate; the one well-
+# framed still had it to 3.2 mm on its own. Two tags is enough to detect a zone.
+# It is not enough to vote on where a block is.
+MULTIVIEW_MIN_TAGS = 3
 
 # Give up on the multi-view pass once this many stills have produced a usable
 # homography. 4 tags across >=2 views is already enough to fuse; the remaining
@@ -786,6 +794,36 @@ def _response_to_detections(response):
             for b in response.blocks]
 
 
+def survey_flange_for_yaw(detector, yaw_deg, z, iterations=3):
+    """Flange (x, y) that puts the LENS over the zone centre at THIS wrist yaw.
+
+    The whole framing problem in one function. The lens sits 40 mm off the
+    flange axis, so as the wrist turns it swings around a 40 mm circle -- which
+    means there is no single flange position that frames the zone at more than
+    one yaw. Using one anyway is what the survey did until 2026-08-05, and the
+    arithmetic of that is stark: the fixed flange (0.1876, 0.0020) is the
+    correct one for yaw 90, and the survey then took its stills at 150, 180 and
+    210, where the correct flange is (0.2085, -0.0321), (0.2285, -0.0375) and
+    (0.2485, -0.0322). The lens was 40, 57 and 70 mm off the zone centre. At a
+    zone only 101.6 mm across that walks the far tags out of frame, which is
+    exactly what the log shows: 2 of 4 tags in two stills out of three.
+
+    Iterated because the orientation depends on the flange position (look_at_quat
+    aims FROM the flange) and the offset depends on the orientation. Converges
+    in two or three passes -- same fixed point look_at_quat itself runs.
+
+    This is FRAMING ONLY. Getting it wrong loses tags out of frame; it never
+    biases the position that comes back, which is measured from the tags.
+    """
+    fx, fy = detector.zone_x, detector.zone_y
+    target = (detector.zone_x, detector.zone_y, detector.zone_z)
+    for _ in range(max(1, iterations)):
+        q = look_at_quat((fx, fy, z), target, block_yaw_deg=yaw_deg)
+        offset = _mat_vec(quat_to_matrix(q), LENS_OFFSET_IN_FLANGE)
+        fx, fy = detector.zone_x - offset[0], detector.zone_y - offset[1]
+    return fx, fy
+
+
 def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
                      holding_block=False, debug_prefix=None):
     """Several stills at different wrist yaws, fused into one answer.
@@ -811,19 +849,30 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
             break
 
         yaw = base_yaw_deg + offset
+        # Re-centre the LENS for this yaw. See survey_flange_for_yaw: one
+        # flange position cannot frame the zone at more than one wrist angle.
+        vx, vy = survey_flange_for_yaw(detector, yaw, z)
         print("\n[multiview] still %d/%d at wrist yaw %+.0f deg (offset %+.0f)"
-              % (index + 1, len(MULTIVIEW_YAW_OFFSETS_DEG), yaw, offset))
+              " -- flange (%.4f, %+.4f), radius %.4f m, lens on the zone centre"
+              % (index + 1, len(MULTIVIEW_YAW_OFFSETS_DEG), yaw, offset,
+                 vx, vy, math.hypot(vx, vy)))
         # look_at_quat, not a straight-down block_yaw_deg move: at DETECT_HOVER_Z
         # straight-down is unreachable (see that constant). yaw still does its
         # original job -- it is passed straight through to look_at_quat's own
         # block_yaw_deg, which rotates the WRIST before the aiming tilt is
         # applied, so it still changes which tag pair the gripper occludes.
         target = (detector.zone_x, detector.zone_y, detector.zone_z)
-        q = look_at_quat((x, y, z), target, block_yaw_deg=yaw)
-        if not move_arm_to(io_client, x, y, z, orientation_override=q,
+        q = look_at_quat((vx, vy, z), target, block_yaw_deg=yaw)
+        # allow_constraint_sampling=False: a still is only worth taking from the
+        # pose it was planned for. See move_arm_to.
+        if not move_arm_to(io_client, vx, vy, z, orientation_override=q,
                            holding_block=holding_block,
-                           ori_xy_tolerance=DETECT_ORI_XY_TOLERANCE):
-            print("[multiview]   move failed, skipping this view")
+                           ori_xy_tolerance=DETECT_ORI_XY_TOLERANCE,
+                           allow_constraint_sampling=False):
+            print("[multiview]   move failed at radius %.4f m, skipping this "
+                  "view. A yaw whose framing flange is further out is the first "
+                  "thing to lose to reach -- the remaining offsets are ordered "
+                  "nearest-first for that reason." % math.hypot(vx, vy))
             continue
         time.sleep(SETTLE_AFTER_MOVE_SEC)
 
@@ -831,6 +880,15 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
         response = detector.detect(zone, debug_image=debug)
         if response is None:
             print("[multiview]   no usable homography from this view")
+            continue
+        if len(response.tag_ids) < MULTIVIEW_MIN_TAGS:
+            print("[multiview]   only %d tag(s); %d needed to VOTE on a block "
+                  "position. Not fused -- see MULTIVIEW_MIN_TAGS."
+                  % (len(response.tag_ids), MULTIVIEW_MIN_TAGS))
+            for tag in detector.last_block_tags:
+                previous = best_tag.get(tag.tag_id)
+                if previous is None or tag.px_per_module > previous.px_per_module:
+                    best_tag[tag.tag_id] = tag
             continue
 
         used += 1
@@ -1310,12 +1368,15 @@ def run_stage1(io_client, detector, args, log):
     # this arm specifically -- pooling correspondences across stills would
     # need to trust how far the wrist actually turned, which the worn servo
     # gearing makes exactly the wrong thing to trust (APRIL_TAGS.md ROOT CAUSE).
-    survey_flange = _pullin_toward_base(
-        detector.zone_x, detector.zone_y, DETECT_HOVER_PULLIN_M)
-    print("[stage1] survey flange (%.4f, %.4f) -- %.0fmm pulled in from zone "
-          "centre (%.4f, %.4f)" % (survey_flange[0], survey_flange[1],
-                                   DETECT_HOVER_PULLIN_M * 1000,
-                                   detector.zone_x, detector.zone_y))
+    # Starting point only. Each still now moves the flange to whatever puts the
+    # LENS on the zone centre at ITS wrist yaw -- see survey_flange_for_yaw,
+    # and the table above MULTIVIEW_YAW_OFFSETS_DEG for why one fixed flange
+    # cannot do that job.
+    survey_flange = survey_flange_for_yaw(detector, MULTIVIEW_YAW_OFFSETS_DEG[0],
+                                          hover)
+    print("[stage1] survey: %d stills, flange re-centred per wrist yaw so the "
+          "lens is over the zone centre in every one" %
+          len(MULTIVIEW_YAW_OFFSETS_DEG))
     debug_prefix = (os.path.splitext(args.debug_image)[0]
                     if args.debug_image else None)
     fused_blocks, views_used, tags_union, block_tags = detect_multiview(
@@ -1340,6 +1401,28 @@ def run_stage1(io_client, detector, args, log):
         return False
 
     identity = identify_blocks(fused_blocks, block_tags)
+
+    # Truth first, and against EVERY candidate. The vision error needs no arm:
+    # a block's zone-local position comes from the tag homography, so comparing
+    # it against a block placed on a known zone-local point measures the vision
+    # alone. Printed here rather than after selection so a survey that gets
+    # REJECTED still tells you how good it was -- on 2026-08-05 a run failed its
+    # agreement gate and produced no diagnosis at all, which is the one time the
+    # number is most wanted.
+    truth_zone = (tuple(v / 1000.0 for v in args.truth_block_zone)
+                  if args.truth_block_zone else None)
+    truth_world = tuple(args.truth_block_world) if args.truth_block_world else None
+    if truth_zone is not None:
+        print("[stage1] against the truth you supplied, zone (%+.1f, %+.1f) mm:"
+              % (truth_zone[0] * 1000, truth_zone[1] * 1000))
+        for index, f in enumerate(fused_blocks):
+            dzx, dzy = f.zx - truth_zone[0], f.zy - truth_zone[1]
+            print("[stage1]   [%d] %-12s zone (%+5.1f, %+5.1f) mm  VISION error "
+                  "%5.1f mm   views=%d spread=%.1f mm"
+                  % (index, identity.get(index) or "unidentified",
+                     f.zx * 1000, f.zy * 1000, math.hypot(dzx, dzy) * 1000,
+                     f.n_views, f.spread_m * 1000))
+
     block = select_block(fused_blocks, identity, args.block_class)
     if block is None:
         print("[stage1] no candidate survived the agreement check -- nothing "
@@ -1383,6 +1466,21 @@ def run_stage1(io_client, detector, args, log):
     grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z, grasp_yaw_deg)
     print("\n[stage1] block world position from the tags: (%.4f, %.4f)"
           % (grasp_x, grasp_y))
+
+    # --- 2a-bis. what the truth, if supplied, already says ----------------
+    # Printed before anything moves, because the VISION error needs no arm at
+    # all: the block's zone-local position comes from the tag homography, so
+    # comparing it against a block placed on a known zone-local point measures
+    # the vision on its own. It is the only number in this pipeline with no
+    # confounds -- see calibration.py.
+    if truth_world is not None:
+        dx, dy = grasp_x - truth_world[0], grasp_y - truth_world[1]
+        radius = math.hypot(truth_world[0], truth_world[1]) or 1.0
+        radial = (dx * truth_world[0] + dy * truth_world[1]) / radius
+        lateral = (-dx * truth_world[1] + dy * truth_world[0]) / radius
+        print("[stage1] OPEN-LOOP error %.1f mm (radial %+.1f, lateral %+.1f) "
+              "-- vision and zone survey together, before the arm moves."
+              % (math.hypot(dx, dy) * 1000, radial * 1000, lateral * 1000))
 
     # --- 2b. OPTIONAL camera-verified correction (--verify) ---------------
     #
@@ -1511,6 +1609,31 @@ def run_stage1(io_client, detector, args, log):
     # grasp today without first calibrating it out. It is applied in world X/Y,
     # printed, and never persisted -- nothing here writes a calibration.
     nudge_total = [0.0, 0.0]
+
+    def save_calibration(grasped):
+        """One row per run. Truth is passed through, never assumed."""
+        if truth_zone is None and truth_world is None:
+            return
+        calibration.record(
+            args.calibration_log,
+            zone_origin=[args.zone_origin[0], args.zone_origin[1]],
+            zone_yaw_deg=args.zone_yaw,
+            truth_world=list(truth_world) if truth_world else None,
+            truth_zone=list(truth_zone) if truth_zone else None,
+            measured_zone=[block.zx, block.zy],
+            measured_world=[grasp_x - nudge_total[0], grasp_y - nudge_total[1]],
+            commanded_world=[grasp_x, grasp_y],
+            nudge=list(nudge_total),
+            grasped=bool(grasped),
+            block_class=args.block_class,
+            grasp_yaw_deg=grasp_yaw_deg,
+            grasp_z=grasp_z,
+            hover_z=grasp_hover,
+            views=int(block.n_views),
+            view_spread_m=float(block.spread_m),
+            identified=bool(identity),
+            note=args.note or "")
+
     if args.confirm and not args.dry_run:
         while True:
             print_block_report(block, block_yaw_world, grasp_x, grasp_y,
@@ -1520,6 +1643,7 @@ def run_stage1(io_client, detector, args, log):
                           "'dx dy' mm = nudge   q = abort > ")
             if answer in ("q", "quit", "n", "no"):
                 print("[stage1] aborted before moving.")
+                save_calibration(False)
                 return False
             nudge = _parse_nudge(answer)
             if nudge is not None:
@@ -1557,6 +1681,7 @@ def run_stage1(io_client, detector, args, log):
               "grasp yaw. LOOK AT THE ARM. How far, and which way, are the jaws "
               "off the block? That number is the arm's true error at the grasp "
               "pose -- it is not derivable from anything in this log.")
+        save_calibration(False)
         return True
 
     if args.confirm:
@@ -1581,6 +1706,7 @@ def run_stage1(io_client, detector, args, log):
                           "nudge and re-park   q = abort > ")
             if answer in ("q", "quit", "n", "no"):
                 print("[stage1] aborted at the hover. Nothing descended.")
+                save_calibration(False)
                 return False
             nudge = _parse_nudge(answer)
             if nudge is not None:
@@ -1652,8 +1778,24 @@ def run_stage1(io_client, detector, args, log):
         print("\n=== %s ===" % name)
         if not action():
             print("[stage1] step FAILED: %s" % name)
+            save_calibration(False)
             return False
         time.sleep(0.5)
+
+    # ASK, do not assume. Every step "succeeding" is not evidence that the jaws
+    # closed on anything -- arm_group_controller reports success from elapsed
+    # time alone (no constraints: block in ros2_controllers.yaml). arm_error is
+    # only meaningful on a run that really grasped, so a guess here would
+    # poison the one measurement that pins the arm down.
+    grasped = None
+    if args.confirm:
+        grasped = _ask("\n[confirm] did the jaws actually close on the block? "
+                       "y = yes, anything else = no > ") in ("y", "yes")
+    elif truth_zone is not None or truth_world is not None:
+        print("[stage1] --yes was used, so nothing confirms the grasp "
+              "physically. Recording it as UNCONFIRMED: it will count as a "
+              "vision and open-loop point, not as an arm measurement.")
+    save_calibration(bool(grasped))
     return True
 
 
@@ -1699,6 +1841,30 @@ def parse_args():
                              "at the arm: the jaw-to-block offset you can see is "
                              "the arm's true error, which nothing in the log "
                              "measures")
+    parser.add_argument("--truth-block-world", type=float, nargs=2,
+                        metavar=("X", "Y"), default=None,
+                        help="the block's TRUE world position in metres, if you "
+                             "measured it. Recorded, never applied -- it turns a "
+                             "run into a calibration point instead of just a "
+                             "grasp. Nothing in the code assumes a bench layout")
+    parser.add_argument("--truth-block-zone", type=float, nargs=2,
+                        metavar=("ZX", "ZY"), default=None,
+                        help="the block's TRUE zone-local position in "
+                             "MILLIMETRES. '0 0' means it is on the zone "
+                             "centre, which is what makes the vision error "
+                             "measurable on its own -- see calibration.py")
+    parser.add_argument("--survey-only", action="store_true",
+                        help="survey the zone, report the error against --truth, "
+                             "record it and STOP. No approach, no grasp. This is "
+                             "the cheap repeatability loop: the block never "
+                             "moves, so it measures the vision alone")
+    parser.add_argument("--note", default="",
+                        help="free text stored with the calibration row -- what "
+                             "changed on the bench, so a later reader can tell "
+                             "two runs apart")
+    parser.add_argument("--calibration-log", default=None,
+                        help="where calibration rows go (default: %s)"
+                             % calibration.DEFAULT_LOG)
     parser.add_argument("--block-class", choices=bc.BLOCK_CLASSES,
                         default=bc.BLOCK_CLASSES[0],
                         help="which block to pick, identified by the face tags "

@@ -3274,7 +3274,8 @@ def j1_unidirectional_approach(io_client, joint_trajectory):
 
 def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
                 holding_block=False, orientation_override=None,
-                ori_xy_tolerance=None, unidirectional=False):
+                ori_xy_tolerance=None, unidirectional=False,
+                allow_constraint_sampling=True):
     """Joint-space plan to a target position. Uses deterministic seeded IK
     when possible; falls back to OMPL constraint sampling if all seeds fail.
 
@@ -3322,6 +3323,19 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
 
     if ik_state is not None:
         goal_constraints = [make_joint_goal_constraints(ik_state)]
+    elif not allow_constraint_sampling:
+        # Refuse rather than approximate. Constraint sampling satisfies a 4 cm
+        # position sphere, so when a pose is genuinely out of reach it parks the
+        # arm somewhere else entirely and reports success -- 2026-08-05, two
+        # survey stills asked for radius 0.232 m, all 19 seeds failed, and the
+        # sampler put the lens 45 and 65 mm off the zone centre. Both stills
+        # then saw 2 of 4 tags and dragged the fused block position 3 mm off a
+        # KNOWN truth. A caller that only wants the pose it asked for gets
+        # nothing instead of a plausible substitute.
+        print(f"[move_arm_to] No valid IK state for ({x:.4f},{y:.4f},{z:.4f}) "
+              f"and constraint sampling is not allowed here -- refusing rather "
+              f"than reaching an approximate pose")
+        return False
     else:
         print(f"[move_arm_to] No valid IK state found for ({x},{y},{z}), using constraint sampling")
         constraints = Constraints()
