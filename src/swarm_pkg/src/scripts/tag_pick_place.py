@@ -1468,14 +1468,21 @@ def print_block_report(block, block_yaw_world, grasp_x, grasp_y, grasp_z,
 
 
 def _parse_nudge(answer):
-    """(dx_m, dy_m) from 'dx dy' in millimetres, or None if it is not that."""
+    """(dx_m, dy_m, dyaw_deg) from 'dx dy' or 'dx dy dyaw', or None.
+
+    Millimetres and degrees, because those are the units a person reads off a
+    ruler and a protractor at the bench. The yaw term is optional and defaults
+    to zero, so every 'dx dy' typed before this existed still means what it did.
+    """
     parts = answer.replace(",", " ").split()
-    if len(parts) != 2:
+    if len(parts) not in (2, 3):
         return None
     try:
-        return float(parts[0]) / 1000.0, float(parts[1]) / 1000.0
+        values = [float(p) for p in parts]
     except ValueError:
         return None
+    return (values[0] / 1000.0, values[1] / 1000.0,
+            values[2] if len(values) == 3 else 0.0)
 
 
 def select_block(fused, identity=None, want_class=None):
@@ -1841,6 +1848,9 @@ def run_stage1(io_client, detector, args, log):
     # grasp today without first calibrating it out. It is applied in world X/Y,
     # printed, and never persisted -- nothing here writes a calibration.
     nudge_total = [0.0, 0.0]
+    # A list, not a float, so the confirm loops can mutate it the same way
+    # nudge_total is mutated -- they are closures over this scope.
+    yaw_nudge_total = [0.0]
 
     # Filled by descend(), read by save_calibration(). Both are closures over
     # run_stage1, and the descent happens between them.
@@ -1871,6 +1881,7 @@ def run_stage1(io_client, detector, args, log):
             measured_world=[grasp_x - nudge_total[0], grasp_y - nudge_total[1]],
             commanded_world=[grasp_x, grasp_y],
             nudge=list(nudge_total),
+            yaw_nudge_deg=yaw_nudge_total[0],
             grasped=bool(grasped),
             block_class=args.block_class,
             grasp_yaw_deg=grasp_yaw_deg,
@@ -1919,6 +1930,8 @@ def run_stage1(io_client, detector, args, log):
                 grasp_y += nudge[1]
                 nudge_total[0] += nudge[0]
                 nudge_total[1] += nudge[1]
+                grasp_yaw_deg += nudge[2]
+                yaw_nudge_total[0] += nudge[2]
                 grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z,
                                           grasp_yaw_deg)
                 continue
@@ -1970,6 +1983,8 @@ def run_stage1(io_client, detector, args, log):
                   "the offset you can see:")
             print("[confirm]   'dx dy' in mm, world axes -- +x is world +X, "
                   "+y is world +Y.")
+            print("[confirm]   'dx dy dyaw' also turns the wrist, dyaw in "
+                  "DEGREES.")
             answer = _ask("[confirm] ENTER = descend and grasp   'dx dy' mm = "
                           "nudge and re-park   q = abort > ")
             if answer in ("q", "quit", "n", "no"):
@@ -1982,6 +1997,8 @@ def run_stage1(io_client, detector, args, log):
                 grasp_y += nudge[1]
                 nudge_total[0] += nudge[0]
                 nudge_total[1] += nudge[1]
+                grasp_yaw_deg += nudge[2]
+                yaw_nudge_total[0] += nudge[2]
                 grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z,
                                           grasp_yaw_deg)
                 print("[confirm] re-parking")
@@ -1991,6 +2008,27 @@ def run_stage1(io_client, detector, args, log):
             print("[confirm] did not understand %r." % answer)
         # Already parked; do not queue the hover again below.
         steps = []
+
+    if args.skip_pick:
+        # THE ARM AS THE MEASURING INSTRUMENT. The operator has just driven the
+        # jaws onto the block by eye, so nudge_total is how far the open-loop
+        # pipeline was wrong AT THIS POSE -- survey, vision and jaw offset
+        # together, read off at the grasp height rather than extrapolated to it.
+        # That is the same number a tape measure gives and it takes ten seconds
+        # instead of two minutes, which is what makes a ten-position sweep
+        # something a person will actually finish.
+        #
+        # Nothing descends and nothing is grasped, so the block does not move
+        # and the next run at this position starts from an identical scene.
+        print("\n[stage1] --skip-pick: parked over the block, measured, "
+              "recorded. Total correction you dialled in: (%+.1f, %+.1f) mm, "
+              "%+.1f deg."
+              % (nudge_total[0] * 1000, nudge_total[1] * 1000,
+                 yaw_nudge_total[0]))
+        print("[stage1] Nothing descended. The block is exactly where it was, "
+              "so move the ZONE and run the next position.")
+        save_calibration(False)
+        return True
 
     # Straight-down Cartesian by default because GRASP_OFFSET_Z is defined
     # against a vertical approach and a joint-space move arcs. --ik-descent
@@ -2143,6 +2181,13 @@ def parse_args(argv=None):
                              "MILLIMETRES. '0 0' means it is on the zone "
                              "centre, which is what makes the vision error "
                              "measurable on its own -- see calibration.py")
+    parser.add_argument("--skip-pick", action="store_true",
+                        help="park over the block, let you dial the jaws onto "
+                             "it with 'dx dy dyaw', record what you dialled, "
+                             "and STOP without descending. The correction you "
+                             "type is the open-loop error at that pose -- the "
+                             "cheap way to sweep many zone positions, since the "
+                             "block never moves between runs")
     parser.add_argument("--survey-only", action="store_true",
                         help="survey the zone, report the error against --truth, "
                              "record it and STOP. No approach, no grasp. This is "

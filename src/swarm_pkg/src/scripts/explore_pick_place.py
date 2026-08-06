@@ -43,6 +43,51 @@ import pick_place as pp  # noqa: E402
 import tag_pick_place as tpp  # noqa: E402
 
 
+INCH = 0.0254
+
+# Named bench positions for the pickup zone's CENTRE, in inches, so a
+# calibration sweep is `--position A` rather than four decimals retyped from a
+# notebook. Whole inches on purpose: they are what a person can lay out
+# repeatably against a ruler, and a position you cannot reproduce is a position
+# whose error you cannot attribute.
+#
+# WHAT THIS SET IS FOR. ORIGIN_RADIAL_BIAS_M was measured at n=2 -- bearings
+# -0.5 and +90 deg, radii 203 and 229 mm -- and a constant fitted to two points
+# is a constant that has never been contradicted. These eleven span 160-229 mm
+# of radius and -113 to +18 deg of bearing, which is the axis that decides
+# whether one number is enough.
+#
+# THE GAP, stated because it will matter when the numbers come back: bearings
+# +20 to +90 deg are not covered. H is the only position on the +Y side of the
+# workspace, and the +90 deg calibration point came from the PLACE zone, which
+# this sweep does not move. Two more at roughly (0, +7) and (-3, +7) would close
+# it; without them a bearing-dependent term cannot be ruled out on that side.
+SURVEY_POSITIONS = {
+    "A": (-3.0, -7.0), "B": (0.0, -7.0), "C": (3.0, -7.0),
+    "D": (5.0, -5.0), "E": (6.0, -3.0), "F": (7.0, -2.0),
+    "G": (8.0, -1.0), "H": (9.0, 0.0), "I": (8.0, 1.0),
+    "J": (7.0, 2.0), "K": (6.0, 2.0),
+}
+
+
+def position_xy(name):
+    """-> (x_m, y_m) for a SURVEY_POSITIONS label, or None."""
+    inches = SURVEY_POSITIONS.get(name.upper())
+    return None if inches is None else (inches[0] * INCH, inches[1] * INCH)
+
+
+def describe_positions():
+    lines = []
+    for name in sorted(SURVEY_POSITIONS):
+        ix, iy = SURVEY_POSITIONS[name]
+        x, y = position_xy(name)
+        lines.append("  %s  (%+.0f, %+.0f) in = (%+.4f, %+.4f) m   "
+                     "r %.2f in   bearing %+.1f deg"
+                     % (name, ix, iy, x, y, math.hypot(ix, iy),
+                        math.degrees(math.atan2(iy, ix))))
+    return "\n".join(lines)
+
+
 def coarse_then_fine_both(io_client, detector, args, zones=("pickup", "place")):
     """One coarse sweep for both zones, then a fine arc over each one it found.
 
@@ -191,6 +236,19 @@ def main():
                              "Pass 0 to use the raw fit -- see "
                              "ORIGIN_RADIAL_BIAS_M in explore.py"
                              % explore.ORIGIN_RADIAL_BIAS_M)
+    parser.add_argument("--position", default=None, metavar="LABEL",
+                        help="named bench position for the PICKUP zone centre "
+                             "(%s). Sets --truth-pickup and the note from "
+                             "SURVEY_POSITIONS, so a calibration sweep is one "
+                             "letter per run" % ", ".join(sorted(SURVEY_POSITIONS)))
+    parser.add_argument("--list-positions", action="store_true",
+                        help="print the position table and exit")
+    parser.add_argument("--skip-pick", action="store_true",
+                        help="survey, park over the block, let you dial the "
+                             "jaws onto it with 'dx dy dyaw', record it and "
+                             "STOP. Nothing descends, so the block does not "
+                             "move between positions. This is the calibration "
+                             "sweep mode")
     parser.add_argument("--truth-pickup", type=float, nargs=2, metavar=("X", "Y"),
                         default=None,
                         help="the pickup zone centre's TAPED world position, "
@@ -216,6 +274,22 @@ def main():
                              "hands off")
     parser.add_argument("--note", default="explore_pick_place")
     args = parser.parse_args()
+
+    if args.list_positions:
+        print("pickup zone centre positions (world metres, base at the origin):")
+        print(describe_positions())
+        return 0
+    if args.position is not None:
+        xy = position_xy(args.position)
+        if xy is None:
+            parser.error("unknown --position %r; known: %s"
+                         % (args.position, ", ".join(sorted(SURVEY_POSITIONS))))
+        # Set, not overridden: an explicit --truth-pickup wins, because a taped
+        # measurement beats a nominal layout every time and that is the whole
+        # lesson of this file's calibration history.
+        if args.truth_pickup is None:
+            args.truth_pickup = list(xy)
+        args.note = "%s position %s" % (args.note, args.position.upper())
 
     if args.step <= 0:
         parser.error("--step must be positive")
@@ -279,7 +353,7 @@ def main():
             print("\n[run] no pickup zone, so there is nothing to pick. "
                   "Stopping before the arm moves.")
             return 1
-        if place is None:
+        if place is None and not args.skip_pick:
             print("\n[run] pickup found but no place zone. Refusing to pick up "
                   "a block with nowhere to put it -- it would end the run held "
                   "in the jaws.")
@@ -296,9 +370,14 @@ def main():
         argv = ["--zone-origin", "%.4f" % pickup.origin[0],
                 "%.4f" % pickup.origin[1], "0.0",
                 "--zone-yaw", "%.1f" % math.degrees(pickup.yaw),
-                "--place-origin", "%.4f" % place.origin[0],
-                "%.4f" % place.origin[1],
                 "--note", args.note]
+        if args.skip_pick:
+            # Nothing is carried anywhere, so the place zone is not needed and
+            # may not even have been seen.
+            argv.append("--skip-pick")
+        elif place is not None:
+            argv += ["--place-origin", "%.4f" % place.origin[0],
+                     "%.4f" % place.origin[1]]
         if args.any_block:
             argv.append("--any-block")
         elif args.block_class:

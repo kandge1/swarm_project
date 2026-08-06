@@ -1488,3 +1488,323 @@ since it goes through `/detect_block`.
 Superseded in place by **"THE STACKED-BLOCK PLAN"** above, which carries the same
 four stages and the 3-tall constraint verbatim, plus the reach and tag-legibility
 numbers that constrain them. Kept as a heading only so the date is findable.
+
+
+# 2026-08-06 — THE DAY THE OPEN-LOOP ERROR WENT FROM 26 mm TO 5 mm
+
+The longest single session in the project. Seven distinct defects found and
+fixed, the survey error measured for the first time ever, and `explore.py` and
+`tag_pick_place.py` combined into one run. This section is the whole history in
+the order it happened, because the order is the lesson: almost every fix was
+blocked by the one before it, and two of them were *undone and redone* when a
+later measurement showed the first fit had been made against a false truth.
+
+Read "THE FIVE LESSONS" at the end if you read nothing else.
+
+
+## Where the day started
+
+`tag_pick_place.py` could survey a zone and find a block, but the grasp needed
+20–27 mm of hand-typed nudge every time and nobody could say why. Twenty-four
+calibration runs existed, all at one pose, and `calibration.py` had been
+reporting `REPEATABLE AT ONE POSE` for days — correctly refusing to attribute
+the error, because at one pose the camera model and the arm are indistinguishable.
+
+
+## 1. Blur and framing (fixed, and it held)
+
+Nine consecutive stills had sat within 2.3 mm of the measured 0.220 m focus
+floor, five of them below it. Raising `DETECT_HOVER_Z` 0.240 → 0.255 and
+computing a per-wrist-yaw survey flange (`survey_flange_for_yaw`) moved every
+still to 0.2366–0.2426 m and put all four zone tags in the first frame of every
+run.
+
+Repeatability with the block untouched, five consecutive runs:
+
+    radial   -0.6, -0.4, -0.5, -0.5, -0.5
+    lateral  +3.5, +3.6, +3.6, +3.4, +3.5
+
+**0.08 mm standard deviation.** The vision was never the problem after this
+point, and knowing that is what made everything below attributable.
+
+Residual, unfixed: the lens offset is yaw-dependent (−21 mm at yaw 90, −27 at
+60, −31 at 120), and only one bias is learned, from the first usable still. The
+yaw-60 still loses two tags and is correctly rejected by `MULTIVIEW_MIN_TAGS`
+in every run. It costs a view, not accuracy.
+
+
+## 2. The zone sheet was 180° out (fixed)
+
+Stage 2a moved the block ±20 mm in four directions and every axis read back
+inverted. `ZONE_CORNER_SIGNS` puts tags 1 and 2 at zone +x, and with
+`--zone-yaw -179.1` zone +x points at the robot — so **tags 1 and 2 belong
+nearest the robot** and 0 and 3 were there instead.
+
+A 90° error swaps the axes; a 180° error negates both. Both were negated, which
+is what identified it. `zone_vision.py:135` had already warned that the
+homography residual cannot catch this: *"a mirrored fit is still a perfect fit."*
+
+
+## 3. Top-face parallax (fixed, +14 % on every off-centre reading)
+
+Eight placements at a taped 20 mm from the zone centre read back:
+
+    22.4  22.5  23.3  23.3  22.7  22.6  22.9  22.9   ->  mean 22.82 mm
+
+The homography maps the **mat plane**. A block's top face floats 30 mm above it,
+so it projects outward from the camera's nadir by
+
+    h / (h - t) = 0.2396 / (0.2396 - 0.030) = 1.1431
+
+Predicted reading for a true 20 mm offset: **22.86 mm**. Measured: **22.82 mm**.
+Agreement to 0.04 mm across both axes and all four directions.
+
+`correct_top_face_parallax` now scales each still about its own nadir before
+fusion. Verified: 22.86 mm reads back as 20.00, a 34.3 mm apparent footprint as
+30.0.
+
+**Why twenty-four runs never saw it:** the correction is identically zero at the
+nadir, and the lens re-centring puts the nadir on the zone centre. It only
+appears once the block is off-centre — 2.9 mm at 20 mm out, 6.5 mm at the zone
+edge.
+
+Cost: the per-still nadir wanders ~9.5 mm between stills, which adds ~1.2 mm of
+view spread. Real, and much smaller than the effect it removes.
+
+
+## 4. The block tags had no quiet zone at all (fixed)
+
+Block tags decoded intermittently — 19 hits one session, 0 the next, at the same
+distance and the same `rms`. Not focus: focus degrades monotonically, and this
+flipped run to run.
+
+The tags were being **cut flush to the black border**, removing all 3.52 mm of
+white per side. AprilTag finds a tag by locating a black quad against a lighter
+background; orange plastic is a mid-tone, so edge contrast collapsed and
+decoding became a coin flip on the lighting.
+
+`print_block_tags.py` prints tag + quiet zone + a 3 mm handling margin, and its
+own code commented *"the arrow is drawn OUTSIDE the cut line"* — but **no cut
+line was ever drawn.** The dashed rectangle is the cell (35.53 mm); the tag's
+black border is 22.5 mm; the correct cut is the 29.53 mm square between them,
+and nothing marked it.
+
+Now drawn, stroked 0.25 mm outside the quiet-zone boundary so it cannot eat the
+white it protects. Console output states all three sizes explicitly.
+
+
+## 5. The jaw offset, calibrated three times in one day
+
+This is the important one, and it is important because **twice we fitted it
+against a truth that was an assumption.**
+
+**Morning.** `JAW_RADIAL_OFFSET_M = -0.0271`, measured 2026-08-04 across ten
+waypoints at bearings ±90°. At the pick zone's new bearing of 0° it was 26 mm
+wrong: it pushed the flange 21.5 mm outboard when the truth wanted ~1 mm inboard.
+Two confirmed grasps fitted **-0.0013**, and both grasps reproduced to 0.1 mm.
+
+**Evening.** Eight grasps with the block itself taped from the base — five at
+bearing +90°, three at bearing 0°:
+
+    +Y   radial -0.0203 (sd 0.0012)   tangential +0.0001 (sd 0.0029)
+    +X   radial -0.0192 (sd 0.0016)   tangential -0.0088 (sd 0.0000)
+
+**The radial term agrees to 1.1 mm across a 90° change of bearing.** The frame
+question — radial vs world-fixed vs tool-fixed, open since 2026-08-03 — is
+settled, and the answer is **RADIAL**, which is what the August 4 survey said.
+
+Final: `JAW_RADIAL_OFFSET_M = -0.0199`, `JAW_TANGENTIAL_OFFSET_M = -0.0033`.
+
+Note where that sits: **much nearer the original -0.0271 than the -0.0013 that
+replaced it.** The August 4 ruler survey was closer to right than the fit that
+overturned it, because it measured against a ruler and the fit did not.
+
+The `-0.0013` was fitted against runs that passed `--truth-block-world` as *"the
+sheet is at 9 inches"* — an assumption about where a hand-placed piece of paper
+landed. Taping the **block** instead of the **sheet** fixed it in one session.
+
+Tangential is not settled: +X wants -0.0088, +Y wants 0.0000, and a radial model
+cannot have both. The mean leaves 4.5 mm typical / 7.5 mm worst across all eight,
+against 19.9 mm for the constants it replaced. `--jaw-tangential-offset` exists
+for a zone used repeatedly.
+
+
+## 6. Block yaw was being discarded, silently (fixed)
+
+Two runs aborted at the hover because the wrist never turned to meet a rotated
+block. `zone_vision.fuse_detections`:
+
+    if symmetry:
+        ... fold the yaws ...
+    else:
+        zyaw = 0.0          # <-- the yaw is DISCARDED, not averaged badly
+
+A 30 mm cube's rounded corners put its fill ratio right on `CIRCLE_FILL_MAX`, so
+it classifies as `circle` in some stills and `square` in others. Majority vote
+hands fusion `symmetry 0`, the yaw is thrown away, grasp yaw comes out 0, and
+the jaws close on the block's 44 mm diagonal instead of its 31 mm face.
+
+The per-still yaws in those runs were `-91.0, -90.0, +88.6, -2.0` degrees.
+**Reduced mod 90 that is -1.0, 0.0, -1.4, -2.0.** The contour's yaw was never
+the problem. Only the fold was missing.
+
+`promote_tagged_tops_to_square` sets symmetry 4 when a decoded **TOP** tag sits
+on a contour whose footprint is square (short/long ≥ 0.80). Deliberately *not*
+keyed on the class name — a TOP tag proves the mat-parallel face, aspect ratio
+proves that face is square, and four-fold symmetry follows from geometry rather
+than from what the block is called.
+
+Verified against the exact failing data: fused yaw `+0.0, symmetry 0` becomes
+`+88.9, symmetry 4` → grasp yaw −1.1°. On hardware the next run picked a block
+rotated 40° (`grasp yaw -40.3 deg, symmetry 4`).
+
+`block_coordinates.py:29-36` predicted this failure verbatim, months earlier.
+
+
+## 7. THE SURVEY ERROR — 28 mm, and why nothing could see it
+
+`explore.py` produced the zone origin independently for the first time. Against
+taped truth:
+
+    zone     surveyed r   taped r    radial error   bearing
+    pickup     232.5 mm   203.2 mm     +29.3 mm       -1 deg
+    place      256.3 mm   228.6 mm     +27.7 mm      +90 deg
+
+Two zones, **91° apart in bearing, 26 mm apart in radius, agreeing to 1.6 mm**,
+tangential −2.1 and −1.4 mm — i.e. zero. One constant, applied radially.
+
+**`ORIGIN_RADIAL_BIAS_M = -0.0285`.** Both zones then land within **0.8 mm** of
+taped truth.
+
+**Why the fit could not catch it.** `fit_zone`'s residual measures the eleven
+views *against each other*. A bias every view shares is invisible to it. Both
+zones fitted at 3.8 and 4.0 mm residual **while sitting 28 mm out.** This is the
+cleanest demonstration the project has produced that *internal agreement is not
+accuracy.*
+
+Probable cause: `zone_origin_from` builds the origin out of `camera_zx/zy`, the
+one quantity that depends on the principal-point assumption — the same reading
+`tag_pick_place`'s lens re-centring measures at 20–22 mm every run and nulls
+before it takes its stills. `explore` has no such reference and inherits it
+whole. That is a hypothesis; the 28 mm is a measurement.
+
+n=2. Both sign and frame are unambiguous and the two agree closely, but a third
+bearing should be run before it is treated as settled. `--origin-radial-bias 0`
+restores the raw fit.
+
+**`survey_error` had read `0.0 ± 0.0` for the life of the project** because every
+run passed the same number as both `--zone-origin` and `--truth-block-world` —
+asserting the survey was right rather than checking it. This was the first
+measurement of it.
+
+
+## 8. Instrumentation defects found and fixed the same day
+
+- **`--survey-only` was a silent no-op.** The flag parsed; the behaviour block's
+  edit anchor no longer existed. Five runs were taken believing nothing was
+  grasped; the history said `grasped: True`. Fixed and verified by AST-walking
+  `run_stage1`.
+- **`flange_fk` recorded the PLACE pose, not the grasp.** `LAST_FLANGE_FK` is
+  overwritten by every later Cartesian move; `jaw_offset()` reported a 213 mm
+  offset. `descend()` now snapshots at the grasp.
+- **`LAST_FLANGE_FK` was only written by `cartesian_move_to`.** Under
+  `--ik-descent` the grasp goes through `move_arm_to` and the snapshot would
+  copy a stale pose — a *hover*, which is a plausible-looking 40 mm error that
+  `jaw_offset()` would consume without complaint. `record_flange_fk()` is now
+  called from both planners.
+- **`verdict()` over-claimed "consistent across 4 distinct poses"** when all five
+  runs were at one pose; the pose counter was counting rounding noise in
+  `grasp_yaw_deg`. Fixed with `pose_spread()`.
+- **Units bug**: metres printed into a `%+.1f mm` format in the arm line.
+- **`save_calibration` recorded nothing without a `--truth-block-*`.** Two full
+  pick-and-place runs produced **zero rows**. The nudge does not need a truth —
+  it is the operator measuring the residual at the grasp — and it was going in
+  the bin. Now every run records.
+
+
+## 9. `explore_pick_place.py` — the combined run
+
+    python3 explore_pick_place.py
+
+One process: sweeps J1 detecting **both** zones at each stop, solves each
+centre and yaw, hands the pickup zone to `tag_pick_place.run_stage1` and the
+place zone's centre to its release step.
+
+- `explore.sweep_both()` — one arm sweep, both zones per stop. Arm motion
+  dominates (1.6 s move + 1.2 s settle), so a second detect at a stop already
+  paid for is nearly free. Two sweeps would cost double for the same information.
+- Coarse 10° pass finds each square, then a fine 2.5° arc over each. ~50 stops,
+  3–4 minutes, against 15+ for a fine sweep everywhere.
+- `--place-origin X Y` on `tag_pick_place` releases at the surveyed place centre.
+  Z deliberately still comes from `PLACE_XYZ.z` — a hand-tuned release height for
+  that pose, not geometry.
+- Refuses to pick if the place zone was not found: it would end the run with the
+  block held in the jaws.
+
+**Result, second full run:** pickup surveyed 8.04 in against 8.00 taped (+0.4 mm),
+place 8.97 against 9.00 (−0.8 mm), block at zone (−15.8, +16.0) mm rotated 40°,
+found, picked, placed. Nudge **5.8 mm**, down from 27.
+
+
+## THE FIVE LESSONS
+
+**1. This is a modelling problem, not a control problem.** The `[reached]` line
+says `flange within 5 mm of command: the ARM is fine` — the joint loops are
+closed and converged. PID is already there and cannot see this error; MPC tracks
+the same wrong target more elegantly; an observer needs a sensor observing the
+quantity, and the encoders cannot see model error by construction. What was
+wrong all day was the **map from joint angles to real-world position**, which is
+kinematic calibration. Conflating the two is how a month gets lost.
+
+**2. Diverse data beats more data, and it is not close.**
+
+    24 runs at one pose  ->  told us nothing about pose dependence
+     2 runs at two bearings  ->  settled the jaw-offset frame
+     2 zones at two bearings ->  settled the 28 mm survey bias to 1.6 mm
+
+Samples only help along the axis you are trying to separate. Ten more runs at
+one pose teach nothing.
+
+**3. Two poses 180° apart are one measurement, not two.** At +Y and −Y a
+world-fixed offset gives equal and opposite radial readings that average to
+zero, and a radial offset gives identical ones. Pooling them destroys the signal
+— and pooling is the natural thing to do. This is the mirror image of the
+2026-08-04 error, where ±Y agreeing on −20.8 and −16.9 was read as proof of a
+radial offset. `jaw_offset_report()` now buckets by bearing and never pools.
+
+**4. Internal agreement is not accuracy.** Eleven views agreeing to 3.8 mm about
+a centre 28 mm out. A residual measures the views against each other and is
+structurally blind to any bias they share.
+
+**5. Truth must be measured, not asserted.** Every calibration that had to be
+redone was redone because its truth column was *"the sheet is at 9 inches"* —
+a statement about intent, not a measurement. Taping the **block** instead of the
+**sheet** settled in one session what three previous calibrations got wrong.
+`--truth-block-world` is a measurement or it is worthless.
+
+
+## Error budget, start of day to end
+
+| term | morning | evening |
+|---|---|---|
+| vision, block vs zone centre | ~5 mm, +14 % scale on offsets | 0.08 mm repeatability, scale corrected |
+| survey, zone centre vs world | unmeasured, actually 28 mm | 0.4–0.8 mm |
+| jaw offset | 26 mm wrong at bearing 0 | 4.5 mm typical, 7.5 worst |
+| block yaw | discarded ~half the time | held, symmetry 4 |
+| **operator nudge to grasp** | **20–27 mm** | **5.8 mm** |
+
+
+## Open, in priority order
+
+1. **`ORIGIN_RADIAL_BIAS_M` is n=2.** The `--position A..K` sweep in
+   `explore_pick_place.py` spans 160–229 mm of radius and −113° to +18° of
+   bearing to test it. Bearings +20° to +90° are **not covered** by that set.
+2. **Tangential jaw offset is bearing-dependent** (−0.0088 at +X, 0.0000 at +Y).
+3. **Harvest camera-vs-FK pairs.** `camera at zone (x, y)` is an absolute
+   position measurement of the lens, independent of the joint model. Every
+   explore sweep already collects 11 per zone, for free, and `fit_zone` discards
+   them after solving the origin. This is the cheapest calibration data
+   available and none of it is kept.
+4. **Per-still lens bias** — one bias learned from the first usable still is
+   applied to stills whose true offset differs by 10 mm.
+5. **Place is open-loop** at the surveyed centre, by design and by requirement.
