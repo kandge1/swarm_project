@@ -478,6 +478,17 @@ MAX_LENS_BIAS_M = 0.060
 # enters the correction multiplied by 0.14 -- 0.7 mm, well under the effect.
 TOP_FACE_HEIGHT_M = DEFAULT_BLOCK_THICKNESS
 
+# short/long above which a TOP face carrying a tag is called square, and so
+# four-fold symmetric. See promote_tagged_tops_to_square.
+#
+# Looser than zone_vision's SQUARE_ASPECT_TOL (0.88) on purpose. That constant
+# decides square-vs-rectangle with no other evidence; this one only has to rule
+# out a genuinely elongated block, and it runs on a contour already confirmed by
+# a decoded top tag. The measured footprints of the 30 mm cube on 2026-08-06 ran
+# 30.8x31.2 up to 31.8x35.4 -- ratios 0.99 down to 0.90 -- and every one of them
+# is the same cube. 0.80 accepts all of them and still refuses a 30x50 cuboid.
+SQUARE_TOP_ASPECT_MIN = 0.80
+
 # Give up on the multi-view pass once this many stills have produced a usable
 # homography. 4 tags across >=2 views is already enough to fuse; the remaining
 # stills cost a wrist move and ~1 s each for diminishing return.
@@ -866,6 +877,53 @@ def _response_to_detections(response):
             for b in response.blocks]
 
 
+def promote_tagged_tops_to_square(detections, block_tags):
+    """A contour with a TOP tag on it and a square footprint IS four-fold
+    symmetric, whatever the fill ratio said. Mutates in place, returns how many.
+
+    THE BUG THIS FIXES, seen on hardware 2026-08-06 and predicted verbatim in
+    block_coordinates' docstring: a 30 mm cube's rounded corners put its fill
+    ratio right on CIRCLE_FILL_MAX, so it classifies as `circle` in some stills
+    and `square` in others. Majority vote across stills then hands fusion
+    symmetry 0, and zone_vision's fuse_detections does this:
+
+        else:
+            zyaw = 0.0
+
+    -- the yaw is not averaged badly, it is DISCARDED. grasp yaw comes out 0,
+    the wrist never turns, and the jaws close on the block's 44 mm diagonal
+    instead of its 31 mm face. Two runs aborted at the hover for exactly this.
+
+    The per-still yaws in those runs were -91.0, -90.0, +88.6, -2.0 degrees:
+    reduced mod 90 that is -1.0, 0.0, -1.4, -2.0. The contour's yaw was never
+    the problem. Only the fold was missing.
+
+    Deliberately NOT keyed on the class name. "orange_cube" is a label that can
+    be renamed without touching hardware, and block_coordinates is explicit that
+    nothing infers dimensions from it. The two facts used here are geometric and
+    checkable in the frame: a TOP tag proves this is the mat-parallel face, and
+    an aspect ratio near 1 proves that face is square. Four-fold symmetry
+    follows from those, not from what the block is called.
+    """
+    tops = [t for t in block_tags
+            if t.zone_xy is not None and t.face and t.face.kind == "top"]
+    promoted = 0
+    for d in detections:
+        if d.symmetry == 4:
+            continue
+        near = [t for t in tops
+                if math.hypot(d.zx - t.zone_xy[0], d.zy - t.zone_xy[1])
+                <= BLOCK_TAG_MATCH_M]
+        if not near:
+            continue
+        short, long_ = min(d.width, d.length), max(d.width, d.length)
+        if long_ <= 0 or short / long_ < SQUARE_TOP_ASPECT_MIN:
+            continue
+        d.shape, d.symmetry = "square", 4
+        promoted += 1
+    return promoted
+
+
 def correct_top_face_parallax(detections, camera_zx, camera_zy, lens_height_m,
                               face_height_m=TOP_FACE_HEIGHT_M):
     """Pull each detection back onto the mat plane the homography actually maps.
@@ -1061,6 +1119,12 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
                   "(%+.1f mm at the zone edge)"
                   % (lens_height, TOP_FACE_HEIGHT_M * 1000, factor,
                      (factor - 1.0) * 50.8))
+        # Before fusing, because fusion is where symmetry 0 destroys the yaw.
+        promoted = promote_tagged_tops_to_square(view, detector.last_block_tags)
+        if promoted:
+            print("[multiview]   %d contour(s) carry a TOP tag on a square "
+                  "footprint -- symmetry 4, so the yaw survives fusion"
+                  % promoted)
         per_view.append(view)
         for tag in detector.last_block_tags:
             previous = best_tag.get(tag.tag_id)
@@ -1783,9 +1847,20 @@ def run_stage1(io_client, detector, args, log):
     grasp_flange_fk = []
 
     def save_calibration(grasped):
-        """One row per run. Truth is passed through, never assumed."""
-        if truth_zone is None and truth_world is None:
-            return
+        """One row per run. Truth is passed through, never assumed.
+
+        RECORDED EVEN WITH NO TRUTH, since 2026-08-06. It used to return here
+        unless a --truth-block-* was given, which meant every explore-driven run
+        -- the ones with no tape measure anywhere in them -- wrote nothing at
+        all. Two full pick-and-place runs produced zero rows.
+
+        The truth is what makes vision_error and survey_error computable, and
+        those still read None without it. But the NUDGE does not need a truth:
+        it is the operator looking at the jaws over the block and saying how far
+        off they are, which is a direct measurement of the residual at that pose,
+        taken at the grasp. Throwing that away because nobody held a tape measure
+        is throwing away the cheapest calibration data this project produces.
+        """
         calibration.record(
             args.calibration_log,
             zone_origin=[args.zone_origin[0], args.zone_origin[1]],
@@ -1959,10 +2034,23 @@ def run_stage1(io_client, detector, args, log):
     # the place pose's droop is its own. It reads 25 mm above what the pick side
     # implies for the same mat; that difference is the two poses' z error, not a
     # stale constant, so it is left alone.
-    place_x, place_y, place_surface_z = PLACE_XYZ
+    #
+    # --place-origin is that Stage 2, in its lax form. The place zone only has
+    # to receive the block somewhere inside a 4 in square, so its SURVEYED
+    # centre is a good enough target and no second detection is needed once
+    # explore has found it. X and Y come from the survey; Z does not, for the
+    # reason above -- a surveyed origin's z is the mat, and PLACE_XYZ.z is a
+    # hand-tuned release height that already accounts for this pose's droop.
+    if args.place_origin is not None:
+        place_x, place_y = args.place_origin[0], args.place_origin[1]
+        place_surface_z = PLACE_XYZ[2]
+        source = "surveyed place zone centre"
+    else:
+        place_x, place_y, place_surface_z = PLACE_XYZ
+        source = "PLACE_XYZ, unchanged from pick_place.py"
     place_z = place_surface_z + args.block_thickness / 2.0 + GRASP_OFFSET_Z
-    print("\n[stage1] place: surface z %.4f -> release flange z %.4f (PLACE_XYZ, "
-          "unchanged from pick_place.py)" % (place_surface_z, place_z))
+    print("\n[stage1] place: (%.4f, %.4f) surface z %.4f -> release flange z "
+          "%.4f (%s)" % (place_x, place_y, place_surface_z, place_z, source))
     place_hover = hover_z_for(place_x, place_y, place_z)
     steps += [
         ("Move to pre-place",
@@ -2001,7 +2089,7 @@ def run_stage1(io_client, detector, args, log):
     return True
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -2076,6 +2164,13 @@ def parse_args():
                         help="pick whatever is best measured, ignoring "
                              "identity. Only safe with ONE block in the zone -- "
                              "with two it is a coin flip")
+    parser.add_argument("--place-origin", type=float, nargs=2,
+                        metavar=("X", "Y"), default=None,
+                        help="world XY to release the block at, normally the "
+                             "place zone's surveyed centre. Z is NOT taken from "
+                             "here -- the release height stays PLACE_XYZ.z, "
+                             "which is hand-tuned for that pose. Default: the "
+                             "whole hardcoded PLACE_XYZ")
     parser.add_argument("--jaw-radial-offset", type=float, default=None,
                         metavar="M",
                         help="override JAW_RADIAL_OFFSET_M (metres, negative = "
@@ -2111,7 +2206,7 @@ def parse_args():
     parser.add_argument("--log", metavar="CSV",
                         help="append (commanded correction, measured result) rows "
                              "here -- the disturbance-observer dataset")
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def main():

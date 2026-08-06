@@ -353,7 +353,25 @@ def fit_zone(sightings, yaw_fixed=None):
     residual = math.sqrt(sum((r[0] - (origin[0] + c * r[2] - s * r[3])) ** 2 +
                              (r[1] - (origin[1] + s * r[2] + c * r[3])) ** 2
                              for r in rows) / n)
+    origin = apply_origin_radial_bias(origin)
     return ZoneFit(origin, yaw, residual, baseline, sightings), None
+
+
+def apply_origin_radial_bias(origin, bias=None):
+    """Pull a fitted origin in along its own radius by ORIGIN_RADIAL_BIAS_M.
+
+    The fit is internally excellent and externally offset: eleven views agree to
+    3.8 mm about a centre that is 28 mm too far out. Residual measures the views
+    against each other and cannot see a bias they all share, which is why this
+    went unnoticed until explore's origin was finally compared against a taped
+    one instead of being handed the answer.
+    """
+    if bias is None:
+        bias = ORIGIN_RADIAL_BIAS_M
+    r = math.hypot(origin[0], origin[1])
+    if not bias or r < 1e-6:
+        return origin
+    return (origin[0] + bias * origin[0] / r, origin[1] + bias * origin[1] / r)
 
 
 def split_runs(sightings, step):
@@ -413,6 +431,53 @@ def coarse_then_fine(io_client, detector, args):
                        anchor.j1_deg + args.fine_span,
                        args.fine_step, "fine")
     return coarse, fine
+
+
+def sweep_both(io_client, detector, args, zones=("pickup", "place")):
+    """One arm sweep, every zone in `zones` detected at each stop.
+
+    -> {zone_name: [Sighting, ...]}
+
+    ONE SWEEP, NOT TWO, because the arm motion is what costs time here: a stop
+    is a move plus a settle plus a detect, and the move and the settle dominate.
+    Asking the detector for a second zone at a stop the arm has already paid for
+    is one extra service call on a frame that is already sharp and already
+    still. Two full sweeps would cost twice the arm time to learn the same
+    thing, and would also survey the two zones from two different sets of J1
+    positions, which is a difference with no upside.
+
+    A zone that is not in view simply contributes no sighting at that stop --
+    the same as any other miss.
+    """
+    out = {zone: [] for zone in zones}
+    j1 = args.start
+    first = True
+    while j1 <= args.end + 1e-9:
+        commanded = joints_for(j1, args.pitch, args.wrist)
+        seconds = MOVE_SECONDS if first else STEP_SECONDS
+        if not send_joints(io_client, commanded, seconds, "J1 %+.0f" % j1):
+            j1 += args.step
+            continue
+        first = False
+        _settle(io_client, args.settle)
+        joints, measured = achieved_joints(io_client, commanded)
+
+        seen = []
+        for zone in zones:
+            response = detector.detect(zone=zone)
+            if response is None or not response.tag_ids:
+                continue
+            origin = zone_origin_from(joints, response.camera_zx,
+                                      response.camera_zy, args.zone_yaw or 0.0)
+            sighting = Sighting(j1, joints, response, origin, measured)
+            out[zone].append(sighting)
+            seen.append("%s tags %s rms %.2f px" % (zone, sighting.tag_ids,
+                                                   sighting.rms))
+        print("[explore] J1 %+7.1f  %s%s"
+              % (j1, "  |  ".join(seen) if seen else "nothing in view",
+                 "" if measured else "  [commanded joints -- no /joint_states]"))
+        j1 += args.step
+    return out
 
 
 def sweep(io_client, detector, args):
@@ -494,6 +559,35 @@ MAX_CENTRE_OFFSET_HALF_DIAGONALS = {4: 2.0, 3: 1.0}
 # Two tags is enough for a homography and NOT enough to trust one this far from
 # the tags. Four spans the zone in both directions.
 MIN_TAGS_FOR_ORIGIN = 3
+
+# MEASURED 2026-08-06, from the first run where explore's origin was compared
+# against a taped one rather than being handed it.
+#
+#     zone     surveyed r   taped r    radial error   bearing
+#     pickup     232.5 mm   203.2 mm     +29.3 mm       -1 deg
+#     place      256.3 mm   228.6 mm     +27.7 mm      +90 deg
+#
+# Two zones, 91 deg apart, 26 mm apart in radius, agreeing to 1.6 mm, with the
+# tangential component at -2.1 and -1.4 mm -- i.e. zero. A constant radial
+# offset outward, and nothing else.
+#
+# WHY THE FIT DID NOT CATCH IT. fit_zone's residual measures the eleven views
+# against EACH OTHER; a bias every view shares is invisible to it. Both zones
+# fitted at 3.8 and 4.0 mm while sitting 28 mm out. Internal agreement is not
+# accuracy, and this is the cleanest demonstration of the difference the project
+# has produced.
+#
+# WHERE IT COMES FROM, probably: zone_origin_from builds the origin out of
+# camera_zx/zy, the one quantity that depends on the principal-point assumption
+# -- the same reading tag_pick_place's lens re-centring measures at 20-22 mm
+# every run and nulls before it takes its stills. explore has no such reference
+# and inherits the bias whole. That is a hypothesis; the 28 mm is a measurement.
+#
+# n=2. Trustworthy enough to use, because both the sign and the frame are
+# unambiguous and the two agree closely, but a third zone at a new bearing
+# should be run before this is treated as settled. Passing --origin-radial-bias
+# 0 turns it off and restores the raw fit.
+ORIGIN_RADIAL_BIAS_M = -0.0285
 
 
 def gate(sighting, zone_size):
@@ -805,6 +899,17 @@ class _ReplaySighting(object):
 
 def selftest(pitch=EXPLORE_PITCH_DEG, wrist=EXPLORE_WRIST_DEG):
     failures = []
+    # The replay fixtures are raw camera_zx/zy from 2026-08-05, logged before
+    # ORIGIN_RADIAL_BIAS_M existed and against a bench whose truth was asserted
+    # rather than taped. What they test is fit_zone's GEOMETRY -- that it
+    # separates two mats, solves the yaw, and puts each centre where its own
+    # views say it is. Applying tonight's calibration constant on top would test
+    # the constant against data it was not measured from, and the first thing
+    # that would break is this file's own expectations, which is exactly what
+    # happened. Held at zero here, and covered separately below.
+    global ORIGIN_RADIAL_BIAS_M
+    saved_bias = ORIGIN_RADIAL_BIAS_M
+    ORIGIN_RADIAL_BIAS_M = 0.0
 
     def check(name, ok, detail=""):
         print("  %-46s %s%s" % (name, "ok" if ok else "FAIL",
@@ -854,6 +959,24 @@ def selftest(pitch=EXPLORE_PITCH_DEG, wrist=EXPLORE_WRIST_DEG):
         check("both sit 9-10 in out",
               all(0.22 < one.radius < 0.27 for one in fits),
               str(["%.4f" % one.radius for one in fits]))
+
+    ORIGIN_RADIAL_BIAS_M = saved_bias
+
+    print("\nsurveyed-origin radial correction:")
+    # The two zones it was measured from, taped on 2026-08-06. This is the
+    # calibration, checked against its own data -- not a claim it generalises.
+    for name, surveyed, taped in (("pickup", (0.2325, -0.0021), 0.2032),
+                                  ("place", (0.0014, 0.2563), 0.2286)):
+        corrected = apply_origin_radial_bias(surveyed)
+        left = math.hypot(*corrected) - taped
+        check("%s lands within 2 mm of its taped radius" % name,
+              abs(left) < 0.002, "%+.1f mm" % (left * 1000.0))
+    check("a zero bias is a no-op",
+          apply_origin_radial_bias((0.2325, -0.0021), 0.0) == (0.2325, -0.0021))
+    check("an origin at the base does not divide by zero",
+          apply_origin_radial_bias((0.0, 0.0)) == (0.0, 0.0))
+    check("the correction pulls IN, never out",
+          math.hypot(*apply_origin_radial_bias((0.25, 0.0))) < 0.25)
 
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0

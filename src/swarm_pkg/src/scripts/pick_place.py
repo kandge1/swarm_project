@@ -2855,8 +2855,34 @@ def tool_tip_offset(x, y, block_yaw_deg=0.0, holding_block=False):
 # under the old numbers and is the pose least like the one these came from.
 # Resolving the frame needs grasps at a third and fourth bearing, which is what
 # the 2b star was always for.
-JAW_RADIAL_OFFSET_M = -0.0013      # negative = jaws hang INBOARD of the flange
-JAW_TANGENTIAL_OFFSET_M = -0.0088
+#
+# -0.0013 -> -0.0199 ON 2026-08-06, SAME DAY, AND THE RADIAL MODEL IS BACK.
+#
+# The -0.0013 above was fitted against a truth that was never measured: every
+# run before this one passed --truth-block-world as "the sheet is at 9 inches",
+# which is an assumption about where a hand-placed piece of paper landed, not an
+# observation of where the block was. Eight grasps with the BLOCK ITSELF taped
+# from the base, five at bearing +90 and three at bearing 0:
+#
+#     +Y   radial -0.0203 (sd 0.0012)   tangential +0.0001 (sd 0.0029)
+#     +X   radial -0.0192 (sd 0.0016)   tangential -0.0088 (sd 0.0000)
+#
+# The radial term agrees to 1.1 mm across a 90 deg change of bearing, which is
+# the thing three previous calibrations could not establish. The frame question
+# is settled and the answer is the one the 2026-08-04 place-zone survey gave:
+# RADIAL. What defeated it twice was the truth column, not the model.
+#
+# Note where -0.0199 sits: much nearer the original -0.0271 than the -0.0013
+# that replaced it. The August 4 survey was closer to right than the fit that
+# overturned it, because it measured against a ruler and the fit did not.
+#
+# TANGENTIAL IS NOT SETTLED. +X wants -0.0088 and +Y wants 0.0000, and a radial
+# model cannot have both. -0.0033 is their mean and leaves a 4.5 mm typical miss
+# (7.5 mm worst) across all eight runs, against 19.9 mm for the constants it
+# replaces. A zone that gets used repeatedly can do better with
+# --jaw-tangential-offset; the radial term should not need touching again.
+JAW_RADIAL_OFFSET_M = -0.0199      # negative = jaws hang INBOARD of the flange
+JAW_TANGENTIAL_OFFSET_M = -0.0033
 
 
 # RESIDUAL DESCENT BIAS, measured 2026-08-03.
