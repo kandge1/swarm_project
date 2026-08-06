@@ -1634,6 +1634,20 @@ def run_stage1(io_client, detector, args, log):
             identified=bool(identity),
             note=args.note or "")
 
+    if args.survey_only:
+        # Measure and stop, without touching the block. The point is that the
+        # block never moves: repeating this measures the VISION's own
+        # repeatability, where repeating a full pick measures vision plus
+        # however precisely a human puts the block back afterwards. Ten
+        # grasp-and-replace runs on 2026-08-05 put the lateral error at
+        # +3.7 +- 2.4 mm, which is real but cannot be attributed -- a block
+        # placed 3.7 mm off centre every time reads identically.
+        print("\n[stage1] --survey-only: measured and recorded. Nothing moved "
+              "toward the block, so the block is exactly where it was. Run it "
+              "again to measure repeatability with the scene held still.")
+        save_calibration(False)
+        return True
+
     if args.confirm and not args.dry_run:
         while True:
             print_block_report(block, block_yaw_world, grasp_x, grasp_y,

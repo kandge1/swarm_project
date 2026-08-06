@@ -141,8 +141,44 @@ class BlockDetector(Node):
         # 2026-08-05 an explore sweep reported the pickup mat at two bearings
         # 180 deg apart, which one mat cannot do. No amount of reading numbers
         # settles that -- seeing the frame does, immediately.
+        # Every analysed frame to disk, annotated, so "what was the camera
+        # actually looking at" stops being a question that needs a person
+        # standing next to the robot. Off by default because it costs disk and
+        # a few ms; set it and it just starts filling up.
+        #
+        # This is not the same as save_debug_image on the request: that writes
+        # ONE frame to a path the caller names, which only helps when you
+        # already know which call went wrong. The failures worth chasing here
+        # are the ones you notice afterwards -- 2026-08-05, twenty consecutive
+        # stills decoded zero block tags with nothing visibly wrong with the
+        # tag, and no image of any of them existed.
+        self.declare_parameter("frame_dump_dir", "")
+        # Newest N kept, oldest pruned. 640x480 PNG is ~200-400 kB, so 200
+        # frames is under 100 MB -- bounded enough to leave on during a whole
+        # session on a Pi's SD card.
+        self.declare_parameter("frame_dump_keep", 200)
+        # Also write the UNANNOTATED frame. Costs double the disk and is what
+        # you need to re-run detection offline with different parameters --
+        # the annotated one answers "what did it find", the raw one answers
+        # "what could it have found".
+        self.declare_parameter("frame_dump_raw", False)
         self.declare_parameter("show_window", False)
         self.declare_parameter("window_scale", 1.0)
+
+        # Say so at startup. A parameter that silently does nothing when it is
+        # misspelled, or when `ros2 param set` failed and nobody noticed, is
+        # indistinguishable from a parameter that is working and finding
+        # nothing -- and the whole point of the dump is to be believed.
+        dump_dir = str(self.get_parameter("frame_dump_dir").value).strip()
+        if dump_dir:
+            self.get_logger().info(
+                "frame dump ON -> %s (keeping newest %d, raw frames %s)"
+                % (dump_dir, int(self.get_parameter("frame_dump_keep").value),
+                   "on" if self.get_parameter("frame_dump_raw").value else "off"))
+        else:
+            self.get_logger().info(
+                "frame dump off; start with --ros-args -p "
+                "frame_dump_dir:=/tmp/frames to record what the camera sees")
 
         self._lock = threading.Lock()
         self._frame = None
@@ -371,6 +407,7 @@ class BlockDetector(Node):
 
         self._publish_wire(result, zone, block_tags)
         self._show_window(frame, result, zone, block_tags)
+        self._dump_frame(frame, result, zone, block_tags)
 
         if request.save_debug_image and request.debug_image_path:
             self._write_debug_image(frame, result, zone,
@@ -521,6 +558,71 @@ class BlockDetector(Node):
             self.get_logger().warn(
                 "could not publish the detection topic (the service reply is "
                 "unaffected): %s" % exc)
+
+    # -- frame dump ----------------------------------------------------------
+    # Prefix on every file this writes. Pruning only ever deletes files that
+    # start with it, so pointing frame_dump_dir at a directory holding anything
+    # else cannot lose that other thing.
+    _DUMP_PREFIX = "frame_"
+
+    def _dump_frame(self, frame, result, zone, block_tags):
+        """Write this frame to frame_dump_dir. Best effort, always.
+
+        The filename carries the answer, so a failing frame can be found
+        without opening any of them:
+
+            frame_20260805-213412-042_zone4_blocktags0_focus331.png
+
+        zone<N> is how many of the four zone tags decoded, blocktags<N> how many
+        block face tags did. A run of blocktags0 with a healthy focus number is
+        a different problem from a run with focus 30.
+        """
+        directory = str(self.get_parameter("frame_dump_dir").value).strip()
+        if not directory:
+            return
+        try:
+            import zone_view
+            if not os.path.isdir(directory):
+                os.makedirs(directory)
+            gray = frame if frame.ndim == 2 else cv2.cvtColor(
+                frame, cv2.COLOR_BGR2GRAY)
+            focus = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+            now = time.time()
+            stamp = "%s-%03d" % (time.strftime("%Y%m%d-%H%M%S",
+                                               time.localtime(now)),
+                                 int((now % 1.0) * 1000))
+            base = "%s%s_zone%d_blocktags%d_focus%d" % (
+                self._DUMP_PREFIX, stamp, len(result.tag_ids),
+                len(block_tags or []), round(focus))
+            cv2.imwrite(os.path.join(directory, base + ".png"),
+                        zone_view.annotate(frame, result, zone,
+                                           block_tags=block_tags))
+            if bool(self.get_parameter("frame_dump_raw").value):
+                cv2.imwrite(os.path.join(directory, base + "_raw.png"), frame)
+            self._prune_dump(directory)
+        except Exception as exc:                       # noqa: BLE001
+            self.get_logger().warn(
+                "frame dump failed, disabling it for this frame only "
+                "(detection is unaffected): %s" % exc)
+
+    def _prune_dump(self, directory):
+        """Keep the newest frame_dump_keep files, delete the rest.
+
+        Sorted by NAME, not mtime: the names begin with a zero-padded timestamp
+        so they sort chronologically, and name order is stable where mtime on a
+        Pi's SD card with a drifting clock is not. A raw frame sorts next to its
+        annotated twin, so a pair is pruned together.
+        """
+        keep = int(self.get_parameter("frame_dump_keep").value)
+        if keep <= 0:
+            return
+        names = sorted(n for n in os.listdir(directory)
+                       if n.startswith(self._DUMP_PREFIX) and n.endswith(".png"))
+        for name in names[:max(0, len(names) - keep)]:
+            try:
+                os.remove(os.path.join(directory, name))
+            except OSError:
+                pass
 
     def _write_debug_image(self, frame, result, zone, path, block_tags=None):
         """Best effort -- a debug image failing must never fail a detection."""
