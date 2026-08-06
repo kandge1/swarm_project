@@ -2594,6 +2594,32 @@ def _fk_gripper_base(joint_values):
 LAST_FLANGE_FK = []
 
 
+def record_flange_fk(io_client):
+    """Refresh LAST_FLANGE_FK from /joint_states. Returns it, or None.
+
+    Silent, because every arm move calls this and report_reached's four-line
+    block after each of the five survey stills would bury the run. Never raises:
+    a calibration row with no flange is a row that says so, and is strictly
+    better than a run that dies at the end of a successful grasp.
+
+    CALLED FROM BOTH PLANNERS ON PURPOSE. The first version of this global was
+    written only by cartesian_move_to, which made its meaning "the last
+    CARTESIAN pose" while reading as "where the arm is". Under --ik-descent the
+    grasp goes through move_arm_to, so the snapshot taken after it would have
+    been whatever Cartesian move ran last -- empty today, but a hover or a place
+    pose the moment the call graph changes, and a hover is a plausible-looking
+    number that jaw_offset() would consume without complaint. Silent 40 mm.
+    """
+    try:
+        names = list(HOME_RADIANS.keys())
+        current = io_client.current_joint_positions(names)
+        flange, _approach = _fk_flange([current[n] for n in names])
+    except Exception:
+        return None
+    LAST_FLANGE_FK[:] = list(flange)
+    return flange
+
+
 def report_reached(io_client, x, y, z, what="move"):
     """Print where the flange and gripper ACTUALLY are against where they were
     asked to be, in mm, from /joint_states via forward kinematics.
@@ -2624,6 +2650,7 @@ def report_reached(io_client, x, y, z, what="move"):
         print(f"[reached] could not read /joint_states: {exc!r}")
         return
     flange, _approach = _fk_flange(values)
+    LAST_FLANGE_FK[:] = list(flange)
     gripper = _fk_gripper_base(values)
     cx, cy, cz = compensate_for_tip_swing(x, y, z)
     cz = clamp_flange_z(cz, "reported")
@@ -3411,6 +3438,7 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
 
     print(f"Executing joint-space move to ({x}, {y}, {z})...")
     ok = io_client.arm_execute(joint_trajectory)
+    record_flange_fk(io_client)
     if ok is not False and unidirectional:
         # Done HERE rather than as a separate step because this is the only
         # place the commanded joint target is known. Re-approaching the
@@ -3478,8 +3506,9 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
     ok = io_client.arm_execute(solution_msg.joint_trajectory)
     # fraction=1.00 only says the PLAN reached the target. Report where the arm
     # actually is, which is a different question and the one that matters.
-    LAST_FLANGE_FK[:] = report_reached(io_client, x, y, z,
-                                       what="after Cartesian descent") or ()
+    # report_reached updates LAST_FLANGE_FK itself, as does move_arm_to, so the
+    # global is current after every arm move regardless of which planner ran.
+    report_reached(io_client, x, y, z, what="after Cartesian descent")
     return ok
 
 

@@ -1778,6 +1778,10 @@ def run_stage1(io_client, detector, args, log):
     # printed, and never persisted -- nothing here writes a calibration.
     nudge_total = [0.0, 0.0]
 
+    # Filled by descend(), read by save_calibration(). Both are closures over
+    # run_stage1, and the descent happens between them.
+    grasp_flange_fk = []
+
     def save_calibration(grasped):
         """One row per run. Truth is passed through, never assumed."""
         if truth_zone is None and truth_world is None:
@@ -1805,7 +1809,7 @@ def run_stage1(io_client, detector, args, log):
             # model was set to when it went there. On a row with grasped=True and
             # a truth, those plus truth_world give the offset directly, with no
             # frame assumed. This is the evidence the next recalibration needs.
-            flange_fk=list(pp.LAST_FLANGE_FK) or None,
+            flange_fk=list(grasp_flange_fk) or None,
             jaw_offset=[pp.JAW_RADIAL_OFFSET_M, pp.JAW_TANGENTIAL_OFFSET_M],
             note=args.note or "")
 
@@ -1922,10 +1926,19 @@ def run_stage1(io_client, detector, args, log):
     # perfect path that does not.
     def descend():
         if args.ik_descent:
-            return move_arm_to(io_client, grasp_x, grasp_y, grasp_z,
-                               block_yaw_deg=grasp_yaw_deg)
-        return cartesian_move_to(io_client, grasp_x, grasp_y, grasp_z,
-                                 block_yaw_deg=grasp_yaw_deg)
+            ok = move_arm_to(io_client, grasp_x, grasp_y, grasp_z,
+                             block_yaw_deg=grasp_yaw_deg)
+        else:
+            ok = cartesian_move_to(io_client, grasp_x, grasp_y, grasp_z,
+                                   block_yaw_deg=grasp_yaw_deg)
+        # Snapshot NOW. pp.LAST_FLANGE_FK is whatever the most recent Cartesian
+        # move left behind, and the retreat and the place both come after this
+        # one -- the first row written with it recorded the PLACE flange at -Y
+        # and made jaw_offset() report a 213 mm offset. The grasp is the only
+        # pose where the jaws are known to be on the block, so it is the only
+        # one worth keeping.
+        grasp_flange_fk[:] = list(pp.LAST_FLANGE_FK)
+        return ok
 
     steps += [
         ("Descend to grasp", descend),
