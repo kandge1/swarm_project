@@ -195,6 +195,11 @@ QUIET_ZONE_MODULES = bc.QUIET_ZONE_MODULES
 QUIET_ZONE_SQUEEZE_ALLOWED = True
 
 CUT_MARGIN_MM = 3.0             # paper outside the quiet zone, to cut in
+
+# How far outside the quiet-zone boundary the cut line is stroked. Small, but
+# not zero: a line centred on the boundary puts half its width inside the white,
+# and the white is the whole point. Consumes CUT_MARGIN_MM, never quiet zone.
+CUT_LINE_CLEARANCE_MM = 0.25
 LABEL_H_MM = 12.0
 COL_GAP_MM = 22.0
 ROW_GAP_MM = 7.0
@@ -393,6 +398,28 @@ def render_sheet(block_class, dpi, tag_size_mm, face_size_mm,
         _dashed_rect(page, mm_to_px(cx_mm, cy_mm),
                      mm_to_px(cx_mm + cell_w_mm, cy_mm + cell_h_mm),
                      dash_px=mm(1.5))
+
+        # THE CUT LINE. Added 2026-08-06, after a session lost to its absence:
+        # the dashed rectangle is the CELL (tag + quiet zone + CUT_MARGIN +
+        # label), and with nothing else marked the obvious thing to cut to is
+        # the black border of the tag itself. Doing that removes the entire
+        # quiet zone and leaves the block's own surface as the only background
+        # -- on an orange block that is a mid-tone, the quad's edge contrast
+        # collapses, and decoding becomes a coin flip that depends on the
+        # lighting. Two runs an hour apart, same pose and same sharpness, went
+        # 2 block tags and 0.
+        #
+        # Drawn a hair OUTSIDE the quiet-zone boundary so the stroke itself
+        # cannot eat into the white it exists to protect. Cutting on it gives
+        # tag + 2 * quiet, which QUIET_ZONE_SQUEEZE_ALLOWED guarantees never
+        # exceeds the face.
+        cut_lo_mm = cx_mm + CUT_MARGIN_MM - CUT_LINE_CLEARANCE_MM
+        cut_hi_mm = cut_lo_mm + tag_size_mm + 2 * quiet_mm + 2 * CUT_LINE_CLEARANCE_MM
+        cv2.rectangle(page,
+                      mm_to_px(cut_lo_mm, cy_mm + CUT_MARGIN_MM - CUT_LINE_CLEARANCE_MM),
+                      mm_to_px(cut_hi_mm, cy_mm + CUT_MARGIN_MM - CUT_LINE_CLEARANCE_MM
+                               + tag_size_mm + 2 * quiet_mm + 2 * CUT_LINE_CLEARANCE_MM),
+                      0, max(1, mm(0.2)))
 
         side_px = mm(tag_size_mm)
         marker = _marker_bitmap(dictionary, tag_id, side_px)
@@ -633,6 +660,13 @@ def main():
     elif quiet_modules < QUIET_ZONE_MODULES:
         print("  under the %.2f modules this project uses, but above the "
               "1.00 cliff." % QUIET_ZONE_MODULES)
+    print("\nCUT ON THE SOLID SQUARE, %.2f mm, NOT on the tag's black border "
+          "and not on\nthe dashed rectangle. The dashed one is the cell "
+          "(%.1f mm) and includes the\nlabel; the black border is the tag "
+          "(%.1f mm) and cutting there throws the\nquiet zone away entirely, "
+          "which on a dark block face stops it decoding."
+          % (tag_size_mm + 2 * quiet_mm,
+             tag_size_mm + 2 * quiet_mm + 2 * CUT_MARGIN_MM, tag_size_mm))
 
     if args.report:
         return

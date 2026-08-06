@@ -2586,6 +2586,14 @@ def _fk_gripper_base(joint_values):
     return [t[0][3], t[1][3], t[2][3]]
 
 
+# Flange (x, y, z) from FK at the most recent Cartesian descent, so the caller
+# that knows the block's true position can record the pair. A module-level
+# scratch rather than a return value threaded through three layers: every path
+# to a grasp goes through cartesian_move_to, and none of them wants the extra
+# argument. Empty until a descent has happened.
+LAST_FLANGE_FK = []
+
+
 def report_reached(io_client, x, y, z, what="move"):
     """Print where the flange and gripper ACTUALLY are against where they were
     asked to be, in mm, from /joint_states via forward kinematics.
@@ -2641,6 +2649,11 @@ def report_reached(io_client, x, y, z, what="move"):
         print(f"[reached]   -> flange within 5 mm of command: the ARM is fine. "
               f"Any disagreement with a ruler is URDF geometry or the point "
               f"you are measuring from.")
+    # Returned so a caller that KNOWS where the block really was can log the
+    # flange the jaws succeeded from. That pair is the only direct measurement
+    # of the flange-to-jaw offset there is, and re-deriving it from a printed
+    # log is how the last two calibrations of it got their frame wrong.
+    return tuple(flange)
 
 
 def _quat_rotate_z(q):
@@ -2777,8 +2790,46 @@ def tool_tip_offset(x, y, block_yaw_deg=0.0, holding_block=False):
 # +Y and t_hat is -X, so these reproduce the old (-0.0003, -0.0271) exactly
 # there. Only the place zone changes, which is the only place the old model was
 # wrong.
-JAW_RADIAL_OFFSET_M = -0.0271      # negative = jaws hang INBOARD of the flange
-JAW_TANGENTIAL_OFFSET_M = 0.0003
+#
+# -0.0271 -> -0.0013 ON 2026-08-06, AND THE RADIAL MODEL ABOVE IS NOT SAFE
+# OUTSIDE THE Y AXIS. Read the next thirty lines before changing either number.
+#
+# Every waypoint behind the -0.0271 sat at bearing +90 or -90 deg. The pick zone
+# then moved to +X, and at bearing ~0 the model was 26 mm wrong -- it pushed the
+# flange 21.5 mm OUTBOARD of the jaw target when the truth wanted ~1 mm inboard.
+# Two confirmed grasps measured it, each with the vision independently verified
+# against a tape-measured block:
+#
+#   run 1  vision error 3.1 mm   flange FK (0.2214, 0.0075)  block at 0.2286
+#   run 2  vision error 0.7 mm   flange FK (0.2240, 0.0052)  block at 0.2286
+#
+# Solving compensate_for_tip_swing for the offsets that put the flange where
+# each grasp actually succeeded:
+#
+#   run 1 -> radial -0.0014   tangential -0.0098
+#   run 2 -> radial -0.0012   tangential -0.0078
+#
+# Two independent grasps agreeing to 0.2 mm radially. Both un-nudged targets
+# would have closed the jaws ~26 mm outboard of the block.
+#
+# THE FRAME IS OPEN AGAIN, and honestly so. Three measurements now exist --
+# world (-0.3, -20.8) at +Y, (+0.3, +16.9) at -Y, (+5.8, -6.4) at +X -- and NO
+# rigid frame fits all three. Not world-fixed (the +X reading is far too small),
+# not radial (it would have to be ~-19 everywhere), not tool-fixed either: the
+# commanded tool yaw is -135 deg at all three poses, within a degree, so
+# tool-fixed and world-fixed are the same hypothesis here and both fail. The
+# +90/-90 pair is 180 deg apart, where every candidate frame is degenerate;
+# +X is the first measurement that breaks the tie, and it breaks the fit.
+#
+# So these values are CALIBRATED AT BEARING ~0, not derived. They are right
+# where the pick zone is and unverified elsewhere. --jaw-radial-offset and
+# --jaw-tangential-offset exist so a pose that disagrees costs a flag, not an
+# edit; the place zone at -Y is the one to watch, since it was landing well
+# under the old numbers and is the pose least like the one these came from.
+# Resolving the frame needs grasps at a third and fourth bearing, which is what
+# the 2b star was always for.
+JAW_RADIAL_OFFSET_M = -0.0013      # negative = jaws hang INBOARD of the flange
+JAW_TANGENTIAL_OFFSET_M = -0.0088
 
 
 # RESIDUAL DESCENT BIAS, measured 2026-08-03.
@@ -3427,7 +3478,8 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
     ok = io_client.arm_execute(solution_msg.joint_trajectory)
     # fraction=1.00 only says the PLAN reached the target. Report where the arm
     # actually is, which is a different question and the one that matters.
-    report_reached(io_client, x, y, z, what="after Cartesian descent")
+    LAST_FLANGE_FK[:] = report_reached(io_client, x, y, z,
+                                       what="after Cartesian descent") or ()
     return ok
 
 

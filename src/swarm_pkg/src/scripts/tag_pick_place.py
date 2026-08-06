@@ -53,6 +53,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import block_coordinates as bc  # noqa: E402
 import calibration  # noqa: E402
+import pick_place as pp  # noqa: E402  -- module handle, for the tunables below
 import detection_wire as wire  # noqa: E402
 import tool_frame_check  # noqa: E402
 import zone_vision as zv  # noqa: E402
@@ -197,7 +198,29 @@ SETTLE_AFTER_MOVE_SEC = 0.6          # let the arm stop ringing before a still
 # lens sits ~3 mm above it, so there is far more room to go DOWN-and-lose-focus
 # than there is reason to go up. Raising it would trade a measured-good
 # detection height for reach margin that is no longer scarce.
-DETECT_HOVER_Z = 0.240
+# Lens-to-subject distance below which this camera does not focus, measured
+# 2026-07-30/31. px/m x distance = 551 makes every detection report its own
+# distance for free, so this is checkable on every still rather than assumed.
+FOCUS_FLOOR_M = 0.220
+PX_M_INVARIANT = 551.0
+
+# Raised 0.240 -> 0.255 on 2026-08-06, and the old value was not a mistake so
+# much as a design with no margin. At flange z 0.240 the model puts the lens
+# 0.2215 m from the mat -- 1.5 mm above the focus floor -- and the arm's own z
+# error is larger than that. Nine consecutive stills measured 0.2177-0.2217 m
+# (from their own px/m), mean 0.2196, with FIVE OF NINE below the floor. The
+# frames are visibly soft and the block tag decodes about half the time.
+#
+# It also fixes framing, which was failing by two pixels. At 2500 px/m the
+# zone's half-diagonal is 180 px and the lens sat 24 mm (62 px) off centre, for
+# 242 px against the 240 a 480-tall frame allows -- so a corner tag was always
+# just outside. Backing off to 0.255 takes the half-diagonal to 169 px.
+DETECT_HOVER_Z = 0.255
+
+# If the raised hover is out of reach, drop back rather than skipping the still.
+# Reach shrinks with height and this height has not been proven on hardware; a
+# blurred still beats no still, and the log says which one you got.
+DETECT_HOVER_Z_FALLBACK = 0.240
 
 # How far to pull the flange IN from the zone centre, toward the base, before
 # aiming with look_at_quat.
@@ -416,6 +439,44 @@ MULTIVIEW_YAW_OFFSETS_DEG = (90.0, 60.0, 120.0, 30.0, 150.0)
 # framed still had it to 3.2 mm on its own. Two tags is enough to detect a zone.
 # It is not enough to vote on where a block is.
 MULTIVIEW_MIN_TAGS = 3
+
+# Largest lens-position error the survey will correct for framing. Measured
+# readings sit at 20-28 mm; 60 mm is well past anything framing explains, and a
+# reading that big means the arm is not where FK thinks or the zone origin is
+# wrong -- moving the arm on it would make things worse, not better.
+MAX_LENS_BIAS_M = 0.060
+
+# THE BLOCK'S TOP FACE IS NOT ON THE MAT PLANE, AND THE HOMOGRAPHY ONLY KNOWS
+# ABOUT THE MAT PLANE.
+#
+# The four zone tags are printed on paper lying flat, so the homography maps the
+# image to z = 0. A block's top face floats BLOCK_HEIGHT_M above that, which
+# means it projects outward from the camera's nadir by the ratio of the two
+# heights -- a pure magnification about the nadir, zero at the nadir itself and
+# growing linearly with distance from it.
+#
+#     apparent_offset = true_offset * h / (h - t)
+#
+# MEASURED 2026-08-06, and it is exactly this. Eight placements at a
+# tape-measured 20 mm from the zone centre, four directions, read back:
+#
+#     22.4  22.5  23.3  23.3  22.7  22.6  22.9  22.9   ->  mean 22.82 mm
+#
+# and h/(h-t) at the 0.2396 m mean lens height predicts 20 * 1.1431 = 22.86 mm.
+# Agreement to 0.04 mm across both axes and all four directions.
+#
+# This is why twenty-four runs with the block on the zone centre never saw it:
+# the correction is identically zero at the nadir, and the lens re-centring puts
+# the nadir on the zone centre. It only appears once the block is off-centre,
+# where it costs 14% of the offset -- 2.9 mm at 20 mm, 6.5 mm at the zone edge.
+#
+# Applied per still, using THAT still's own lens height and nadir, before the
+# views are fused. Not on the Pi: the correction needs the nadir in zone
+# coordinates, which is the one quantity the camera model supplies, and doing it
+# here keeps the detector node free of any assumption about what it is looking
+# at. The nadir estimate carries the camera model's ~5 mm uncertainty, which
+# enters the correction multiplied by 0.14 -- 0.7 mm, well under the effect.
+TOP_FACE_HEIGHT_M = DEFAULT_BLOCK_THICKNESS
 
 # Give up on the multi-view pass once this many stills have produced a usable
 # homography. 4 tags across >=2 views is already enough to fuse; the remaining
@@ -721,11 +782,22 @@ class Detector:
         response = future.result()
         status = "OK" if response.success else "FAIL"
         print("[detect] %s: %s" % (status, response.message))
-        print("[detect] tags %s | rms %.2f px | %.0f px/m | camera at zone "
-              "(%+.1f, %+.1f) mm"
+        # px/m IS a distance gauge -- see PX_M_INVARIANT. Printing it here
+        # means a soft frame announces itself instead of being inferred later
+        # from a tag that would not decode.
+        distance = (PX_M_INVARIANT / response.scale_px_per_m
+                    if response.scale_px_per_m > 0 else float("nan"))
+        floor_note = ""
+        if response.scale_px_per_m > 0 and distance < FOCUS_FLOOR_M:
+            floor_note = ("  <-- %.0f mm BELOW the %.0f mm focus floor; this "
+                          "frame is soft" % ((FOCUS_FLOOR_M - distance) * 1000,
+                                             FOCUS_FLOOR_M * 1000))
+        print("[detect] tags %s | rms %.2f px | %.0f px/m = %.4f m from the mat "
+              "| camera at zone (%+.1f, %+.1f) mm%s"
               % (list(response.tag_ids), response.homography_rms,
-                 response.scale_px_per_m,
-                 response.camera_zx * 1000.0, response.camera_zy * 1000.0))
+                 response.scale_px_per_m, distance,
+                 response.camera_zx * 1000.0, response.camera_zy * 1000.0,
+                 floor_note))
         for index, block in enumerate(response.blocks):
             print("[detect]   [%d] zone (%+.1f, %+.1f) mm  yaw %+.1f deg  "
                   "%.1f x %.1f mm  %s sym=%d"
@@ -794,6 +866,30 @@ def _response_to_detections(response):
             for b in response.blocks]
 
 
+def correct_top_face_parallax(detections, camera_zx, camera_zy, lens_height_m,
+                              face_height_m=TOP_FACE_HEIGHT_M):
+    """Pull each detection back onto the mat plane the homography actually maps.
+
+    See TOP_FACE_HEIGHT_M. Everything the contour finder measures -- position
+    AND footprint -- is magnified about the nadir by h / (h - t), so the inverse
+    is one scale factor applied to both. Mutates in place and returns the factor
+    so the caller can report it.
+
+    Refuses rather than guesses when the geometry is not sane: a lens height at
+    or below the face height would divide by zero or flip the sign, and both
+    mean the distance estimate is wrong, not that the block is 10 m wide.
+    """
+    if lens_height_m <= face_height_m * 1.5:
+        return None
+    factor = (lens_height_m - face_height_m) / lens_height_m
+    for d in detections:
+        d.zx = camera_zx + (d.zx - camera_zx) * factor
+        d.zy = camera_zy + (d.zy - camera_zy) * factor
+        d.width *= factor
+        d.length *= factor
+    return factor
+
+
 def survey_flange_for_yaw(detector, yaw_deg, z, iterations=3):
     """Flange (x, y) that puts the LENS over the zone centre at THIS wrist yaw.
 
@@ -841,6 +937,24 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
     ids = set()
     used = 0
     best_tag = {}
+    # World (dx, dy) that would put the lens where the TAGS say the zone centre
+    # is, learned from the first usable still and reused for the rest.
+    #
+    # This is framing, and framing is the one job camera_in_zone is
+    # unambiguously right for. Using it to correct a grasp POSITION is what
+    # --verify does and why --verify is off by default: its ~22 mm offset is
+    # uncalibrated, so nulling it there can inject exactly as much error as it
+    # removes. Here the goal IS to null that reading -- "put the lens where the
+    # tags say the centre is" -- so the measurement and the objective are the
+    # same quantity and there is nothing to get wrong. It never touches a block
+    # position.
+    #
+    # Measured 2026-08-06 across nine stills: the lens sat 19.8-27.8 mm off the
+    # zone centre, always the same direction. At 2500 px/m that is 62 px, and
+    # the zone's half-diagonal is 180 px against the 240 a 480-tall frame
+    # allows -- so a corner tag fell outside by two pixels, every time.
+    lens_bias = (0.0, 0.0)
+    bias_known = False
 
     for index, offset in enumerate(MULTIVIEW_YAW_OFFSETS_DEG):
         if used >= MULTIVIEW_ENOUGH_VIEWS:
@@ -852,28 +966,46 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
         # Re-centre the LENS for this yaw. See survey_flange_for_yaw: one
         # flange position cannot frame the zone at more than one wrist angle.
         vx, vy = survey_flange_for_yaw(detector, yaw, z)
+        vx, vy = vx + lens_bias[0], vy + lens_bias[1]
         print("\n[multiview] still %d/%d at wrist yaw %+.0f deg (offset %+.0f)"
-              " -- flange (%.4f, %+.4f), radius %.4f m, lens on the zone centre"
+              " -- flange (%.4f, %+.4f), radius %.4f m%s"
               % (index + 1, len(MULTIVIEW_YAW_OFFSETS_DEG), yaw, offset,
-                 vx, vy, math.hypot(vx, vy)))
+                 vx, vy, math.hypot(vx, vy),
+                 ", lens re-centred by (%+.1f, %+.1f) mm"
+                 % (lens_bias[0] * 1000, lens_bias[1] * 1000) if bias_known
+                 else ", lens on the zone centre by model"))
         # look_at_quat, not a straight-down block_yaw_deg move: at DETECT_HOVER_Z
         # straight-down is unreachable (see that constant). yaw still does its
         # original job -- it is passed straight through to look_at_quat's own
         # block_yaw_deg, which rotates the WRIST before the aiming tilt is
         # applied, so it still changes which tag pair the gripper occludes.
         target = (detector.zone_x, detector.zone_y, detector.zone_z)
-        q = look_at_quat((vx, vy, z), target, block_yaw_deg=yaw)
         # allow_constraint_sampling=False: a still is only worth taking from the
-        # pose it was planned for. See move_arm_to.
-        if not move_arm_to(io_client, vx, vy, z, orientation_override=q,
+        # pose it was planned for. See move_arm_to. Heights are tried tallest
+        # first because the tall one focuses and the short one is known to
+        # reach -- degrading to a soft still beats losing the view entirely.
+        heights = [z] if z != DETECT_HOVER_Z else [z, DETECT_HOVER_Z_FALLBACK]
+        arrived = None
+        for candidate in heights:
+            q = look_at_quat((vx, vy, candidate), target, block_yaw_deg=yaw)
+            if move_arm_to(io_client, vx, vy, candidate,
+                           orientation_override=q,
                            holding_block=holding_block,
                            ori_xy_tolerance=DETECT_ORI_XY_TOLERANCE,
                            allow_constraint_sampling=False):
-            print("[multiview]   move failed at radius %.4f m, skipping this "
-                  "view. A yaw whose framing flange is further out is the first "
-                  "thing to lose to reach -- the remaining offsets are ordered "
-                  "nearest-first for that reason." % math.hypot(vx, vy))
+                arrived = candidate
+                break
+            print("[multiview]   z %.3f out of reach at radius %.4f m"
+                  % (candidate, math.hypot(vx, vy)))
+        if arrived is None:
+            print("[multiview]   no reachable height for this view, skipping. "
+                  "The offsets are ordered nearest-first, so a yaw whose "
+                  "framing flange is further out is the first to go.")
             continue
+        if arrived != z:
+            print("[multiview]   fell back to z %.3f -- expect a softer frame "
+                  "(focus floor is %.0f mm from the mat)"
+                  % (arrived, FOCUS_FLOOR_M * 1000))
         time.sleep(SETTLE_AFTER_MOVE_SEC)
 
         debug = ("%s_view%d.png" % (debug_prefix, index)) if debug_prefix else None
@@ -891,9 +1023,45 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
                     best_tag[tag.tag_id] = tag
             continue
 
+        # Learn the framing correction once, from the first still that saw
+        # enough tags to be believed. Capped: a large reading means something
+        # other than framing is wrong, and chasing it would walk the arm.
+        if not bias_known:
+            measured = math.hypot(response.camera_zx, response.camera_zy)
+            if measured <= MAX_LENS_BIAS_M:
+                lens_bias = detector.zone_delta_to_world(-response.camera_zx,
+                                                         -response.camera_zy)
+                bias_known = True
+                print("[multiview]   lens measured %.1f mm off the zone centre; "
+                      "correcting the remaining stills by (%+.1f, %+.1f) mm"
+                      % (measured * 1000, lens_bias[0] * 1000,
+                         lens_bias[1] * 1000))
+            else:
+                print("[multiview]   lens measured %.1f mm off the zone centre, "
+                      "past the %.0f mm this will correct. Left alone -- that "
+                      "is not a framing error."
+                      % (measured * 1000, MAX_LENS_BIAS_M * 1000))
+
         used += 1
         ids.update(response.tag_ids)
-        per_view.append(_response_to_detections(response))
+        view = _response_to_detections(response)
+        # Before fusing, not after: each still has its own lens height and its
+        # own nadir, so the correction is per-still. Fusing first would average
+        # views taken at different heights and then apply one wrong factor.
+        lens_height = PX_M_INVARIANT / response.scale_px_per_m
+        factor = correct_top_face_parallax(view, response.camera_zx,
+                                           response.camera_zy, lens_height)
+        if factor is None:
+            print("[multiview]   lens height %.4f m is not sane against a "
+                  "%.0f mm block -- top-face parallax NOT corrected for this "
+                  "still" % (lens_height, TOP_FACE_HEIGHT_M * 1000))
+        elif view:
+            print("[multiview]   top-face parallax: lens %.4f m over a %.0f mm "
+                  "block, scaling by %.4f about the nadir "
+                  "(%+.1f mm at the zone edge)"
+                  % (lens_height, TOP_FACE_HEIGHT_M * 1000, factor,
+                     (factor - 1.0) * 50.8))
+        per_view.append(view)
         for tag in detector.last_block_tags:
             previous = best_tag.get(tag.tag_id)
             if previous is None or tag.px_per_module > previous.px_per_module:
@@ -1632,6 +1800,13 @@ def run_stage1(io_client, detector, args, log):
             views=int(block.n_views),
             view_spread_m=float(block.spread_m),
             identified=bool(identity),
+            # The two halves of the flange-to-jaw measurement, recorded together
+            # or not at all: where the flange really was, and what the jaw offset
+            # model was set to when it went there. On a row with grasped=True and
+            # a truth, those plus truth_world give the offset directly, with no
+            # frame assumed. This is the evidence the next recalibration needs.
+            flange_fk=list(pp.LAST_FLANGE_FK) or None,
+            jaw_offset=[pp.JAW_RADIAL_OFFSET_M, pp.JAW_TANGENTIAL_OFFSET_M],
             note=args.note or "")
 
     if args.survey_only:
@@ -1888,6 +2063,16 @@ def parse_args():
                         help="pick whatever is best measured, ignoring "
                              "identity. Only safe with ONE block in the zone -- "
                              "with two it is a coin flip")
+    parser.add_argument("--jaw-radial-offset", type=float, default=None,
+                        metavar="M",
+                        help="override JAW_RADIAL_OFFSET_M (metres, negative = "
+                             "jaws inboard of the flange). The default is "
+                             "calibrated at bearing ~0 and UNVERIFIED "
+                             "elsewhere -- see the constant's comment in "
+                             "pick_place.py before trusting it at a new pose")
+    parser.add_argument("--jaw-tangential-offset", type=float, default=None,
+                        metavar="M",
+                        help="override JAW_TANGENTIAL_OFFSET_M (metres)")
     parser.add_argument("--yes", dest="confirm", action="store_false",
                         help="run without the operator checkpoints. By default "
                              "the run prints where it thinks the block is and "
@@ -1920,6 +2105,22 @@ def main():
     args = parse_args()
     args.zone_z = args.zone_origin[2]
     zone_yaw_rad = math.radians(args.zone_yaw)
+
+    # Written back into pick_place because compensate_for_tip_swing reads them
+    # as module globals -- same pattern --gripper-yaw-deg already uses. Announced
+    # rather than applied silently: these decide where the jaws end up, and a run
+    # whose grasp lands 26 mm off should say so in its own log.
+    if args.jaw_radial_offset is not None:
+        pp.JAW_RADIAL_OFFSET_M = args.jaw_radial_offset
+    if args.jaw_tangential_offset is not None:
+        pp.JAW_TANGENTIAL_OFFSET_M = args.jaw_tangential_offset
+    print("[stage1] jaw offset from the flange: radial %+.1f mm, tangential "
+          "%+.1f mm%s"
+          % (pp.JAW_RADIAL_OFFSET_M * 1000, pp.JAW_TANGENTIAL_OFFSET_M * 1000,
+             "  (overridden on the command line)"
+             if (args.jaw_radial_offset is not None
+                 or args.jaw_tangential_offset is not None) else
+             "  (calibrated at bearing ~0 -- unverified elsewhere)"))
 
     rclpy.init()
     io_client = RobotIOClient()

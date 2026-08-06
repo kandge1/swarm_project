@@ -199,6 +199,78 @@ def arm_error(row):
     return (truth[0] - commanded[0], truth[1] - commanded[1])
 
 
+def jaw_offset(row):
+    """(radial, tangential) metres from the FLANGE to the JAWS, measured.
+
+    The one quantity in this file that needs no frame assumed. On a confirmed
+    grasp the jaws were, by definition, on the block, so truth_world IS the jaw
+    position; flange_fk is where the flange was at that instant. The difference
+    is the offset, and resolving it about the bearing to the flange puts it in
+    the same (radial, tangential) terms compensate_for_tip_swing uses.
+
+    Requires flange_fk, which only rows written on or after 2026-08-06 carry.
+
+    WHY THIS EXISTS: the flange-to-jaw offset has now been calibrated three
+    times and has been wrong in a new frame each time -- world in August 3,
+    radial in August 4, neither at bearing 0 in August 6. Every one of those was
+    reconstructed after the fact from printed logs. This records the measurement
+    at the moment it is made, so the fourth attempt fits data instead of prose.
+    """
+    if not row.get("grasped"):
+        return None
+    flange, truth = row.get("flange_fk"), row.get("truth_world")
+    if not (flange and truth) or len(flange) < 2:
+        return None
+    return radial_and_lateral((truth[0] - flange[0], truth[1] - flange[1]),
+                              (flange[0], flange[1]))
+
+
+def jaw_offset_report(rows):
+    """Lines describing the measured flange-to-jaw offset, grouped by bearing.
+
+    Grouped because the frame is unresolved: one bearing cannot distinguish a
+    radial offset from a world-fixed one, and printing a single mean across
+    bearings is exactly the mistake that produced the last two constants.
+    """
+    seen = []
+    for row in rows:
+        offset = jaw_offset(row)
+        if offset is None:
+            continue
+        flange = row["flange_fk"]
+        seen.append((math.degrees(math.atan2(flange[1], flange[0])), offset,
+                     row.get("jaw_offset")))
+    if not seen:
+        return ["  FLANGE-TO-JAW: no confirmed grasp carries flange FK yet. "
+                "One grasp with", "  --truth-block-world and a 'y' at the final "
+                "prompt starts this table."]
+
+    buckets = {}
+    for bearing, offset, model in seen:
+        buckets.setdefault(round(bearing / 15.0) * 15, []).append((offset, model))
+    lines = ["  FLANGE-TO-JAW, measured on %d confirmed grasp(s):" % len(seen)]
+    for bearing in sorted(buckets):
+        got = buckets[bearing]
+        rad, tan = Stat("radial"), Stat("tangential")
+        for offset, _model in got:
+            rad.add(offset[0])
+            tan.add(offset[1])
+        lines.append("    bearing %+4d deg  n=%d  radial %+5.1f mm%s  "
+                     "tangential %+5.1f mm%s"
+                     % (bearing, len(got), rad.mean * 1000,
+                        " (sd %.1f)" % (rad.spread * 1000) if rad.spread
+                        is not None else "",
+                        tan.mean * 1000,
+                        " (sd %.1f)" % (tan.spread * 1000) if tan.spread
+                        is not None else ""))
+    if len(buckets) < 2:
+        lines.append("    ONE BEARING ONLY -- radial, world-fixed and tool-fixed "
+                     "offsets are")
+        lines.append("    indistinguishable here. A second bearing 30+ deg away "
+                     "decides the frame.")
+    return lines
+
+
 def radial_and_lateral(vector, at_xy):
     """Split a world-frame error into (radial, lateral) about the base.
 
@@ -438,6 +510,9 @@ def report(path=None, rows=None):
                  "GRASPED" if row.get("grasped") else "no grasp"))
 
     print("\n%s\n" % verdict(rows))
+    for line in jaw_offset_report(rows):
+        print(line)
+    print("")
     return 0
 
 
