@@ -103,10 +103,13 @@ def coarse_then_fine_both(io_client, detector, args, zones=("pickup", "place")):
     on where that zone was seen, so the other one is behind the camera there and
     a second detect call would be a service round trip spent on an empty frame.
     """
-    print("[explore] coarse sweep J1 %+.0f..%+.0f step %.0f, watching for %s\n"
-          % (args.start, args.end, args.step, " and ".join(zones)))
+    patience = getattr(args, "coarse_patience", 0)
+    print("[explore] coarse sweep J1 %+.0f..%+.0f step %.0f, watching for %s%s\n"
+          % (args.start, args.end, args.step, " and ".join(zones),
+             ", stopping %d stop(s) after the last one is passed" % patience
+             if patience else ""))
     coarse = sweep_both(io_client, detector, args, args.start, args.end,
-                        args.step, zones)
+                        args.step, zones, patience)
 
     out = {}
     for zone in zones:
@@ -129,12 +132,14 @@ def coarse_then_fine_both(io_client, detector, args, zones=("pickup", "place")):
     return out
 
 
-def sweep_both(io_client, detector, args, start, end, step, zones):
+def sweep_both(io_client, detector, args, start, end, step, zones,
+               stop_after_misses=0):
     """explore.sweep_both over an explicit arc, leaving args untouched."""
     saved = (args.start, args.end, args.step)
     args.start, args.end, args.step = start, end, step
     try:
-        return explore.sweep_both(io_client, detector, args, zones)
+        return explore.sweep_both(io_client, detector, args, zones,
+                                  stop_after_misses)
     finally:
         args.start, args.end, args.step = saved
 
@@ -217,6 +222,11 @@ def main():
                         default=explore.J1_FINE_SPAN_DEG,
                         help="half-width of the fine arc around each zone "
                              "(default %(default)s deg)")
+    parser.add_argument("--coarse-patience", type=int, default=2, metavar="N",
+                        help="end the coarse sweep once every zone has been "
+                             "seen and N consecutive stops have gone by with "
+                             "none in view (default %(default)s). 0 always "
+                             "sweeps the full range")
     parser.add_argument("--single-pass", action="store_true",
                         help="skip the fine arcs -- one coarse sweep only. "
                              "Faster and a worse fit; use it to check a layout, "
@@ -258,6 +268,13 @@ def main():
     parser.add_argument("--truth-place", type=float, nargs=2, metavar=("X", "Y"),
                         default=None,
                         help="the place zone centre's TAPED world position")
+    parser.add_argument("--place-at", type=float, nargs=2, metavar=("X", "Y"),
+                        default=None,
+                        help="release the block at this world XY and do not "
+                             "survey the place zone at all. When the place zone "
+                             "never moves, surveying it every run is a fine arc "
+                             "and a detect call at every coarse stop spent "
+                             "re-deriving a number you already have")
     parser.add_argument("--survey-only", action="store_true",
                         help="find both zones, print them, and stop. Nothing "
                              "is picked. The cheap way to check a new bench "
@@ -332,20 +349,32 @@ def main():
             start=args.start, end=args.end, step=args.step,
             fine_step=args.fine_step, fine_span=args.fine_span,
             pitch=args.pitch, wrist=args.wrist, settle=args.settle,
-            zone_yaw=yaw_fixed)
+            zone_yaw=yaw_fixed, coarse_patience=max(0, args.coarse_patience))
+        # HALVES THE DETECT CALLS when the place zone is fixed. Every coarse
+        # stop otherwise pays a second service round trip for a zone whose
+        # answer is already known, and the place zone earns a fine arc of its
+        # own on top of that.
+        zones = ("pickup",) if args.place_at is not None else ("pickup", "place")
         if args.single_pass:
             seen = sweep_both(io_client, detector, sweep_args, args.start,
-                              args.end, args.step, ("pickup", "place"))
+                              args.end, args.step, zones,
+                              max(0, args.coarse_patience))
             fit_step = args.step
         else:
-            seen = coarse_then_fine_both(io_client, detector, sweep_args)
+            seen = coarse_then_fine_both(io_client, detector, sweep_args, zones)
             fit_step = args.fine_step
+        seen.setdefault("place", [])
 
         print()
         pickup = survey_zone("pickup", seen["pickup"], detector.zone_size,
                              fit_step, yaw_fixed)
-        place = survey_zone("place", seen["place"], detector.zone_size,
-                            fit_step, yaw_fixed)
+        if args.place_at is not None:
+            place = None
+            print("[survey] place zone: not surveyed -- releasing at the "
+                  "(%.4f, %.4f) you gave." % tuple(args.place_at))
+        else:
+            place = survey_zone("place", seen["place"], detector.zone_size,
+                                fit_step, yaw_fixed)
         record_survey("pickup", pickup, args.truth_pickup, args.note)
         record_survey("place", place, args.truth_place, args.note)
 
@@ -353,7 +382,7 @@ def main():
             print("\n[run] no pickup zone, so there is nothing to pick. "
                   "Stopping before the arm moves.")
             return 1
-        if place is None and not args.skip_pick:
+        if place is None and args.place_at is None and not args.skip_pick:
             print("\n[run] pickup found but no place zone. Refusing to pick up "
                   "a block with nowhere to put it -- it would end the run held "
                   "in the jaws.")
@@ -362,10 +391,12 @@ def main():
             print("\n[run] --survey-only: both zones found, nothing picked.")
             return 0
 
-        print("\n[run] pick from (%.4f, %.4f) yaw %+.1f deg  ->  place at "
-              "(%.4f, %.4f)"
+        place_xy = args.place_at if args.place_at is not None else (
+            place.origin if place is not None else None)
+        print("\n[run] pick from (%.4f, %.4f) yaw %+.1f deg  ->  place at %s"
               % (pickup.origin[0], pickup.origin[1], math.degrees(pickup.yaw),
-                 place.origin[0], place.origin[1]))
+                 "(%.4f, %.4f)" % tuple(place_xy) if place_xy else
+                 "nowhere (--skip-pick)"))
 
         argv = ["--zone-origin", "%.4f" % pickup.origin[0],
                 "%.4f" % pickup.origin[1], "0.0",
@@ -375,6 +406,9 @@ def main():
             # Nothing is carried anywhere, so the place zone is not needed and
             # may not even have been seen.
             argv.append("--skip-pick")
+        elif args.place_at is not None:
+            argv += ["--place-origin", "%.4f" % args.place_at[0],
+                     "%.4f" % args.place_at[1]]
         elif place is not None:
             argv += ["--place-origin", "%.4f" % place.origin[0],
                      "%.4f" % place.origin[1]]

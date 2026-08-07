@@ -120,7 +120,21 @@ J1_END_DEG = 135.0
 # 9 deg of the optical axis for the corners to survive -- and the 2026-08-05
 # sweep duly caught the mat at three bearings, missed it entirely at the one
 # aimed straight at it, and produced estimates disagreeing by 335 mm.
-J1_COARSE_STEP_DEG = 10.0
+#
+# 10 -> 15 on 2026-08-06. The paragraph above is about the window in which the
+# FIT is trustworthy, and that is the fine pass's problem, not the coarse pass's.
+# What the coarse pass has to do is pick an anchor, and coarse_then_fine chooses
+# that anchor on TAG COUNT with no minimum -- one tag is enough to know the mat
+# is that way, and one tag is visible over most of the +-30 deg FOV rather than
+# the ~18 deg all-four window. The coarse origin estimates are discarded outright
+# when the fine pass replaces them, so their quality never reaches the answer.
+#
+# 15 deg still lands 1-2 hits on a 4 in square at every radius in the sweep
+# (25 deg subtended at 9 in, 35 deg at 6.3 in). 20 deg does not: at 9 in it can
+# fall through the gap entirely, which is a zone reported as never seen.
+#
+# If a zone is ever missed, put this back to 10 before suspecting anything else.
+J1_COARSE_STEP_DEG = 15.0
 
 # FINE step, swept +-J1_FINE_SPAN_DEG either side of the best coarse hit. At
 # this radius 2.5 deg is about 10 mm of arc, below the tolerance the downstream
@@ -433,10 +447,23 @@ def coarse_then_fine(io_client, detector, args):
     return coarse, fine
 
 
-def sweep_both(io_client, detector, args, zones=("pickup", "place")):
+def sweep_both(io_client, detector, args, zones=("pickup", "place"),
+               stop_after_misses=0):
     """One arm sweep, every zone in `zones` detected at each stop.
 
     -> {zone_name: [Sighting, ...]}
+
+    stop_after_misses > 0 ends the sweep early once EVERY requested zone has
+    been seen at least once and that many consecutive stops have then gone by
+    with none of them in view. The sweep has passed the zones; the rest of the
+    270 deg is a zone-free arc being paid for at ~3 s a stop.
+
+    Guarded on "every zone seen", not "any", so a two-zone sweep cannot stop
+    after finding the first one and leave the second unlooked-for.
+
+    NOT used on the fine arc. That arc is 11 stops centred on a zone already
+    found, and every one of them is a view the fit wants.
+
 
     ONE SWEEP, NOT TWO, because the arm motion is what costs time here: a stop
     is a move plus a settle plus a detect, and the move and the settle dominate.
@@ -452,6 +479,7 @@ def sweep_both(io_client, detector, args, zones=("pickup", "place")):
     out = {zone: [] for zone in zones}
     j1 = args.start
     first = True
+    misses = 0
     while j1 <= args.end + 1e-9:
         commanded = joints_for(j1, args.pitch, args.wrist)
         seconds = MOVE_SECONDS if first else STEP_SECONDS
@@ -477,6 +505,15 @@ def sweep_both(io_client, detector, args, zones=("pickup", "place")):
               % (j1, "  |  ".join(seen) if seen else "nothing in view",
                  "" if measured else "  [commanded joints -- no /joint_states]"))
         j1 += args.step
+
+        if stop_after_misses > 0:
+            misses = 0 if seen else misses + 1
+            if all(out[zone] for zone in zones) and misses >= stop_after_misses:
+                print("[explore] every zone seen and %d stop(s) since the last "
+                      "one -- the sweep has gone past them. Stopping here "
+                      "instead of panning the remaining %+.0f deg."
+                      % (misses, args.end - j1 + args.step))
+                break
     return out
 
 

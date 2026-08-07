@@ -1753,8 +1753,7 @@ says `flange within 5 mm of command: the ARM is fine` — the joint loops are
 closed and converged. PID is already there and cannot see this error; MPC tracks
 the same wrong target more elegantly; an observer needs a sensor observing the
 quantity, and the encoders cannot see model error by construction. What was
-wrong all day was the **map from joint angles to real-world position**, which is
-kinematic calibration. Conflating the two is how a month gets lost.
+wrong all day was the **map from joint angles to real-world position**, which is kinematic calibration. Conflating the two is how a month gets lost.
 
 **2. Diverse data beats more data, and it is not close.**
 

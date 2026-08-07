@@ -669,3 +669,17 @@ If it doesn't work:
   `colcon build --packages-select swarm_network` and relaunch. Cyclone reads
   the XML once at process start, so a running launch keeps the old peers.
 
+
+cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+
+python3 explore_pick_place.py --any-block --skip-pick --position A   # (-3,-7) in
+python3 explore_pick_place.py --any-block --skip-pick --position B   # ( 0,-7)
+python3 explore_pick_place.py --any-block --skip-pick --position C   # (+3,-7)
+python3 explore_pick_place.py --any-block --skip-pick --position D   # (+5,-5)
+python3 explore_pick_place.py --any-block --skip-pick --position E   # (+6,-3)
+python3 explore_pick_place.py --any-block --skip-pick --position F   # (+7,-2)
+python3 explore_pick_place.py --any-block --skip-pick --position G   # (+8,-1)
+python3 explore_pick_place.py --any-block --skip-pick --position H   # (+9, 0)
+python3 explore_pick_place.py --any-block --skip-pick --position I   # (+8,+1)
+python3 explore_pick_place.py --any-block --skip-pick --position J   # (+7,+2)
+python3 explore_pick_place.py --any-block --skip-pick --position K   # (+6,+2)
