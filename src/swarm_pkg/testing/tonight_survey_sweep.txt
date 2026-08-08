@@ -1,0 +1,124 @@
+TONIGHT'S SURVEY SWEEP -- 2026-08-07, ~2 hours
+==============================================
+
+WHAT THIS MEASURES, AND WHY IT IS THE RIGHT THING TO DO NOW
+-----------------------------------------------------------
+The demo pose is at 1.13 mm. The one term known to VARY across the workspace
+is the survey bias: ORIGIN_RADIAL_BIAS_M = -0.0285 is fitted from n=2, and
+position A already came back 6.06 mm off its taped truth. That is the largest
+unknown left, and it is the only thing standing between "1.1 mm at one pose"
+and "1-2 mm anywhere in the pickup area".
+
+  NO BLOCK NEEDED.      record_survey compares the SURVEYED zone origin against
+  NO CALIPER NEEDED.    the TAPED one. No block is involved, so there is nothing
+  NO NUDGE NEEDED.      to grasp and nothing to judge by eye.
+  GRIPPER STAYS HOME.   The arm only pans to look.
+
+You move the tag mat, type one command, and wait ~4-5 min. That is the whole
+loop. This is deliberately the least skilled and least tiring measurement in
+the project, and it happens to be the most valuable one left.
+
+
+BEFORE YOU START
+----------------
+Terminals 1, 2, 4 up as usual (robot hardware, mars planning, block detector).
+
+Take the BLOCK OFF the mat -- it is not used, and a block sitting on the zone
+centre can occlude a tag at some pan angles.
+
+The place mat is not needed either. If one happens to be on the bench it gets
+surveyed for free; pass --truth-place X Y if you know where it is taped.
+
+PRE-MARK AS YOU GO. When you set the mat down for a position, mark the corners
+on the bench with tape before running. That is what makes tomorrow "place mat
+on marks" instead of "measure mat position", and it is why the truth column is
+a measurement rather than an intention (Lesson 5).
+
+
+THE COMMANDS -- one per position, in this order
+-----------------------------------------------
+Run from:  cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+
+Do B FIRST as the dress rehearsal. Check its row lands (instructions below)
+before spending 90 minutes on the other fourteen.
+
+  python3 explore_pick_place.py --survey-only --position B    # ( 0,-7) brg  -90
+  python3 explore_pick_place.py --survey-only --position A    # (-3,-7) brg -113
+  python3 explore_pick_place.py --survey-only --position C    # (+3,-7) brg  -67
+  python3 explore_pick_place.py --survey-only --position D    # (+5,-5) brg  -45
+  python3 explore_pick_place.py --survey-only --position E    # (+6,-3) brg  -27
+  python3 explore_pick_place.py --survey-only --position F    # (+7,-2) brg  -16
+  python3 explore_pick_place.py --survey-only --position G    # (+8,-1) brg   -7
+  python3 explore_pick_place.py --survey-only --position H    # (+9, 0) brg    0
+  python3 explore_pick_place.py --survey-only --position I    # (+8,+1) brg   +7
+  python3 explore_pick_place.py --survey-only --position J    # (+7,+2) brg  +16
+  python3 explore_pick_place.py --survey-only --position K    # (+6,+2) brg  +18
+  python3 explore_pick_place.py --survey-only --position M    # (+3,+7) brg  +67
+  python3 explore_pick_place.py --survey-only --position L    # ( 0,+7) brg  +90
+  python3 explore_pick_place.py --survey-only --position N    # (+5, 0) brg    0
+  python3 explore_pick_place.py --survey-only --position O    # (+7, 0) brg    0
+
+DO NOT pass --zone-origin. That would hand the survey the answer and exclude
+the very term being measured -- which is how survey_error read "0.0 +- 0.0"
+for the life of the project while the origin sat 28 mm out.
+
+--position sets --truth-pickup from the table and names the row. If your tape
+lands somewhere other than the nominal inches, pass the measured value instead:
+  --position B --truth-pickup 0.0012 -0.1781
+A taped measurement beats a nominal layout, and an explicit --truth-pickup wins.
+
+It REFUSES to record a truth more than 30 mm from the surveyed origin, so a
+mistyped position or a mat on the wrong marks stops rather than poisoning the
+fit.
+
+
+ORDER RATIONALE
+---------------
+B first (dress rehearsal). Then A..K walks the mat around the arc in small
+steps, so consecutive positions are short mat moves rather than jumps across
+the bench. M before L because M is on the way. N and O last: they are the
+radius ladder at bearing 0 and they share H's bearing, so if you run out of
+time they are the cheapest to finish tomorrow morning -- but do try, because
+they are what pins the reach coefficient.
+
+IF YOU RUN SHORT: stop wherever you are. Every position is a complete,
+independent row. Drop C, E, J first if you want to prioritise. Never skip
+L, M, N, O -- bearing coverage and the radius ladder are the entire point.
+
+
+AFTER B, CHECK THE ROW LANDED (10 seconds)
+------------------------------------------
+  python3 calibration.py --fit --channel survey
+
+Expect: "SURVEY channel: 3 usable row(s)" (A and B from this morning, plus the
+new B) and "NOT ENOUGH DATA to fit -- 4 parameters need at least 6 rows."
+That refusal is correct and it proves the plumbing works.
+
+Watch for, in the run's own output:
+  [survey] pickup vs taped (x, y): off by NN mm     <- the measurement
+  [run] --survey-only: pickup surveyed. Nothing picked, the gripper never
+        left home.                                  <- clean exit
+
+If you instead see "Refusing to pick up a block with nowhere to put it", you
+are running an older copy of the file -- that ordering bug was fixed tonight.
+
+
+WHEN 6+ POSITIONS ARE IN
+------------------------
+  python3 calibration.py --fit --channel survey
+
+reports radial and tangential as
+    c + kx*cos(bearing) + ky*sin(bearing) + kr*(radius - r_bar)
+with a standard error on every coefficient. Read the standard errors BEFORE
+the coefficients: anything printed "NOT measured (< 2 se)" is a number the
+data did not establish, however plausible it looks.
+
+  all coefficients < 2 se  -> the survey bias is already inside the noise
+                              across the workspace. That is a RESULT: 1.1 mm
+                              generalises and tomorrow is confirmation.
+  c measured, others not   -> ORIGIN_RADIAL_BIAS_M is the right SHAPE and just
+                              wants its value updated. One-line change.
+  kx or ky measured        -> there is a WORLD-fixed component, which
+                              apply_origin_radial_bias cannot express because it
+                              is radial by construction. New finding, new home.
+  R^2 < 0.7                -> do not apply anything. Report the means.

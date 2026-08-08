@@ -44,6 +44,7 @@ import argparse
 import csv
 import math
 import os
+import subprocess
 import sys
 import time
 
@@ -1579,6 +1580,137 @@ def select_block(fused, identity=None, want_class=None):
     return None
 
 
+# Fingertip clearance above the block's TOP FACE at the measurement park, in
+# metres. Set from --measure-clearance-mm.
+#
+# REFERENCED TO THE TOP FACE, NOT THE GRASP, and the difference is a whole
+# BLOCK_HEIGHT_M/2. At the grasp the fingertips sit level with the block CENTRE,
+# 15 mm BELOW the top face, because that is what straddling a block means. So
+# "grasp + 15 mm" is flush with the top face and would touch it; the number in
+# this flag is the gap you can actually see, and it stays meaningful if the block
+# size changes.
+MEASURE_CLEARANCE_M = 0.008
+
+# WHY THIS EXISTS. The standard hover is APPROACH_HEIGHT = 40 mm above the grasp,
+# which puts the fingertips 25 mm above the block's top face. Judging a lateral
+# offset from up there, by eye, was measured on 2026-08-07 as the weakest link in
+# the whole pipeline -- and it is the number every calibration constant is fitted
+# from. 8 mm of clearance puts the jaws beside a face you can sight along.
+#
+# NOT A DESCENT ONTO THE BLOCK. The tips stop ABOVE the top face and never come
+# down beside it, so the ~5 mm jaw-opening margin over a 30 mm block is never in
+# play. That margin is the reason the park is not simply put at grasp height.
+
+
+_GIT_SHA = []
+
+
+def measure_park_z(hover_z):
+    """Flange z for the measurement park, or None to stay at the hover.
+
+    None when the clearance is disabled, or when the hover is already at or
+    below it -- hover_z_for's reach clamp only ever LOWERS the hover, so at a far
+    corner the hover can already be under this height and "lowering" to it would
+    be a lift, re-arming the very slack the unidirectional approach just settled.
+    """
+    if MEASURE_CLEARANCE_M <= 0:
+        return None
+    top_face = pp.MAT_SURFACE_Z + pp.BLOCK_HEIGHT_M
+    z = top_face + MEASURE_CLEARANCE_M + pp.GRASP_OFFSET_Z
+    return z if z < hover_z - 1e-4 else None
+
+
+def _git_sha():
+    """Short HEAD sha, with '+dirty' when the tree has uncommitted changes.
+
+    Cached, because it shells out and save_calibration is on the path of every
+    run. Returns None rather than raising: a row that cannot name its commit is
+    strictly better than a grasp that dies at the end.
+    """
+    if _GIT_SHA:
+        return _GIT_SHA[0]
+    sha = None
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        sha = subprocess.check_output(
+            ["git", "-C", here, "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL).decode().strip()
+        dirty = subprocess.check_output(
+            ["git", "-C", here, "status", "--porcelain"],
+            stderr=subprocess.DEVNULL).decode().strip()
+        if dirty:
+            sha += "+dirty"
+    except Exception:                                   # noqa: BLE001
+        sha = None
+    _GIT_SHA.append(sha)
+    return sha
+
+
+def model_provenance(args=None):
+    """Which model produced this row. Recorded on EVERY calibration row.
+
+    WHY THIS EXISTS. save_calibration recorded twenty fields and not one of them
+    said which constants were live. The 61 rows of history are consequently
+    un-poolable: rows 44-52 show radial nudges of +20 to +25 mm and rows 53-57
+    show +4 to +5, because JAW_RADIAL_OFFSET_M changed underneath them and
+    nothing marks where. The parallax correction and the yaw-fold are code
+    changes with no marker at all, and ten rows carry a hand-added `invalid`
+    field that nothing in the repo writes or reads.
+
+    On a day that fits constants in the morning and verifies them in the
+    afternoon, that failure repeats within hours unless the row says which side
+    of the change it is on. The git sha covers every code change at once; the
+    named constants cover the ones that get tuned without a commit (they are all
+    read at call time as module globals, which is what --jaw-tangential-offset
+    and friends rely on).
+
+    ORIGIN_RADIAL_BIAS_M is read out of sys.modules rather than imported:
+    tag_pick_place does not depend on explore, only explore_pick_place does, and
+    adding the import edge to record one float would make a cycle. When explore
+    is not loaded the survey did not come from it, so None is the honest value.
+    """
+    explore = sys.modules.get("explore")
+    return {
+        "git": _git_sha(),
+        # Tool geometry and the corrections layered on it.
+        "GRASP_OFFSET_Z": pp.GRASP_OFFSET_Z,
+        "DESCENT_BIAS_Z": pp.DESCENT_BIAS_Z,
+        "JAW_RADIAL_OFFSET_M": pp.JAW_RADIAL_OFFSET_M,
+        "JAW_TANGENTIAL_OFFSET_M": pp.JAW_TANGENTIAL_OFFSET_M,
+        "GRIPPER_YAW_DEG": pp.GRIPPER_YAW_DEG,
+        "GRIPPER_MOUNT_TILT_X_DEG": pp.GRIPPER_MOUNT_TILT_X_DEG,
+        "GRIPPER_MOUNT_TILT_Y_DEG": pp.GRIPPER_MOUNT_TILT_Y_DEG,
+        "SAG_PRECOMP_RADIAL_DEG": pp.SAG_PRECOMP_RADIAL_DEG,
+        "MAT_SURFACE_Z": pp.MAT_SURFACE_Z,
+        "BLOCK_HEIGHT_M": pp.BLOCK_HEIGHT_M,
+        # J1 lost motion. Both matter and they are not independent:
+        # J1_RESIDUAL_BIAS_DEG is applied ONLY inside j1_unidirectional_approach,
+        # so it is inert on any move that did not ask for it.
+        "J1_UNIDIRECTIONAL_ENABLED": pp.J1_UNIDIRECTIONAL_ENABLED,
+        "J1_RESIDUAL_BIAS_DEG": pp.J1_RESIDUAL_BIAS_DEG,
+        "J1_APPROACH_DIR": pp.J1_APPROACH_DIR,
+        # The survey side. None when explore was not the source of the origin.
+        "ORIGIN_RADIAL_BIAS_M": (getattr(explore, "ORIGIN_RADIAL_BIAS_M", None)
+                                 if explore is not None else None),
+        "DETECT_HOVER_Z": DETECT_HOVER_Z,
+        # HOW FAR AWAY THE OPERATOR WAS WHEN THEY JUDGED THE OFFSET, in mm of
+        # fingertip clearance above the block's top face. This is not a detail.
+        #
+        # Measured 2026-08-07: at the old 40 mm hover the fingertips sit 25 mm
+        # above the top face, and judging a lateral offset from there produced a
+        # repeatable +4.7 mm radial reading (spread 0.46 over three runs) where a
+        # caliper at 8 mm reads +0.53. Not noise -- a 9.5 deg viewing angle, and
+        # the reported sign was OPPOSITE to the arm's true error, which FK puts
+        # at 1.2 mm INWARD. The whole "5.8 mm nudge" this session set out to
+        # remove was mostly that.
+        #
+        # So a nudge is only as good as the distance it was read from, and
+        # without this field the history cannot tell a 0.5 mm measurement from a
+        # 5 mm illusion. Fit nudge rows only where this is small.
+        "measure_clearance_mm": MEASURE_CLEARANCE_M * 1000.0,
+    }
+
+
 def run_stage1(io_client, detector, args, log):
     # DETECT_HOVER_Z, not MAX_HOVER_Z: this is the height that actually FOCUSES
     # (measured 2026-07-30/31 -- see the constant). MAX_HOVER_Z = 0.205m was the
@@ -1851,6 +1983,11 @@ def run_stage1(io_client, detector, args, log):
     # A list, not a float, so the confirm loops can mutate it the same way
     # nudge_total is mutated -- they are closures over this scope.
     yaw_nudge_total = [0.0]
+    # Set once the operator has been shown a PARKED gripper and given the chance
+    # to correct it. That is the difference between "measured zero" and "never
+    # asked", and nudge_total alone cannot tell them apart -- see
+    # nudge_measured in save_calibration.
+    nudge_offered = [False]
 
     # Filled by descend(), read by save_calibration(). Both are closures over
     # run_stage1, and the descent happens between them.
@@ -1897,6 +2034,29 @@ def run_stage1(io_client, detector, args, log):
             # frame assumed. This is the evidence the next recalibration needs.
             flange_fk=list(grasp_flange_fk) or None,
             jaw_offset=[pp.JAW_RADIAL_OFFSET_M, pp.JAW_TANGENTIAL_OFFSET_M],
+            # DID THE OPERATOR ACTUALLY MEASURE, or was no nudge ever offered?
+            # 27 of the first 61 rows carry nudge [0.0, 0.0] and summarise()
+            # counts every one of them as a measured zero, because `if nudge:` is
+            # true for a non-empty list. They come from --survey-only, --dry-run
+            # and the abort paths, where the operator was never shown a parked
+            # gripper at all. Harmless while the numbers were being eyeballed in
+            # a terminal; fatal the moment anything fits them, since they drag
+            # every mean toward zero with rows that measured nothing.
+            nudge_measured=bool(nudge_offered[0]),
+            # THREE RADII, because a radial correction has to be fitted against
+            # the radius it will be applied at, and these differ by ~20 mm:
+            #   zone_r    the surveyed zone origin -- where a survey/lens-scale
+            #             bias lives, and what apply_origin_radial_bias scales
+            #   jaw_r     the commanded jaw target
+            #   flange_r  where the flange actually went, i.e. jaw_r pushed out
+            #             by compensate_for_tip_swing
+            # Fitting against the wrong one visibly moves the radius coefficient,
+            # which is what tells us which slot Saturday's correction belongs in.
+            zone_radius_m=math.hypot(args.zone_origin[0], args.zone_origin[1]),
+            jaw_radius_m=math.hypot(grasp_x, grasp_y),
+            flange_radius_m=(math.hypot(grasp_flange_fk[0], grasp_flange_fk[1])
+                             if len(grasp_flange_fk) >= 2 else None),
+            constants=model_provenance(args),
             note=args.note or "")
 
     if args.survey_only:
@@ -1939,10 +2099,26 @@ def run_stage1(io_client, detector, args, log):
                 break
             print("[confirm] did not understand %r." % answer)
 
+    # unidirectional=True for the reason spelled out at the confirm-loop park
+    # below: J1 undershoots by a measured 0.94 deg in whichever direction it
+    # last travelled, worth 6.4 mm of tangential scatter, and this is the move
+    # that decides which flank of its slack the joint rests on.
+    #
+    # THIS is the pre-grasp move on the UNATTENDED path (--yes), which is how
+    # explore_pick_place drives a sweep -- so leaving it out here would have left
+    # the fix inactive on exactly the runs Saturday depends on.
+    #
+    # Deliberately NOT on the descent that follows. compensate_for_tip_swing's
+    # lateral terms have no z dependence, so the hover and the grasp share an
+    # identical commanded flange XY: J1's target does not change during the
+    # descent, the joint does not turn, and it keeps the flank this move left it
+    # on. Adding it there would inject a J1_APPROACH_LEAD_DEG base rotation into
+    # a move whose whole job is not to travel sideways.
     steps = [
         ("Move over the block",
          lambda: move_arm_to(io_client, grasp_x, grasp_y, grasp_hover,
-                             block_yaw_deg=grasp_yaw_deg)),
+                             block_yaw_deg=grasp_yaw_deg,
+                             unidirectional=True)),
     ]
 
     if args.dry_run:
@@ -1958,10 +2134,18 @@ def run_stage1(io_client, detector, args, log):
             if not action():
                 print("[stage1] step FAILED: %s" % name)
                 return False
-        print("\n[stage1] --dry-run: parked over the block at grasp height and "
-              "grasp yaw. LOOK AT THE ARM. How far, and which way, are the jaws "
-              "off the block? That number is the arm's true error at the grasp "
-              "pose -- it is not derivable from anything in this log.")
+        # "at grasp height" was wrong and it mattered: the only step above moves
+        # to grasp_hover, which is APPROACH_HEIGHT above the grasp. Judging a
+        # lateral offset from there is the weakest measurement in the pipeline
+        # (see --measure-clearance-mm), and a message claiming otherwise is how
+        # a hover reading gets written down as a grasp reading.
+        print("\n[stage1] --dry-run: parked over the block at grasp YAW, %.0f mm "
+              "above the grasp height. LOOK AT THE ARM. How far, and which way, "
+              "are the jaws off the block? That number is the arm's true error "
+              "at this pose -- it is not derivable from anything in this log."
+              % ((grasp_hover - grasp_z) * 1000))
+        if len(pp.LAST_FLANGE_FK) >= 2:
+            grasp_flange_fk[:] = list(pp.LAST_FLANGE_FK)
         save_calibration(False)
         return True
 
@@ -1970,21 +2154,61 @@ def run_stage1(io_client, detector, args, log):
         # after any nudge so what you approve is what you are looking at.
         while True:
             print("\n=== Move over the block ===")
+            # unidirectional=True: MEASURED ON HARDWARE 2026-08-07, 73 moves
+            # across both session-1 trials. J1 undershoots its commanded angle by
+            # 0.94 deg (sd 0.12) in whichever direction it travelled -- +ve
+            # commands land -0.89, -ve commands land +0.97, and the magnitude is
+            # the same for a 0.9 deg move as for a 22 deg one, so it is lost
+            # motion and not a tracking error. Approaching the SAME commanded
+            # point from opposite sides landed 6.3 / 6.0 / 6.9 mm apart.
+            #
+            # j1_unidirectional_approach fixes both halves at once: it makes the
+            # last leg always travel in +J1_APPROACH_DIR, which turns the coin
+            # flip into a constant, and it is the only place
+            # J1_RESIDUAL_BIAS_DEG is applied, which cancels the constant. That
+            # bias was fitted at 1.10 deg from the zone survey and these trials
+            # measure 0.94 -- right to 0.16 deg, so nothing needs refitting.
+            #
+            # WHY THIS WAS MISSING: move_arm_to defaults unidirectional=False,
+            # and no call site in this file ever passed it. Only pick_place's
+            # legacy fixed-coordinate flow and zone_calibrate did -- which is why
+            # the survey that MEASURED the bias saw it work while the code that
+            # actually picks blocks never got it.
             if not move_arm_to(io_client, grasp_x, grasp_y, grasp_hover,
-                               block_yaw_deg=grasp_yaw_deg):
+                               block_yaw_deg=grasp_yaw_deg,
+                               unidirectional=True):
                 print("[stage1] step FAILED: Move over the block")
                 return False
+            park_z = measure_park_z(grasp_hover)
+            if park_z is not None:
+                print("\n=== Lower to the measurement clearance ===")
+                if cartesian_move_to(io_client, grasp_x, grasp_y, park_z,
+                                     block_yaw_deg=grasp_yaw_deg) is False:
+                    # BEST EFFORT. A failed descent leaves the arm at the hover,
+                    # which is where it used to sit anyway -- a worse view, not a
+                    # broken run, and refusing the measurement outright would be
+                    # worse than offering a harder one.
+                    print("[confirm] could not lower to the measurement "
+                          "clearance; measuring from the hover instead.")
+                    park_z = None
             print_block_report(block, block_yaw_world, grasp_x, grasp_y,
                                grasp_z, grasp_yaw_deg, grasp_hover,
                                nudge_total, args.block_class)
-            print("[confirm] parked HERE, %.0f mm above the grasp height."
-                  % ((grasp_hover - grasp_z) * 1000))
+            here = park_z if park_z is not None else grasp_hover
+            print("[confirm] parked HERE, %.0f mm above the grasp height, "
+                  "fingertips %.0f mm above the block's top face."
+                  % ((here - grasp_z) * 1000,
+                     (here - pp.GRASP_OFFSET_Z
+                      - (pp.MAT_SURFACE_Z + pp.BLOCK_HEIGHT_M)) * 1000))
             print("[confirm] LOOK AT THE JAWS. If they are off the block, type "
                   "the offset you can see:")
             print("[confirm]   'dx dy' in mm, world axes -- +x is world +X, "
                   "+y is world +Y.")
             print("[confirm]   'dx dy dyaw' also turns the wrist, dyaw in "
                   "DEGREES.")
+            # The gripper is parked and the operator can see it. From here a
+            # nudge of zero is a measurement.
+            nudge_offered[0] = True
             answer = _ask("[confirm] ENTER = descend and grasp   'dx dy' mm = "
                           "nudge and re-park   q = abort > ")
             if answer in ("q", "quit", "n", "no"):
@@ -2027,6 +2251,28 @@ def run_stage1(io_client, detector, args, log):
                  yaw_nudge_total[0]))
         print("[stage1] Nothing descended. The block is exactly where it was, "
               "so move the ZONE and run the next position.")
+        # THE FLANGE AT THE APPROVED PARK. pp.LAST_FLANGE_FK is already current
+        # here -- the park at the top of the confirm loop goes through
+        # move_arm_to, which calls record_flange_fk -- and it was being thrown
+        # away, because grasp_flange_fk is only written by descend() and this
+        # path returns before descend() is ever reached. Every skip-pick row in
+        # the history therefore has flange_fk: null.
+        #
+        # NOT A JAW-OFFSET MEASUREMENT, and it must not be used as one. The
+        # flange was COMMANDED to (jaw target - the modelled offset), so
+        # commanded_world - flange_fk recovers the constant already configured,
+        # plus ~0.5 mm of tracking error. It is bearing-independent by
+        # construction and would produce a beautifully tight table across every
+        # bearing bin that says nothing at all -- the exact "internal agreement
+        # is not accuracy" trap of Lesson 4, and the mechanism behind three
+        # previous wrong jaw constants. calibration.jaw_offset() still requires
+        # grasped=True and an external truth, correctly.
+        #
+        # What it IS good for: confirming the compensation was applied and the
+        # arm tracked it, and supplying flange_radius_m so a radial fit can be
+        # tested against the radius it will be applied at.
+        if len(pp.LAST_FLANGE_FK) >= 2:
+            grasp_flange_fk[:] = list(pp.LAST_FLANGE_FK)
         save_calibration(False)
         return True
 
@@ -2233,6 +2479,13 @@ def parse_args(argv=None):
                              "again before descending -- and at that second "
                              "prompt you can type 'dx dy' in mm to nudge the "
                              "target by the offset you can see")
+    parser.add_argument("--measure-clearance-mm", type=float,
+                        default=MEASURE_CLEARANCE_M * 1000.0, metavar="MM",
+                        help="fingertip clearance above the block's TOP FACE at "
+                             "the confirm park, mm (default %(default).0f). The "
+                             "arm goes to the normal hover, then straight down "
+                             "to here, so you judge the offset from ~8 mm away "
+                             "instead of 25. Pass 0 to keep the old hover park")
     parser.add_argument("--ik-descent", action="store_true",
                         help="descend with a seeded-IK joint-space goal instead "
                              "of a straight-down Cartesian path. Arcs slightly "
@@ -2267,6 +2520,8 @@ def main():
         pp.JAW_RADIAL_OFFSET_M = args.jaw_radial_offset
     if args.jaw_tangential_offset is not None:
         pp.JAW_TANGENTIAL_OFFSET_M = args.jaw_tangential_offset
+    global MEASURE_CLEARANCE_M
+    MEASURE_CLEARANCE_M = max(0.0, args.measure_clearance_mm / 1000.0)
     print("[stage1] jaw offset from the flange: radial %+.1f mm, tangential "
           "%+.1f mm%s"
           % (pp.JAW_RADIAL_OFFSET_M * 1000, pp.JAW_TANGENTIAL_OFFSET_M * 1000,

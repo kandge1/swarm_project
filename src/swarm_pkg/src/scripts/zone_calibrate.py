@@ -440,7 +440,12 @@ def visit(io_client, label, tag_id, repeat, x, y, tip_z, yaw_deg, interactive,
         return None
 
     pp.settle_pause(io_client, f"the {label} sample")
-    pp.report_reached(io_client, x, y, fz, what=f"{label} rep{repeat}")
+    # yaw_deg, because the descent above was planned with it. Without it the
+    # commanded point is recomputed at yaw 0 and the err_* columns -- the ones
+    # JAW_RADIAL_OFFSET_M and J1_RESIDUAL_BIAS_DEG were fitted from -- describe
+    # a pose that was never commanded.
+    pp.report_reached(io_client, x, y, fz, what=f"{label} rep{repeat}",
+                      block_yaw_deg=yaw_deg)
     row = sample(io_client, label, tag_id, repeat, x, y, tip_z, yaw_deg,
                  interactive)
 

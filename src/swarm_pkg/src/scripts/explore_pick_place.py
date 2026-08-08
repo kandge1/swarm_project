@@ -62,12 +62,49 @@ INCH = 0.0254
 # workspace, and the +90 deg calibration point came from the PLACE zone, which
 # this sweep does not move. Two more at roughly (0, +7) and (-3, +7) would close
 # it; without them a bearing-dependent term cannot be ruled out on that side.
+#
+# L AND M ADDED 2026-08-07 to close that gap, and they are the highest-value two
+# rows in the set. The radial model being fitted is
+# c + kx*cos(bearing) + ky*sin(bearing) + kr*(r - r_bar) -- cos/sin rather than
+# the bearing itself because a world-fixed offset vector projects onto the radial
+# direction as exactly that, whereas a term linear in the angle has no physical
+# referent and cannot represent one. Over A-K the two trig columns correlate at
+# 0.80 and prediction variance blows up past +20 deg; adding L (+90) and M (+67)
+# drops the design's condition number from 7.7 to 3.9 and roughly halves the
+# standard error on every bearing coefficient.
+#
+# If the day runs short, drop C, E and J before dropping L or M: bearing
+# coverage buys more than sample count here.
 SURVEY_POSITIONS = {
     "A": (-3.0, -7.0), "B": (0.0, -7.0), "C": (3.0, -7.0),
     "D": (5.0, -5.0), "E": (6.0, -3.0), "F": (7.0, -2.0),
     "G": (8.0, -1.0), "H": (9.0, 0.0), "I": (8.0, 1.0),
     "J": (7.0, 2.0), "K": (6.0, 2.0),
+    "L": (0.0, 7.0), "M": (3.0, 7.0),
+    "N": (5.0, 0.0), "O": (7.0, 0.0),
 }
+
+# N AND O ARE A RADIUS LADDER, not more bearing coverage. Added 2026-08-07 after
+# simulating the fit at the measured sigma of 0.5 mm: with A-M alone the three
+# bearing coefficients come out to a standard error of 0.22-0.31 mm, which is
+# fine, but kr -- the term that scales with reach -- lands at 8.2 mm/m. Over the
+# sweep's 68 mm of radius span that is 0.6 mm of unresolved model, at a target of
+# 1-2 mm total.
+#
+# The cause is that A-M was designed for BEARING: only G, H and I sit at or past
+# 8 in and all three are within 7 deg of bearing 0, so radius and bearing are not
+# independently excited. N (5,0) and O (7,0) sit at the SAME bearing as H (9,0)
+# with radii 127 / 178 / 229 mm, which is a clean radius ladder at fixed bearing.
+# Simulated effect: kr's standard error 8.2 -> 5.7 mm/m.
+#
+# Both clear the reach envelope by 88 mm or more, so they cost only bench time.
+
+# A taped truth further than this from the surveyed origin is a mistake, not a
+# measurement -- a mistyped --truth-pickup, the mat on the wrong marks, or a
+# survey that latched the wrong square. Every modelled error in this project is
+# well inside 30 mm, and the largest one ever found (the 28 mm survey bias) is
+# only just inside it, which is why the limit sits here rather than tighter.
+TRUTH_SANITY_M = 0.030
 
 
 def position_xy(name):
@@ -165,8 +202,28 @@ def record_survey(name, fit, taped, note):
     error = math.hypot(fit.origin[0] - taped[0], fit.origin[1] - taped[1])
     print("[survey] %s vs taped (%.4f, %.4f): off by %.1f mm"
           % (name, taped[0], taped[1], error * 1000.0))
+    # SANITY, AND IT HAS ALREADY EARNED ITS KEEP. The 2026-08-07 sweep produced
+    # two rows at 176 mm and 319 mm, both from a --truth-place or --truth-pickup
+    # left over from the previous position while the mat had moved. The surveyed
+    # origins were fine; the truth they were compared against was stale.
+    #
+    # There WAS a 30 mm refusal for this, but it guarded the block row's argv and
+    # --survey-only returns long before that code -- so the mode used for the
+    # entire sweep had no check at all. Marked rather than dropped: the row is
+    # evidence about the session, and calibration.load() already drops `invalid`
+    # rows loudly, which is exactly the behaviour wanted.
+    invalid = None
+    if error > TRUTH_SANITY_M:
+        invalid = ("surveyed origin %.0f mm from the taped truth -- beyond any "
+                   "modelled error, so the truth column is stale, the mat moved, "
+                   "or the survey latched the wrong square" % (error * 1000.0))
+        print("[survey] %s: REFUSING to treat this as a calibration point. %s"
+              % (name, invalid))
+        print("[survey] %s: check --truth-%s against where the mat actually is."
+              % (name, name))
     calibration.record(
         None,
+        invalid=invalid,
         zone_origin=[fit.origin[0], fit.origin[1]],
         zone_yaw_deg=math.degrees(fit.yaw),
         truth_world=[taped[0], taped[1]],
@@ -268,6 +325,14 @@ def main():
     parser.add_argument("--truth-place", type=float, nargs=2, metavar=("X", "Y"),
                         default=None,
                         help="the place zone centre's TAPED world position")
+    parser.add_argument("--no-truth-block-on-centre", dest="truth_block_on_centre",
+                        action="store_false", default=True,
+                        help="do NOT tell tag_pick_place the block is on the "
+                             "zone centre. The default assumes it is, which is "
+                             "what makes survey_error and vision_error "
+                             "computable on the block row -- pass this when the "
+                             "block is deliberately placed off-centre, as in "
+                             "the in-zone sweep, or the truth column is a lie")
     parser.add_argument("--place-at", type=float, nargs=2, metavar=("X", "Y"),
                         default=None,
                         help="release the block at this world XY and do not "
@@ -378,6 +443,25 @@ def main():
         record_survey("pickup", pickup, args.truth_pickup, args.note)
         record_survey("place", place, args.truth_place, args.note)
 
+        # --survey-only IS CHECKED FIRST, and it used to be checked last. The
+        # place-zone refusal below is about not stranding a block in the jaws,
+        # which cannot happen on a run that never picks anything up -- so a
+        # survey sweep with no place mat on the bench was exiting 1 with
+        # "Refusing to pick up a block with nowhere to put it", a message about a
+        # pick that was never requested. The pickup row was already written by
+        # record_survey above, so no data was lost, but the run looked failed and
+        # the exit code said so.
+        #
+        # This is the mode the 15-position survey sweep uses, and the sweep does
+        # not need the place mat, the block, or a caliper.
+        if args.survey_only:
+            print("\n[run] --survey-only: %s. Nothing picked, the gripper never "
+                  "left home."
+                  % ("both zones surveyed" if pickup is not None
+                     and place is not None else
+                     "pickup surveyed" if pickup is not None else
+                     "NOTHING surveyed"))
+            return 0 if pickup is not None else 1
         if pickup is None:
             print("\n[run] no pickup zone, so there is nothing to pick. "
                   "Stopping before the arm moves.")
@@ -387,9 +471,6 @@ def main():
                   "a block with nowhere to put it -- it would end the run held "
                   "in the jaws.")
             return 1
-        if args.survey_only:
-            print("\n[run] --survey-only: both zones found, nothing picked.")
-            return 0
 
         place_xy = args.place_at if args.place_at is not None else (
             place.origin if place is not None else None)
@@ -418,6 +499,50 @@ def main():
             argv += ["--block-class", args.block_class]
         if args.yes:
             argv.append("--yes")
+        # THE TRUTH COLUMN, forwarded at last. Without this the block row carries
+        # truth_world=None and truth_zone=None, so calibration.vision_error and
+        # calibration.survey_error both return None on it and the only signal in
+        # a whole sweep is the total nudge -- survey, vision and jaw offset
+        # lumped into one number with no way to attribute any of it. Position A's
+        # row is exactly that: a 3.2 mm nudge that cannot be assigned to anything.
+        #
+        # --truth-block-zone is the one that makes survey_error computable: it
+        # asserts the block is ON the zone centre, which is what makes the
+        # block's true world position also the zone origin's.
+        #
+        # UNITS DIFFER AND IT IS NOT SYMMETRIC: --truth-block-world is METRES,
+        # --truth-block-zone is MILLIMETRES (tag_pick_place.py:2172-2183). A
+        # silent factor of 1000 here would poison the truth column, which is
+        # Lesson 5's exact failure mode.
+        if args.truth_block_on_centre and args.truth_pickup is not None:
+            gap = math.hypot(args.truth_pickup[0] - pickup.origin[0],
+                             args.truth_pickup[1] - pickup.origin[1])
+            if gap > TRUTH_SANITY_M:
+                # REFUSE rather than record. Past this distance the survey and
+                # the tape disagree by more than any modelled error, so one of
+                # them is wrong -- a mistyped --truth-pickup, the mat on the
+                # wrong marks, or a survey that latched the other zone. Writing
+                # the row anyway produces a confident 40 mm calibration point,
+                # and Saturday's fit has no way to tell it from a real one.
+                print("\n[run] REFUSING to record a truth column: the taped "
+                      "pickup centre (%.4f, %.4f) is %.1f mm from the surveyed "
+                      "origin (%.4f, %.4f), over the %.0f mm sanity limit."
+                      % (args.truth_pickup[0], args.truth_pickup[1], gap * 1000,
+                         pickup.origin[0], pickup.origin[1],
+                         TRUTH_SANITY_M * 1000))
+                print("[run] Check --truth-pickup, the mat position, and that "
+                      "the survey found the PICKUP square. Re-run with "
+                      "--no-truth-block-on-centre to record without a truth.")
+                return 1
+            argv += ["--truth-block-world",
+                     "%.4f" % args.truth_pickup[0],
+                     "%.4f" % args.truth_pickup[1],
+                     # MILLIMETRES, and zero by definition: "the block is on the
+                     # zone centre" is the assertion being made.
+                     "--truth-block-zone", "0", "0"]
+            print("[run] truth: block taped on the zone centre at (%.4f, %.4f) "
+                  "m; survey is %.1f mm from it"
+                  % (args.truth_pickup[0], args.truth_pickup[1], gap * 1000))
         tpp_args = tpp.parse_args(argv)
         tpp_args.zone_z = tpp_args.zone_origin[2]
 

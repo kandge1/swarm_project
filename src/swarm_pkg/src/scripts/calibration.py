@@ -124,10 +124,22 @@ def record(path=None, **row):
     return row
 
 
-def load(path=None):
-    """Every readable row. A corrupt line is skipped loudly, not fatally."""
+def load(path=None, keep_invalid=False):
+    """Every readable row. A corrupt line is skipped loudly, not fatally.
+
+    Rows carrying an `invalid` field are dropped, and the count is printed. That
+    field is written by nobody in this repo and read by nobody -- it was added by
+    hand to ten Stage 2a rows whose truth column had been pasted identically
+    across all of them, i.e. rows known to be wrong and left in the file anyway.
+    Every statistic in this module has been consuming them as if they were good.
+
+    Filtered LOUDLY, like the corrupt-line path above, for the same reason: a
+    silent filter is how a hand-added field nobody wrote and nobody read got
+    there in the first place. keep_invalid=True to see them again.
+    """
     path = path or DEFAULT_LOG
     rows = []
+    dropped = []
     if not os.path.exists(path):
         return rows
     with open(path) as handle:
@@ -136,10 +148,22 @@ def load(path=None):
             if not line:
                 continue
             try:
-                rows.append(json.loads(line))
+                row = json.loads(line)
             except ValueError as exc:
                 print("[calibration] %s:%d is not JSON (%s) -- skipped"
                       % (path, number, exc))
+                continue
+            if row.get("invalid") and not keep_invalid:
+                dropped.append((number, row["invalid"]))
+                continue
+            rows.append(row)
+    if dropped:
+        print("[calibration] dropped %d row(s) marked invalid:" % len(dropped))
+        reasons = sorted({reason for _n, reason in dropped})
+        for reason in reasons:
+            lines = [str(n) for n, r in dropped if r == reason]
+            print("[calibration]   line%s %s: %s"
+                  % ("s" if len(lines) > 1 else "", ",".join(lines), reason))
     return rows
 
 
@@ -269,6 +293,104 @@ def jaw_offset_report(rows):
         lines.append("    indistinguishable here. A second bearing 30+ deg away "
                      "decides the frame.")
     return lines
+
+
+# ---------------------------------------------------------------------------
+# Fitting
+#
+# WHY cos/sin AND NOT THE BEARING ITSELF. The thing being separated is a radial
+# constant from a world-fixed offset vector, and a world-fixed vector (vx, vy)
+# projects onto the radial direction as exactly vx*cos(b) + vy*sin(b). A term
+# linear in the angle has no physical referent at all and cannot represent one --
+# it is not a conditioning preference, it is the difference between fitting the
+# quantity and fitting a proxy for it. The four coefficients then have four
+# distinct homes:
+#
+#   c   a genuinely radial constant   -> explore.apply_origin_radial_bias
+#   kx,ky a world-fixed offset        -> a world-frame term, NOT a radial one
+#   kr  scales with reach             -> a link-length or compliance term
+#
+# Pure Python on purpose, like the rest of this module: it has to run offline
+# with no numpy so it can be tested without a robot.
+# ---------------------------------------------------------------------------
+def linear_fit(xs, ys):
+    """Least-squares (slope, intercept, R^2), or None if x has no spread.
+
+    Lifted verbatim from serial_rate_probe.py, where it fitted the gravity droop
+    coefficients. Kept for one-regressor diagnostics; it gains its first tests
+    here, since nothing tested it there.
+    """
+    n = len(xs)
+    if n < 2:
+        return None
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    sxx = sum((x - mean_x) ** 2 for x in xs)
+    if sxx < 1e-12:
+        return None
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / sxx
+    intercept = mean_y - slope * mean_x
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else float("nan")
+    return slope, intercept, r2
+
+
+def normal_equations(design, ys):
+    """Least squares for any number of columns. -> (coef, r2, ses, dof) or None.
+
+    Gaussian elimination with partial pivoting on the normal equations, the same
+    body serial_rate_probe.multi_fit uses -- but general in the column count.
+    multi_fit was NOT ported: it hard-wires three columns via `range(3)` in four
+    places, and the model here needs four now and probably five later.
+
+    Returns None when the design is rank deficient, which is exactly what
+    collinear regressors produce -- the failure the +Y sweep positions exist to
+    avoid. `ses` are the per-coefficient standard errors, and they are the part
+    that matters: a coefficient smaller than its own standard error is a
+    coefficient the data did not measure, and printing it without one invites
+    exactly the kind of confident wrong constant this file exists to prevent.
+    """
+    n = len(design)
+    if not n:
+        return None
+    p = len(design[0])
+    if n <= p:
+        return None
+    ata = [[sum(design[k][i] * design[k][j] for k in range(n)) for j in range(p)]
+           for i in range(p)]
+    atb = [sum(design[k][i] * ys[k] for k in range(n)) for i in range(p)]
+    # Solve, and invert in the same pass, so the standard errors come for free.
+    aug = [ata[i][:] + [atb[i]] + [1.0 if j == i else 0.0 for j in range(p)]
+           for i in range(p)]
+    width = 1 + 2 * p
+    for col in range(p):
+        pivot = max(range(col, p), key=lambda r: abs(aug[r][col]))
+        if abs(aug[pivot][col]) < 1e-12:
+            return None
+        aug[col], aug[pivot] = aug[pivot], aug[col]
+        pdiv = aug[col][col]
+        for c in range(col, width):
+            aug[col][c] /= pdiv
+        for r in range(p):
+            if r == col:
+                continue
+            f = aug[r][col]
+            if f:
+                for c in range(col, width):
+                    aug[r][c] -= f * aug[col][c]
+    coef = [aug[i][p] for i in range(p)]
+    inv = [[aug[i][p + 1 + j] for j in range(p)] for i in range(p)]
+    mean_y = sum(ys) / n
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    ss_res = sum((ys[k] - sum(coef[i] * design[k][i] for i in range(p))) ** 2
+                 for k in range(n))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else float("nan")
+    dof = n - p
+    sigma2 = ss_res / dof if dof > 0 else float("nan")
+    ses = [math.sqrt(sigma2 * inv[i][i]) if sigma2 == sigma2 and inv[i][i] > 0
+           else float("nan") for i in range(p)]
+    return coef, r2, ses, dof
 
 
 def radial_and_lateral(vector, at_xy):
@@ -479,6 +601,154 @@ def verdict(rows):
                min(values) * 1000, max(values) * 1000) + arm_note)
 
 
+# Minimum bearing span before a cos/sin fit is allowed to claim anything. Below
+# this the two trig columns are collinear to within the noise and the solve, if
+# it succeeds at all, is splitting a constant between three coefficients.
+MIN_FIT_BEARING_SPAN_DEG = 60.0
+
+# Below this many usable rows there is no point: the model has four parameters.
+MIN_FIT_ROWS = 6
+
+
+def fit_rows(rows, channel="survey", min_views=3, max_clearance_mm=None):
+    """Collect (bearing, radius, radial, tangential) for one error channel.
+
+    channel: "survey"    -> zone origin vs taped truth. NEEDS NO HAND MEASUREMENT
+                            -- record_survey writes it with the gripper never
+                            leaving home -- which since 2026-08-07 makes it the
+                            cheapest and most trustworthy channel in the file.
+             "open-loop" -> what the pipeline said vs where the block was.
+             "nudge"     -> what the operator dialled in. USE max_clearance_mm.
+
+    min_views rejects single-still rows (views=1, spread=0.0 exists in the
+    history): one still gets no cross-view averaging and no parallax correction,
+    so its position is not comparable with a fused one.
+
+    max_clearance_mm rejects nudges read from too far away. Measured 2026-08-07:
+    the same pose read +4.7 mm radial eyeballed from a 25 mm fingertip clearance
+    and +0.53 mm with a caliper at 8 mm, with the SIGN of the far reading opposite
+    to the arm's true error. A nudge is only as good as the distance it was read
+    from, so fitting them together fits the viewing angle.
+    """
+    getter = {"survey": survey_error, "open-loop": open_loop_error}.get(channel)
+    out = []
+    for row in rows:
+        if channel == "nudge":
+            if not row.get("nudge_measured"):
+                continue
+            vector = row.get("nudge")
+        else:
+            vector = getter(row) if getter else None
+        if vector is None:
+            continue
+        # AN EXACTLY ZERO ERROR IS AN ASSERTION, NOT A MEASUREMENT, and this
+        # single line is the difference between fitting the survey and fitting
+        # nothing. For most of the project's life every run passed the same
+        # number as BOTH --zone-origin and --truth-block-world, which makes
+        # survey_error identically (0, 0) by construction -- it is why
+        # survey_error read "0.0 +- 0.0" for months while the origin was 28 mm
+        # out. 41 of the first 68 rows are like that, and fed to a fitter they
+        # are 39 structural zeros that drag every coefficient toward nothing and
+        # return R^2 1.00 while measuring the identity function.
+        #
+        # A real survey landing on the tape to within a nanometre is not a thing
+        # that happens. Only record_survey rows, and runs given an independently
+        # taped truth, survive this.
+        if math.hypot(vector[0], vector[1]) < 1e-9:
+            continue
+        views = row.get("views")
+        if min_views and views is not None and views < min_views:
+            continue
+        if max_clearance_mm is not None:
+            clearance = (row.get("constants") or {}).get("measure_clearance_mm")
+            # No field at all means it predates the measurement park, i.e. it was
+            # read from the 40 mm hover. Reject rather than assume.
+            if clearance is None or clearance > max_clearance_mm:
+                continue
+        at = row.get("truth_world") or row.get("measured_world")
+        split = radial_and_lateral(vector, at)
+        if split is None:
+            continue
+        out.append((math.atan2(at[1], at[0]), math.hypot(at[0], at[1]),
+                    split[0], split[1], row))
+    return out
+
+
+def fit_report(rows, channel="survey", **kwargs):
+    """Lines fitting radial = c + kx*cos(b) + ky*sin(b) + kr*(r - r_bar).
+
+    Reports each coefficient against its own standard error and refuses to
+    recommend anything the data did not measure. See normal_equations for why
+    cos/sin rather than the bearing.
+    """
+    samples = fit_rows(rows, channel, **kwargs)
+    head = ["  %s channel: %d usable row(s)" % (channel.upper(), len(samples))]
+    if len(samples) < MIN_FIT_ROWS:
+        return head + [
+            "    NOT ENOUGH DATA to fit -- 4 parameters need at least %d rows."
+            % MIN_FIT_ROWS,
+            "    This is the honest answer, not a failure. Run the sweep."]
+    bearings = [math.degrees(s[0]) for s in samples]
+    span = max(bearings) - min(bearings)
+    radii = [s[1] for s in samples]
+    r_bar = sum(radii) / len(radii)
+    head.append("    bearing %+.0f..%+.0f deg (span %.0f), radius %.0f..%.0f mm"
+                % (min(bearings), max(bearings), span,
+                   min(radii) * 1000, max(radii) * 1000))
+    if span < MIN_FIT_BEARING_SPAN_DEG:
+        head.append("    BEARING SPAN TOO NARROW (%.0f < %.0f deg). cos and sin "
+                    "are collinear here;" % (span, MIN_FIT_BEARING_SPAN_DEG))
+        head.append("    a fit would split one constant across three "
+                    "coefficients. Reporting means only:")
+        for name, idx in (("radial", 2), ("tangential", 3)):
+            stat = Stat(name)
+            for s in samples:
+                stat.add(s[idx])
+            head.append("  " + stat.line())
+        return head
+    design = [[1.0, math.cos(s[0]), math.sin(s[0]), s[1] - r_bar]
+              for s in samples]
+    labels = ("constant (radial)", "kx (world +X)", "ky (world +Y)",
+              "kr (per m of reach)")
+    for name, idx in (("radial", 2), ("tangential", 3)):
+        ys = [s[idx] for s in samples]
+        fit = normal_equations(design, ys)
+        head.append("")
+        if fit is None:
+            head.append("    %s: RANK DEFICIENT -- the regressors are collinear "
+                        "in these poses." % name)
+            continue
+        coef, r2, ses, dof = fit
+        head.append("    %s = c + kx*cos + ky*sin + kr*(r - %.3f)   R^2 %.2f, "
+                    "dof %d" % (name, r_bar, r2, dof))
+        for label, value, se in zip(labels, coef, ses):
+            scale = 1000.0
+            verdict = "measured" if abs(value) > 2 * se else "NOT measured (< 2 se)"
+            head.append("      %-20s %+8.2f mm  +-%5.2f   %s"
+                        % (label, value * scale,
+                           se * scale if se == se else float("nan"), verdict))
+        # A LOW R^2 AND A WELL-MEASURED CONSTANT ARE NOT THE SAME VERDICT, and
+        # collapsing them into "do not apply it" throws away the one number the
+        # sweep was run to get. R^2 asks how much of the SCATTER the model
+        # explains; the standard error asks how well each coefficient is pinned.
+        # A constant at 4 se inside a cloud of unmodelled scatter is a real
+        # constant -- the scatter is simply something else (for the 2026-08-07
+        # survey sweep, a 6 mm bimodal basin jump no smooth model can capture).
+        shaped = [i for i in range(1, len(coef)) if abs(coef[i]) > 2 * ses[i]]
+        const_ok = abs(coef[0]) > 2 * ses[0]
+        if r2 < 0.7 and const_ok and not shaped:
+            head.append("      R^2 %.2f, but the CONSTANT is measured at %.1f se "
+                        "while no shape term is." % (r2, abs(coef[0] / ses[0])))
+            head.append("      -> apply the constant (%+.2f mm), do NOT apply "
+                        "the shape. The leftover" % (coef[0] * 1000))
+            head.append("         scatter is real but is not a function of "
+                        "bearing or radius.")
+        elif r2 < 0.7:
+            head.append("      R^2 %.2f -- the model does not explain this "
+                        "channel. Do not apply it." % r2)
+    return head
+
+
 def report(path=None, rows=None):
     rows = load(path) if rows is None else rows
     print("calibration history: %d run(s) from %s"
@@ -587,6 +857,133 @@ def _selftest():
           "radial +7.0 mm" in verdict(armed), verdict(armed)[-140:])
     check("spread is None for a single point", Stat("x").spread is None)
 
+    # --- fitting -----------------------------------------------------------
+    # linear_fit, ported from serial_rate_probe where it was never tested.
+    fit = linear_fit([0.0, 1.0, 2.0, 3.0], [1.0, 3.0, 5.0, 7.0])
+    check("linear_fit recovers a planted slope and intercept",
+          fit is not None and abs(fit[0] - 2.0) < 1e-9
+          and abs(fit[1] - 1.0) < 1e-9 and abs(fit[2] - 1.0) < 1e-9, repr(fit))
+    check("linear_fit refuses a column with no spread",
+          linear_fit([2.0, 2.0, 2.0], [1.0, 2.0, 3.0]) is None)
+
+    # normal_equations against a model planted exactly: a 3 mm radial constant,
+    # a 5 mm world +X offset, no +Y, and 20 mm per metre of reach.
+    truth = (0.003, 0.005, 0.0, 0.020)
+    design, ys = [], []
+    for bearing_deg, radius in ((-113, 0.193), (-90, 0.178), (-45, 0.180),
+                                (-16, 0.185), (0, 0.229), (18, 0.161),
+                                (67, 0.193), (90, 0.178)):
+        b = math.radians(bearing_deg)
+        row = [1.0, math.cos(b), math.sin(b), radius - 0.187]
+        design.append(row)
+        ys.append(sum(c * v for c, v in zip(truth, row)))
+    got = normal_equations(design, ys)
+    check("normal_equations recovers a planted 4-parameter model",
+          got is not None and max(abs(a - b) for a, b in zip(got[0], truth)) < 1e-9,
+          repr(got[0]) if got else "None")
+    check("a noiseless planted model gives R^2 = 1",
+          got is not None and abs(got[1] - 1.0) < 1e-9)
+    check("standard errors are ~0 on a noiseless fit",
+          got is not None and max(got[2]) < 1e-6, repr(got[2]) if got else "")
+    # Duplicate a column: cos and a scaled copy of cos cannot both be fitted.
+    bad = [[1.0, r[1], 2.0 * r[1], r[3]] for r in design]
+    check("normal_equations returns None on a rank-deficient design",
+          normal_equations(bad, ys) is None)
+    check("normal_equations refuses fewer rows than parameters",
+          normal_equations(design[:3], ys[:3]) is None)
+
+    # fit_report has to REFUSE things, and that is most of its value.
+    # i starts at 1 so no row has an exactly-zero survey error -- a zero would be
+    # dropped by the assertion filter below, which is correct behaviour and would
+    # make the counts here misleading.
+    narrow = []
+    for i in range(1, 9):
+        narrow.append(dict(zone_origin=[0.2032 + 0.001 * i, 0.0],
+                           truth_world=[0.2032, 0.0], truth_zone=[0.0, 0.0],
+                           views=3))
+    text = "\n".join(fit_report(narrow, "survey"))
+    check("fit_report refuses a bearing span that is too narrow",
+          "BEARING SPAN TOO NARROW" in text, text[:120])
+    check("... and falls back to reporting means instead of a model",
+          "radial" in text and "kx" not in text)
+    text = "\n".join(fit_report(narrow[:3], "survey"))
+    check("fit_report refuses too few rows outright",
+          "NOT ENOUGH DATA" in text, text[:120])
+
+    # min_views and max_clearance_mm must actually exclude.
+    one_view = [dict(r, views=1) for r in narrow]
+    check("min_views rejects single-still rows",
+          len(fit_rows(one_view, "survey", min_views=3)) == 0)
+    check("min_views=0 keeps them",
+          len(fit_rows(one_view, "survey", min_views=0)) == 8)
+    nudged = [dict(nudge=[0.005, 0.0], nudge_measured=True, views=3,
+                   measured_world=[0.2032, 0.0],
+                   constants={"measure_clearance_mm": clear})
+              for clear in (8.0, 8.0, 25.0)]
+    check("max_clearance_mm rejects nudges read from too far away",
+          len(fit_rows(nudged, "nudge", max_clearance_mm=10.0)) == 2)
+    check("a row with no clearance field is rejected, not assumed",
+          len(fit_rows([dict(nudge=[0.005, 0.0], nudge_measured=True, views=3,
+                             measured_world=[0.2032, 0.0])],
+                       "nudge", max_clearance_mm=10.0)) == 0)
+    check("nudge_measured=False is never fitted",
+          len(fit_rows([dict(nudge=[0.0, 0.0], nudge_measured=False, views=3,
+                             measured_world=[0.2032, 0.0])], "nudge")) == 0)
+
+    # The assertion filter. A row whose "truth" is a copy of its own origin has
+    # a survey error of exactly zero and must never reach a fit.
+    asserted = dict(zone_origin=[0.2032, 0.0], truth_world=[0.2032, 0.0],
+                    truth_zone=[0.0, 0.0], views=3)
+    check("an exactly-zero survey error is treated as an assertion, not data",
+          len(fit_rows([asserted], "survey")) == 0)
+    real_one = dict(asserted, zone_origin=[0.2035, 0.0])
+    check("... but a genuine 0.3 mm survey error is kept",
+          len(fit_rows([real_one], "survey")) == 1)
+
+    # The "measured constant inside unmodelled scatter" branch, which is the
+    # verdict the 2026-08-07 survey sweep actually produced and the one most
+    # likely to be mis-read. Plant a 3 mm constant, no shape, and heavy scatter.
+    # DETERMINISTIC, not seeded. A first attempt used random.gauss and the seed
+    # happened to draw a 2.20 mm constant at 1.5 se, so the branch under test
+    # never fired and the failure looked like a code bug. A selftest whose
+    # verdict depends on a PRNG draw is a selftest that will fail on someone
+    # else's Python.
+    #
+    # 3 mm constant, no shape, and a +-1.5 mm scatter that alternates around the
+    # arc so it stays roughly orthogonal to cos, sin and r.
+    scattered = []
+    wobble = (1.5, -1.5, 1.4, -1.6, 1.6, -1.4, 1.5, -1.5, 1.4, -1.6, 1.6, -1.4)
+    for (bearing_deg, radius), w in zip(
+            ((-113, 0.193), (-90, 0.178), (-67, 0.193), (-45, 0.180),
+             (-27, 0.170), (0, 0.229), (18, 0.161), (67, 0.193),
+             (90, 0.178), (7, 0.205), (16, 0.185), (-7, 0.205)), wobble):
+        b = math.radians(bearing_deg)
+        rad = 0.003 + w / 1000.0
+        ux, uy = math.cos(b), math.sin(b)
+        x, y = radius * ux, radius * uy
+        scattered.append(dict(zone_origin=[x + rad * ux, y + rad * uy],
+                              truth_world=[x, y], truth_zone=[0.0, 0.0],
+                              views=11))
+    text = "\n".join(fit_report(scattered, "survey"))
+    check("a measured constant inside unmodelled scatter says APPLY THE CONSTANT",
+          "apply the constant" in text, text[-260:])
+    check("... and explicitly says not to apply the shape",
+          "do NOT apply" in text)
+
+    # The real history is reported, not asserted on: it grows every session, so
+    # an assertion about its contents expires. Before the 2026-08-07 sweep it
+    # held 2 survey rows and was refused; it now holds 20 and fits a constant.
+    real = load()
+    if real:
+        text = "\n".join(fit_report(real, "survey"))
+        verdicts = [w for w in ("NOT ENOUGH DATA", "TOO NARROW",
+                                "apply the constant", "does not explain")
+                    if w in text]
+        check("the real history reaches a stated verdict",
+              bool(verdicts), text[:160])
+        print("    (real history currently says: %s)"
+              % ", ".join(verdicts) if verdicts else "")
+
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0
 
@@ -598,13 +995,46 @@ def main():
     parser.add_argument("--log", default=None,
                         help="history file (default: %s)" % DEFAULT_LOG)
     parser.add_argument("--report", action="store_true",
-                        help="summarise what the history says")
+                        help="summarise what the history says (the default)")
+    parser.add_argument("--fit", action="store_true",
+                        help="fit radial/tangential error against bearing and "
+                             "radius: c + kx*cos + ky*sin + kr*(r-r_bar). Every "
+                             "coefficient is printed against its own standard "
+                             "error and anything under 2 se is reported as NOT "
+                             "measured")
+    parser.add_argument("--channel", default="survey",
+                        choices=("survey", "open-loop", "nudge"),
+                        help="which error to fit (default %(default)s). survey "
+                             "needs no hand measurement at all -- record_survey "
+                             "writes it with the gripper at home")
+    parser.add_argument("--min-views", type=int, default=3, metavar="N",
+                        help="reject rows fused from fewer than N stills "
+                             "(default %(default)s); 1-view rows get no "
+                             "cross-view averaging and no parallax correction")
+    parser.add_argument("--max-clearance-mm", type=float, default=None,
+                        metavar="MM",
+                        help="for --channel nudge: reject nudges read from more "
+                             "than MM of fingertip clearance above the block's "
+                             "top face. Try 10. The same pose read +4.7 mm from "
+                             "25 mm and +0.53 mm from 8 mm on 2026-08-07, with "
+                             "opposite sign -- so pooling them fits the viewing "
+                             "angle, not the arm")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
 
     if args.selftest:
         return _selftest()
-    return report(args.log)
+    rows = load(args.log)
+    if args.fit:
+        print("calibration fit: %d run(s) from %s\n"
+              % (len(rows), args.log or DEFAULT_LOG))
+        for line in fit_report(rows, args.channel,
+                               min_views=args.min_views,
+                               max_clearance_mm=args.max_clearance_mm):
+            print(line)
+        return 0
+    # --report is the default, and used to be dead: args.report was never read.
+    return report(args.log, rows)
 
 
 if __name__ == "__main__":

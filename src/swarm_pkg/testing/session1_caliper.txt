@@ -1,0 +1,305 @@
+SESSION 1 CALIPER TRIALS -- 2026-08-07, baseline git b445bc8
+=============================================================
+Purpose: measure sigma (the per-row measurement noise) on the UNMODIFIED
+binary, and decide whether the J1 lost-motion blocker is real.
+
+Everything below runs against the CURRENT code. No edits are live yet.
+The whole plan is conditioned on sigma: the 1-2 mm target is available
+if and only if sigma <= 1 mm.
+
+
+TERMINALS (see APRIL_TAGS_DEV.md "Terminal map")
+-----------------------------------------------
+1  robot   ros2 launch mycobot_280pi_camera_moveit2 real_robot_hardware.launch.py
+2  mars    ros2 launch mycobot_280pi_camera_moveit2 real_robot_planning.launch.py
+4  robot   python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py
+5  mars    cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+
+Do NOT launch camera.launch.py -- block_detector_node opens /dev/video0 itself.
+
+
+SETUP
+-----
+Mat at the demo pose: zone centre taped at 8 in +X = (0.2032, 0.0000),
+zone yaw 180. One 30 mm block taped ON the zone centre.
+Tape the BLOCK, not the sheet (Lesson 5).
+
+The survey is held FIXED across all trials so the vision term does not move:
+pass --zone-origin explicitly instead of running explore.
+
+
+HOW TO READ THE CALIPER
+-----------------------
+Jaws are open at GRIPPER_OPEN throughout (tag_pick_place.py:1596), so the
+span is constant and cancels.
+
+At the park, measure the horizontal gap from each fingertip's INNER face to
+the block face it points at:
+
+    gapL = left  fingertip inner face  ->  block face
+    gapR = right fingertip inner face  ->  block face
+
+    offset along the closing axis = (gapR - gapL) / 2
+
+Jaw span and block width both cancel in the difference -- neither has to be
+known, and neither contributes error. That is what gets a cheap caliper to
+~0.3 mm.
+
+NOTE at this stage the park is the STANDARD hover: flange 0.1855, fingertips
+0.0510, i.e. 25 mm ABOVE the block's top face (+0.0260). That is awkward and
+it is exactly what the 16:15 edit fixes by dropping the park to 8 mm above
+the face. Do the best you can here -- this number is the BASELINE we are
+trying to beat, so a mediocre reading is still the right reading.
+
+
+TRIAL A -- CALIPER SIGMA, 5 runs (target 15:10-15:50)
+-----------------------------------------------------
+Run from the scripts directory:  cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+
+There is NO --confirm flag. Confirm is ON BY DEFAULT; --yes is what turns it
+off (tag_pick_place.py:2370, dest="confirm", action="store_false"). So the
+command is simply:
+
+  python3 tag_pick_place.py --skip-pick --any-block \
+      --zone-origin 0.2032 0.0000 0.0 --zone-yaw 180 \
+      --note "s1 trialA caliper sigma"
+
+Run it five times. Between runs do NOT touch the mat or the block.
+
+YOU WILL HIT TWO PROMPTS PER RUN:
+
+  1. ":2029  ENTER = go to the hover"
+     The arm has NOT moved yet. Nothing to see. Just ENTER.
+
+  2. ":2107  parked HERE, NN mm above the grasp height"
+     THIS is where you caliper. Measure gapL and gapR, write them down,
+     then ENTER. --skip-pick (:2131) then records and stops -- nothing
+     descends.
+
+DO NOT TYPE ANY NUDGE IN TRIAL A. Not a correction, not a zero -- nothing.
+The caliper is the measurement; the nudge is the thing we are replacing,
+because it is a control action pushed through a ~3.5 mm dead band and
+fitting it fits the dead band. Trial B is the only place you type numbers.
+
+WHY FIVE RUNS WITH NOTHING TOUCHED. Each run redoes the full 4-still survey,
+so the five give five INDEPENDENT vision draws of a scene that did not move.
+That is what sigma is measuring, and vision fusion noise (~0.8-1.0 mm, from
+the measured view_spread_m of 1.6-3.1 mm over 3-5 views) is expected to be
+the LARGEST term in it -- bigger than the caliper. Moving the block would
+add your own placement error to that and measure something else.
+
+  run |  gapL  |  gapR  | offset=(gapR-gapL)/2 | notes
+  ----+--------+--------+----------------------+------------------
+   A1 |        |        |                      |
+   A2 |        |        |                      |
+   A3 |        |        |                      |
+   A4 |        |        |                      |
+   A5 |        |        |                      |
+
+  mean offset ______   sd (sigma) ______   <-- THE NUMBER THAT GATES THE PLAN
+
+  sigma <= 1.0 mm  -> 1-2 mm target is available, continue as planned
+  sigma  1-2 mm    -> continue, but expect ~2-3 mm; say so before Saturday
+  sigma  > 2 mm    -> STOP. The instrument is the problem, not the model.
+
+
+TRIAL A2 -- TIME ONE FULL ROW (do this once, during trial A)
+-----------------------------------------------------------
+Stopwatch a complete Saturday row INCLUDING physically moving and
+re-taping the mat to a new position and back. Saturday's position count
+comes from this number, not from ambition.
+
+  mat move + re-tape ______ min
+  explore survey     ______ min
+  one detect + park  ______ min
+  TOTAL PER ROW      ______ min      (>15 min -> drop to 9 zone positions)
+
+
+TRIAL B -- J1 DIRECTION TEST, 6 parks (target 15:50-16:15)
+----------------------------------------------------------
+THE BLOCKER. move_arm_to defaults unidirectional=False (pick_place.py:3381)
+and no call site in tag_pick_place.py passes it -- so the arm arrives at the
+park resting on whichever flank of J1's slack the previous move left it on,
+and it never gets the J1_RESIDUAL_BIAS_DEG = 1.10 correction either (that is
+applied only inside j1_unidirectional_approach, pick_place.py:3340).
+
+The test needs no code. A nudge round trip that NETS TO ZERO leaves
+commanded_world identical but makes the arm arrive from the opposite side.
+Any caliper difference is therefore pure lost motion.
+
+At the demo pose the bearing is 0, so TANGENTIAL is world +Y.
+
+  Start one run as in trial A (same command). ENTER through the first
+  prompt. At the SECOND prompt -- the parked one -- type these in sequence,
+  measuring where marked. Each entry re-parks the arm and re-prompts, so you
+  stay in the loop until you press ENTER on its own.
+
+  B-plus  (arrives travelling +Y):   0 -8   <enter>
+                                     0 +8   <enter>    then MEASURE
+  B-minus (arrives travelling -Y):   0 +8   <enter>
+                                     0 -8   <enter>    then MEASURE
+
+  Net nudge is 0.0 in both cases, so the commanded point is the SAME.
+  Repeat the pair three times (6 measurements total), then ENTER to finish.
+
+  pair |  B-plus offset  |  B-minus offset  |  difference
+  -----+-----------------+------------------+-------------
+    1  |                 |                  |
+    2  |                 |                  |
+    3  |                 |                  |
+                                    mean difference ______
+
+  |difference| ~ 6 mm   -> BLOCKER CONFIRMED. Apply unidirectional=True.
+                           Also probably explains open item #2: the
+                           "+X wants -0.0088, +Y wants 0.0000" tangential
+                           split is 8.8 mm = one backlash width, measured at
+                           bearings 90 deg apart.
+  |difference| < 1 mm   -> the blocker is not real; tell me before I edit,
+                           because the tangential model changes completely.
+
+  8 mm is chosen to clear the ~3.5 mm J1 dead band (1 deg at r=200) in both
+  legs. If the arm visibly does not move on a leg, raise it to 12.
+
+
+AFTER BOTH TRIALS
+-----------------
+Report sigma and the mean direction difference. Those two numbers decide
+the 16:15 edits and the Saturday scope.
+
+
+=============================================================
+RESULTS -- 2026-08-07
+=============================================================
+
+TRIAL A -- sigma = 0.50 mm.  GATE PASSED.
+  5 runs, scene untouched:  zone x sd 0.34 mm, zone y sd 0.36 mm,
+  flange radius sd 0.29 mm.  Radial-equivalent sigma 0.50 mm.
+  NOTE view_spread_m read 1.5-2.2 mm on those same runs. That is
+  WITHIN-run view scatter and it overstates run-to-run noise by ~2x:
+  the same 3 views with the same geometry fuse to nearly the same
+  answer every time. Do not use view_spread_m as sigma.
+
+TRIAL B -- J1 LOST MOTION CONFIRMED. 6.4 mm.
+  Measured from the ENCODER, not the caliper -- the transcripts carry
+  every commanded and achieved joint angle, and the play is upstream of
+  the encoder so /joint_states sees it.
+
+  73 moves across both trials:
+      commanded +ve  n=26   err -0.89 deg  sd 0.11
+      commanded -ve  n=47   err +0.97 deg  sd 0.11
+      |err| 0.94 deg (sd 0.12) = 3.4 mm at r=0.205
+      small moves (<8.6 deg) 0.95 deg | large moves 0.93 deg
+  Identical for a 0.9 deg move and a 22 deg one -> LOST MOTION, not a
+  tracking or velocity error.
+
+  Three same-point round trips: gap 6.3 / 6.0 / 6.9 mm, mean 6.4.
+  J1_RESIDUAL_BIAS_DEG is configured at 1.10 deg against 0.94 measured
+  -- the existing constant was right to 0.16 deg. It was simply never
+  applied on this code path.
+
+TRIAL B_B -- FIX VERIFIED. Direction dependence eliminated.
+  unidirectional=True on both pre-grasp parks. [j1] banner confirmed
+  firing on every park.
+
+      park   raw tgt   biased   settled   err vs raw
+        1     0.3180   0.3372   0.3236    +0.32 deg  +1.15 mm
+        2     0.2799   0.2991   0.2852    +0.30 deg  +1.09 mm
+        3     0.3182   0.3374   0.3236    +0.31 deg  +1.11 mm
+        4     0.3572   0.3764   0.3588    +0.09 deg  +0.33 mm
+        5     0.3179   0.3371   0.3220    +0.23 deg  +0.84 mm
+
+  Three visits to the IDENTICAL commanded point (net nudge 0) arrived
+  at from different directions settled at 0.3236 / 0.3236 / 0.3220 --
+  spread 0.33 mm, and parks 1 and 3 are bit-identical.
+
+      direction gap   6.4 mm  ->  0.33 mm     (19x)
+      error           +-0.94 deg, sign flips  ->  +0.25 deg CONSTANT
+
+  The coin flip is now a constant, which is the whole point: a constant
+  is calibratable and a coin flip is not.
+
+STILL OPEN, from these runs
+  1. The +1.10 deg bias slightly OVER-corrects: residual +0.25 deg
+     (mean) against 0.10 deg (spread), so by the project's own rule
+     (act only when mean > spread) this is actionable. DO NOT retune
+     from n=5 at one pose -- that is Lesson 2. Let Saturday's 13
+     positions decide; if +0.25 holds across bearing and radius, drop
+     J1_RESIDUAL_BIAS_DEG 1.10 -> 0.85.
+  2. JAW_TANGENTIAL_OFFSET_M = -0.0033 WAS FITTED ON TOP OF THE BROKEN
+     J1 BEHAVIOUR. Its own comment records the split it could not
+     reconcile: "+X wants -0.0088 and +Y wants 0.0000, and a radial
+     model cannot have both" -- 8.8 mm apart, which is one backlash
+     width, measured at bearings 90 deg apart. That was never a jaw
+     offset. Now that J1 contributes +0.9 mm instead of +-3.4, this
+     constant is unbalanced and may be double-correcting.
+     NEXT TEST, 3 minutes: one run at the demo pose with the fix live.
+     Tangential nudge ~0 -> the two happen to cancel. ~3 mm -> refit.
+  3. The back-off leg stalls on some parks (it is itself a reversal,
+     which is the effect being worked around). Documented as
+     best-effort by design; the settled numbers above show the
+     mechanism still delivers, so nothing is blocked.
+
+
+TANGENTIAL COUPLING CHECK -- CONFIRMED, and the constant is REMOVED
+  With the J1 fix live, the jaws parked ~3 mm toward world +Y of the block
+  at the demo pose (operator correction: 0 -3). Sign and magnitude both as
+  predicted: at bearing 0, JAW_TANGENTIAL_OFFSET_M = -0.0033 commands
+  flange_y = y + 0.0033, so with J1's +-3.4 mm no longer cancelling it, the
+  push stood bare.
+
+  JAW_TANGENTIAL_OFFSET_M  -0.0033 -> 0.0
+
+  This is a REMOVAL of a term shown to be spurious, not a new fit. The old
+  comment recorded the split it could not explain -- "+X wants -0.0088 and
+  +Y wants 0.0000, and a radial model cannot have both" -- which is 8.8 mm,
+  one backlash width, at bearings 90 deg apart. There was no radial
+  quantity there to model.
+
+  The ~+0.9 mm that remains belongs to J1_RESIDUAL_BIAS_DEG, not here.
+  Folding it in would repeat DESCENT_BIAS_Z doing GRASP_OFFSET_Z's job.
+
+MEASUREMENT PARK ADDED -- --measure-clearance-mm, default 8
+  Normal hover -> straight-down cartesian 17 mm -> flange 0.1685, fingertips
+  8 mm above the block's TOP FACE instead of 25. Referenced to the top face,
+  not the grasp: at the grasp the tips are level with the block CENTRE,
+  15 mm BELOW the face, so "grasp + 15" would be flush with it.
+  Best effort -- a failed descent leaves you at the hover with a message.
+  Skipped when hover_z_for has already clamped the hover below this height,
+  since "lowering" would then be a lift and re-arm the slack.
+  --measure-clearance-mm 0 restores the old park exactly.
+
+NEXT: one run at the demo pose. Expect tangential ~0-1 mm (was ~3), and the
+      radial number with every constant current -- that is Saturday's input.
+
+
+GO/NO-GO -- TARGET MET AT THE DEMO POSE, AND THE OLD NUMBER WAS THE INSTRUMENT
+  Caliper at the new 8 mm park, radial axis:
+      near-side gap 4.78 mm    far-side gap 5.84 mm
+      jaw-centre displacement = (far-near)/2 = +0.53 mm
+      implied jaw span 4.78 + 5.84 + 31.4 = 42.0 mm  (sanity: plausible)
+  Tangential ~-1.0 mm, exactly as predicted after zeroing the jaw constant.
+
+      radial      +0.53 mm     (was +4.7, three hover-eyeballed runs, spread 0.46)
+      tangential  ~-1.0 mm     (was +3.4 J1, then +3 bare jaw constant)
+      TOTAL        1.13 mm     <- inside the 1-2 mm target, at this pose
+
+  THE +4.7 mm RADIAL WAS NEVER REAL. FK flange radius error, from the
+  transcripts, at the settled park:
+      before the J1 fix   -1.15 mm  (14 parks)
+      after the J1 fix    -1.40 mm  (5 parks, sd 0.09)
+  Identical -- and it must be, J1 is the base yaw and cannot move the radius.
+  So the radial improvement is the MEASUREMENT METHOD, not the robot. A 4.2 mm
+  apparent shift at 25 mm above the top face is a 9.5 deg viewing angle, which
+  is just what standing at a bench looking down at an arm gives you.
+
+  Note the SIGN, because it is the give-away: FK says the flange lands 1.2-1.4 mm
+  SHORT of commanded, i.e. INWARD. The hover eyeball reported +4.7 mm OUTWARD.
+  It was not noisy, it was wrong in direction.
+
+  WHAT THIS DOES AND DOES NOT INVALIDATE. Only the NUDGE column is affected.
+  The constants that matter were fitted from tape and caliper, not eyeballs:
+    JAW_RADIAL_OFFSET_M -0.0199  -- 8 grasps, BLOCK taped, measured from the base
+    ORIGIN_RADIAL_BIAS_M -0.0285 -- surveyed origin vs TAPED truth
+    DESCENT_BIAS_Z -0.001        -- zone survey, digital caliper
+  The -1.2 mm FK radius error is independent support for JAW_RADIAL_OFFSET_M
+  being about right. The history is not poisoned; its nudge column is.

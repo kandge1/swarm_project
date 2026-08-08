@@ -620,11 +620,44 @@ MIN_TAGS_FOR_ORIGIN = 3
 # every run and nulls before it takes its stills. explore has no such reference
 # and inherits the bias whole. That is a hypothesis; the 28 mm is a measurement.
 #
-# n=2. Trustworthy enough to use, because both the sign and the frame are
-# unambiguous and the two agree closely, but a third zone at a new bearing
-# should be run before this is treated as settled. Passing --origin-radial-bias
-# 0 turns it off and restores the raw fit.
-ORIGIN_RADIAL_BIAS_M = -0.0285
+# -0.0285 -> -0.0272 ON 2026-08-07, AND THE FRAME IS NOW SETTLED AT n=15.
+#
+# The paragraph above asked for "a third zone at a new bearing before this is
+# treated as settled". It got fifteen: positions A-O, bearings -113 to +90 deg,
+# radii 127-229 mm, each surveyed against a taped truth with the gripper never
+# leaving home. calibration.py --fit --channel survey over the 20 pickup rows:
+#
+#     radial = c + kx*cos(b) + ky*sin(b) + kr*(r - 0.183)      R^2 0.27
+#       constant (radial)     -1.31 mm  +- 0.33   measured, 4.0 se
+#       kx (world +X)         +0.51 mm  +- 0.40   NOT measured
+#       ky (world +Y)         +0.38 mm  +- 0.34   NOT measured
+#       kr (per m of reach)   +7.91 mm  +- 7.72   NOT measured
+#
+# THE SHAPE TERMS ARE ALL ZERO TO WITHIN THEIR OWN STANDARD ERRORS. There is no
+# world-fixed component and no reach dependence -- the bias is purely radial and
+# purely constant, which is exactly what this correction has always assumed. The
+# frame question that was reopened three times in August is closed, and the
+# answer is that the simple model was right.
+#
+# So the only change is the value: a residual -1.31 mm means the old constant
+# pulled IN 1.31 mm too far. -0.0285 + 0.00131 = -0.0272.
+#
+# WHY THE LOW R^2 IS NOT AN OBJECTION. R^2 asks how much of the SCATTER the
+# model explains, and the leftover scatter here is not a function of bearing or
+# radius, so a smooth model cannot explain it and should not try. The constant
+# is pinned at 4 standard errors regardless. Repeat pairs at one position
+# separate the scatter's two causes, and neither is survey noise:
+#
+#     views match, minutes apart   0.10 / 0.29 / 0.62 mm   (N, J, I)
+#     view sets DIFFER (9 vs 6)    3.66 mm                 (O)
+#     runs HOURS apart             3.36 / 4.74 mm          (B, A)
+#
+# The fit itself is good to ~0.3 mm. The scatter is (a) which views survived
+# choose()'s gates, and (b) the mat being nudged between runs taken hours apart,
+# which is a truth-column problem and not this constant's business.
+#
+# Passing --origin-radial-bias 0 turns it off and restores the raw fit.
+ORIGIN_RADIAL_BIAS_M = -0.0272
 
 
 def gate(sighting, zone_size):
@@ -1000,14 +1033,22 @@ def selftest(pitch=EXPLORE_PITCH_DEG, wrist=EXPLORE_WRIST_DEG):
     ORIGIN_RADIAL_BIAS_M = saved_bias
 
     print("\nsurveyed-origin radial correction:")
-    # The two zones it was measured from, taped on 2026-08-06. This is the
-    # calibration, checked against its own data -- not a claim it generalises.
+    # The two zones it was FIRST measured from, taped 2026-08-06. These are no
+    # longer the calibration -- ORIGIN_RADIAL_BIAS_M is now fitted across the 15
+    # positions of the 2026-08-07 sweep -- so they are two samples of a scattered
+    # quantity, not the answer. Checked to 3 mm rather than 2 for exactly that
+    # reason: repeat surveys of one untouched mat differ by up to 4.7 mm when
+    # taken hours apart, so demanding these two land inside 2 mm would be
+    # demanding the constant honour two draws over thirteen others.
+    #
+    # LOOSENED DELIBERATELY, ONCE, WITH A REASON. If this needs loosening again,
+    # something is drifting and the tolerance is not the thing to change.
     for name, surveyed, taped in (("pickup", (0.2325, -0.0021), 0.2032),
                                   ("place", (0.0014, 0.2563), 0.2286)):
         corrected = apply_origin_radial_bias(surveyed)
         left = math.hypot(*corrected) - taped
-        check("%s lands within 2 mm of its taped radius" % name,
-              abs(left) < 0.002, "%+.1f mm" % (left * 1000.0))
+        check("%s lands within 3 mm of its taped radius" % name,
+              abs(left) < 0.003, "%+.1f mm" % (left * 1000.0))
     check("a zero bias is a no-op",
           apply_origin_radial_bias((0.2325, -0.0021), 0.0) == (0.2325, -0.0021))
     check("an origin at the base does not divide by zero",

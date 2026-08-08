@@ -2620,13 +2620,23 @@ def record_flange_fk(io_client):
     return flange
 
 
-def report_reached(io_client, x, y, z, what="move"):
+def report_reached(io_client, x, y, z, what="move", block_yaw_deg=0.0,
+                   holding_block=False):
     """Print where the flange and gripper ACTUALLY are against where they were
     asked to be, in mm, from /joint_states via forward kinematics.
 
     (x, y, z) is the FLANGE target as the caller passed it, BEFORE tip-swing
     compensation -- that is what both call sites hand in. The comparison is
     made against the compensated value, which is what was really commanded.
+
+    PASS block_yaw_deg AND holding_block, or the numbers below are quietly
+    wrong. This recomputes the commanded point with compensate_for_tip_swing,
+    and both arguments change its answer: the tip swing comes out of
+    grasp_quat_for, which is a function of the yaw, and of whether a payload is
+    tilting the arm. Called with the defaults on a rotated or loaded grasp, the
+    error rows compare the achieved pose against a point that was never
+    commanded -- a plausible-looking few millimetres, in the one line this
+    project quotes as evidence.
 
     EXISTS BECAUSE THIS QUESTION KEEPS COSTING ROUND TRIPS. Twice now a
     hardware session has stalled on "the arm is somewhere else and we cannot
@@ -2652,7 +2662,7 @@ def report_reached(io_client, x, y, z, what="move"):
     flange, _approach = _fk_flange(values)
     LAST_FLANGE_FK[:] = list(flange)
     gripper = _fk_gripper_base(values)
-    cx, cy, cz = compensate_for_tip_swing(x, y, z)
+    cx, cy, cz = compensate_for_tip_swing(x, y, z, block_yaw_deg, holding_block)
     cz = clamp_flange_z(cz, "reported")
 
     err = [flange[0] - cx, flange[1] - cy, flange[2] - cz]
@@ -2876,13 +2886,44 @@ def tool_tip_offset(x, y, block_yaw_deg=0.0, holding_block=False):
 # that replaced it. The August 4 survey was closer to right than the fit that
 # overturned it, because it measured against a ruler and the fit did not.
 #
-# TANGENTIAL IS NOT SETTLED. +X wants -0.0088 and +Y wants 0.0000, and a radial
+# TANGENTIAL WAS NEVER A JAW OFFSET AT ALL -- ZEROED 2026-08-07.
+#
+# The old note here read: "+X wants -0.0088 and +Y wants 0.0000, and a radial
 # model cannot have both. -0.0033 is their mean and leaves a 4.5 mm typical miss
-# (7.5 mm worst) across all eight runs, against 19.9 mm for the constants it
-# replaces. A zone that gets used repeatedly can do better with
-# --jaw-tangential-offset; the radial term should not need touching again.
+# (7.5 mm worst)." That was the right observation and the wrong conclusion. The
+# two values are 8.8 mm apart, which is ONE J1 BACKLASH WIDTH, and they were
+# measured at bearings 90 deg apart -- i.e. approaching the base yaw from
+# opposite directions. A radial model cannot have both because there was no
+# radial quantity there to model.
+#
+# THE EVIDENCE. move_arm_to defaults unidirectional=False and no call site in
+# tag_pick_place.py ever passed it, so every one of those eight grasps arrived
+# with J1 resting on whichever flank of its slack the previous move left it on.
+# Measured on hardware 2026-08-07 across 73 moves: J1 undershoots by 0.94 deg
+# (sd 0.12) in whichever direction it travelled -- +ve commands land -0.89, -ve
+# land +0.97 -- and the magnitude is the same for a 0.9 deg move as for a 22 deg
+# one, so it is lost motion, not tracking. Three round trips to the IDENTICAL
+# commanded point from opposite sides landed 6.3 / 6.0 / 6.9 mm apart.
+#
+# WITH THE FIX LIVE the direction dependence is gone (same-point spread 0.33 mm,
+# error a constant +0.25 deg) and the -0.0033 push was left standing bare. At
+# bearing 0 it commands flange_y = y + 0.0033, and the jaws duly parked ~3 mm
+# toward world +Y of the block -- sign and magnitude both as predicted, verified
+# at the bench. Zeroing removes exactly that.
+#
+# WHY ZERO AND NOT A SMALL RESIDUAL. About +0.9 mm of tangential error remains,
+# and it belongs to J1_RESIDUAL_BIAS_DEG (the fix over-corrects slightly, 1.10
+# configured against ~0.85 apparent), not here. Folding it into this constant
+# would be the same mistake DESCENT_BIAS_Z made doing GRASP_OFFSET_Z's job and
+# SAG_PRECOMP_* made cancelling the mount tilt: two corrections for one effect
+# cannot be tuned independently afterwards. Leave the joint error at the joint.
+#
+# n=1 at one bearing, so this is a REMOVAL of a term shown to be spurious, not a
+# new fit. --jaw-tangential-offset still works if a pose disagrees. If Saturday's
+# 13-position sweep shows a genuine tangential term surviving the J1 fix, it can
+# be fitted then -- on data where J1 is no longer lying about it.
 JAW_RADIAL_OFFSET_M = -0.0199      # negative = jaws hang INBOARD of the flange
-JAW_TANGENTIAL_OFFSET_M = -0.0033
+JAW_TANGENTIAL_OFFSET_M = 0.0
 
 
 # RESIDUAL DESCENT BIAS, measured 2026-08-03.
@@ -3534,7 +3575,11 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
     # actually is, which is a different question and the one that matters.
     # report_reached updates LAST_FLANGE_FK itself, as does move_arm_to, so the
     # global is current after every arm move regardless of which planner ran.
-    report_reached(io_client, x, y, z, what="after Cartesian descent")
+    # Forward the yaw and the payload. make_grasp_pose above built the target
+    # from both, so report_reached has to recompute the commanded point from the
+    # same two or it prints the error against a pose nobody asked for.
+    report_reached(io_client, x, y, z, what="after Cartesian descent",
+                   block_yaw_deg=block_yaw_deg, holding_block=holding_block)
     return ok
 
 

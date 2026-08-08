@@ -1,0 +1,269 @@
+SATURDAY 2026-08-08, 09:00-21:00 -- REVISED after session 1
+===========================================================
+
+WHY THIS IS NOT THE PLAN WE STARTED WITH
+----------------------------------------
+Session 1 was supposed to prepare a day of fitting a 5.8 mm error. It instead
+found that most of that 5.8 mm was never there:
+
+  tangential 3.4 mm   REAL. J1 lost motion, measured over 73 moves, fixed by
+                      one keyword (unidirectional=True), verified: the
+                      direction-dependent gap went 6.4 mm -> 0.33 mm.
+  tangential 3.0 mm   REAL but self-inflicted. JAW_TANGENTIAL_OFFSET_M was
+                      J1 backlash misattributed as a tool offset -- its own
+                      comment recorded the 8.8 mm split it could not explain,
+                      which is one backlash width at bearings 90 deg apart.
+                      Zeroed.
+  radial 4.7 mm       NOT REAL. It was the operator eyeballing the jaws from
+                      25 mm above the block's top face. FK flange radius error
+                      is -1.15 mm before the J1 fix and -1.40 mm after --
+                      identical, as it must be, since J1 cannot move the
+                      radius. A caliper at 8 mm clearance reads +0.53 mm, and
+                      the far reading's SIGN was opposite to the arm's true
+                      error.
+
+  DEMO POSE NOW: radial +0.53, tangential ~-1.0, TOTAL 1.13 mm.
+  The 1-2 mm target is already met AT THIS POSE.
+
+So Saturday is no longer "fit the error down". It is two open questions:
+
+  Q1  Does 1.1 mm HOLD ELSEWHERE? One bearing is one measurement.
+      The one term known to vary across the workspace is the survey bias:
+      ORIGIN_RADIAL_BIAS_M is still n=2, and position A already showed
+      6.06 mm of survey error against taped truth.
+  Q2  Does it hold for a block anywhere in the zone, not just at its centre?
+      (Top-face parallax is 6.5 mm at the zone edge, corrected but adding
+      ~1.2 mm of view spread. Untested off-centre since the correction landed.)
+
+AND THE GOOD NEWS FOR YOUR HANDS: Q1 needs no caliper and no nudge at all.
+record_survey writes zone_origin vs taped truth as a complete row with the
+GRIPPER NEVER LEAVING HOME. Move mat, type command, wait ~4 min, repeat.
+
+
+WHAT IS ALREADY BUILT AND TESTED (all offline tests green)
+----------------------------------------------------------
+  calibration.py --fit --channel survey
+      Fits radial = c + kx*cos(b) + ky*sin(b) + kr*(r - r_bar).
+      cos/sin because a world-fixed offset projects onto radial as exactly
+      that; a term linear in the angle cannot represent one at all.
+      Every coefficient printed against its own standard error, and anything
+      under 2 se is reported "NOT measured" rather than recommended.
+      Verified: recovers a planted model to 0.2 mm at sigma 0.5 mm, and
+      REFUSES the real 68-row history (2 usable survey rows).
+
+      Three filters that matter:
+        - rows marked `invalid` are dropped LOUDLY (10 of them, hand-added)
+        - views < 3 rejected (single-still rows get no parallax correction)
+        - an EXACTLY ZERO survey error is treated as an assertion, not data.
+          41 of the first 68 rows passed the same number as both
+          --zone-origin and --truth-block-world, which makes survey_error
+          identically zero by construction. Without this filter the fitter
+          returns R^2 1.00 having measured the identity function.
+
+  --max-clearance-mm for the nudge channel, because a nudge is only as good
+      as the distance it was read from. Rows now record measure_clearance_mm
+      in their provenance stanza, so a 0.5 mm caliper reading is
+      distinguishable from a 5 mm illusion.
+
+  15 SURVEY POSITIONS, all pre-flighted for reach and J1 sweep coverage
+  (tightest far-corner margin is H at +13.5 mm):
+      A-K  the original bearing fan, -113 to +18 deg
+      L,M  (0,+7) and (3,+7) -- bearings +90 and +67, closing the documented
+           +20..+90 gap. Halves the standard error on every bearing coefficient.
+      N,O  (5,0) and (7,0) -- a RADIUS LADDER at bearing 0 with H, radii
+           127/178/229 mm. Simulated: kr's standard error 8.2 -> 5.7 mm/m.
+           Without them kr leaves 0.6 mm unresolved across the sweep, at a
+           1-2 mm target.
+
+
+SCHEDULE
+--------
+09:00-09:30  Bring-up. Offline tests (zone_vision_selftest, explore --selftest,
+             calibration --selftest). Confirm the [j1] banner fires and the
+             "Lower to the measurement clearance" step appears.
+
+09:30-10:00  BASELINE AT THE DEMO POSE, 3 runs, caliper at the 8 mm park.
+             Confirms session 1's 1.13 mm survived the night and re-measures
+             sigma under today's conditions. sigma is the denominator of every
+             decision today -- find out it drifted now, not at 18:00.
+
+10:00-14:00  THE SURVEY SWEEP. 15 positions, unattended per position.
+             Block taped on the zone centre; mat on the pre-marked spots.
+
+               python3 explore_pick_place.py --survey-only --position <X>
+
+             NO --zone-origin (that would exclude the term under test).
+             NO caliper. NO nudge. Gripper stays home.
+             ~4-5 min each + mat move. Re-run 3 of them twice for the
+             survey's own repeatability.
+
+             DO ALSO, 15 s per position with the caliper already out: the
+             block's top-face height above the bench. A non-flat bench moves
+             the homography's mat plane and would otherwise appear as an
+             unexplained kr.
+
+14:00-14:45  FIT.  calibration.py --fit --channel survey
+             Read the standard errors before the coefficients. Decide the slot
+             from the three radii now recorded per row (zone / jaw / flange):
+               c  -> explore.apply_origin_radial_bias (the single application
+                     point, explore.py:374, called once from fit_zone AFTER the
+                     residual is computed -- keep that order)
+               kx,ky -> a WORLD-frame term. NOT apply_origin_radial_bias,
+                     which is radial by construction. If these come out
+                     measured, that is a new finding and needs a new home.
+               kr -> scales with reach; compliance or link length.
+             Apply only what is measured at >2 se and R^2 >= 0.7.
+
+14:45-16:15  VERIFICATION SWEEP. 5 positions spanning the bearing range,
+             including L or M, caliper at the 8 mm park, nudge typed so it
+             records with its sign. THIS is the number that proves it, not
+             the fit's own R^2 (Lesson 4: internal agreement is not accuracy).
+
+16:15-18:00  Q2 -- THE IN-ZONE SWEEP. Zone fixed at F or G, survey once, then
+             tag_pick_place.py directly against that --zone-origin.
+             3x3 factorial, block taped at zx,zy in {-20,0,+20} mm.
+             Usable range is 23.1 mm and the check is on max(|zx|,|zy|), so
+             the corners are legal. ~90 s/row. Pass
+             --no-truth-block-on-centre when the block is NOT at the centre,
+             or the truth column is a lie.
+             9 rows against 3 parameters per axis leaves 6 dof to TEST for the
+             quadratic the parallax correction is supposed to have removed.
+
+18:00-18:45  4-corner replication at B (bearing -90). The vision model is
+             expressed in the ZONE frame; if it is a camera property it must
+             reproduce at a different zone pose. Four rows answer a question
+             you would otherwise assume.
+
+18:45-19:30  Apply any vision term; re-verify at 4 new in-zone points.
+
+19:30-21:00  CONFIRMED GRASPS, 6-8, spanning bearing and in-zone position,
+             with taped --truth-block-world. PROTECT THIS SLOT. It is the only
+             source of rows calibration.jaw_offset() will accept, and the only
+             measurement of the park-to-grasp step everything above
+             extrapolates across.
+
+IF THE DAY RUNS SHORT: drop C, E, J. Never L, M, N or O -- bearing coverage
+and the radius ladder are what the sweep is FOR.
+
+
+DECIDE-BY GATES
+---------------
+09:30 sigma > 1 mm            -> the 1-2 mm claim is not available today; say
+                                 so and rescope to 2-3 mm before spending the
+                                 morning.
+14:00 fit R^2 < 0.7           -> do not apply anything. Report the means and
+                                 move to Q2; a bad model applied is worse than
+                                 no model.
+14:00 all coefficients < 2 se -> the survey bias is already inside the noise
+                                 across the workspace. That is a RESULT, not a
+                                 failure: it means 1.1 mm generalises and the
+                                 afternoon is confirmation.
+
+
+TWO THINGS TO CARRY OVER, DELIBERATELY NOT DONE
+-----------------------------------------------
+1. J1_RESIDUAL_BIAS_DEG slightly OVER-corrects: residual +0.25 deg against a
+   0.10 deg spread, so by the project's own rule (act when mean exceeds
+   spread) it is actionable. NOT retuned from n=5 at one pose -- that is
+   Lesson 2 exactly. If +0.25 holds across today's bearings and radii, drop
+   1.10 -> 0.85. That is worth ~0.9 mm of tangential.
+2. The zone-origin bias and the jaw-offset error are CONFOUNDED with the block
+   on the zone centre -- over the usable area the block's bearing differs from
+   the zone's by at most 6.5 deg. No sweep separates them; only flange_fk plus
+   an external taped truth does. It does not stop us hitting 1-2 mm here, but
+   it decides WHERE the constant is written, and the code comment should say
+   so. That is what prevents a fourth recalibration.
+
+
+===========================================================
+UPDATE 2026-08-07 EVENING -- THE SWEEP IS DONE, AND THE PLAN SHRANK
+===========================================================
+
+A-O were all run. 43 survey rows. Three data problems, all resolved:
+
+  2 rows arithmetically impossible (176 mm, 319 mm) -- a stale --truth-place
+    from the previous position while the mat had moved. MARKED invalid, kept in
+    the file, dropped loudly by load(). record_survey now catches this itself;
+    it previously could not, because the 30 mm sanity check guarded the block
+    row's argv and --survey-only returns long before that code.
+  Position K reads +20 mm tangential, repeatably across two runs, while its
+    neighbours J (+15.9 deg) and I (+7.1 deg) read +1.6 and -1.2. A real bias
+    cannot jump 20 mm over 2.5 deg of bearing. The K mat was taped in the wrong
+    place. EXCLUDED. Re-run K.
+  The place zone's survey is bimodal, two basins 5.9 mm apart. NOT PURSUED --
+    see below.
+
+THE FIT, 20 pickup rows, K excluded
+-----------------------------------
+  radial = c + kx*cos(b) + ky*sin(b) + kr*(r - 0.183)     R^2 0.27
+    constant (radial)     -1.31 mm  +- 0.33   MEASURED (4.0 se)
+    kx (world +X)         +0.51 mm  +- 0.40   not measured
+    ky (world +Y)         +0.38 mm  +- 0.34   not measured
+    kr (per m of reach)   +7.91 mm  +- 7.72   not measured
+
+EVERY SHAPE TERM IS ZERO TO WITHIN ITS OWN STANDARD ERROR. No world-fixed
+component, no reach dependence. The bias is purely radial and purely constant,
+which is what ORIGIN_RADIAL_BIAS_M always assumed. The frame question reopened
+three times in August is CLOSED, and the simple model was right all along.
+
+  APPLIED: ORIGIN_RADIAL_BIAS_M  -0.0285 -> -0.0272
+
+Tangential: nothing established. Its kr printed "measured" at 2.5 se but moved
+from -96.9 to -51.9 and flipped sign on radial when the row set changed. A
+coefficient that moves with the row set is not a measurement.
+
+WHY THE PLACE-ZONE BIMODALITY IS NOT WORTH FIXING
+-------------------------------------------------
+fit_zone computes  origin = mean(hit) - R(yaw) . mean(camera_zone),
+so the origin's sensitivity to the fitted yaw is exactly |mean(camera_zone)|:
+
+  pickup zone   mean camera offset  22.4 mm  ->  0.39 mm per degree of yaw
+  place zone    mean camera offset  99.3 mm  ->  1.73 mm per degree of yaw
+
+The pickup zone is the sweep's TARGET so its views straddle it; the place zone
+is caught opportunistically from wherever the pickup sweep pointed, so its views
+sit far off to one side. 4.4x the sensitivity, and a shorter yaw baseline too.
+
+AND IT DOES NOT MATTER: the place target is a 4 in box that blocks are TOSSED
+into, +-25 mm tolerance (stage 0 of the stacked-block plan). A 6 mm place survey
+error is irrelevant. I nearly sent a day down this hole.
+
+WHAT THE PICKUP SURVEY IS ACTUALLY CAPABLE OF
+---------------------------------------------
+Repeat pairs at one position, mat untouched:
+
+    views match, minutes apart    0.10 / 0.29 / 0.62 mm    (N, J, I)
+    view sets DIFFER (9 vs 6)     3.66 mm                  (O)
+    runs HOURS apart              3.36 / 4.74 mm           (B, A)
+
+  -> the survey fits to ~0.3 mm. The scatter is which views survived choose()'s
+     gates, plus the mat being nudged between runs hours apart -- the second is
+     a truth-column problem, not survey error.
+
+  I EARLIER QUOTED 2.7 mm AS "THE SURVEY SIGMA". That was measured on PLACE rows
+  and is wrong for the pickup zone. Pickup is 1.6 mm pooled, ~0.3 mm when the
+  view set is stable.
+
+WHERE THAT LEAVES THE ERROR BUDGET
+----------------------------------
+    grasp error, demo pose, measured    1.13 mm
+    survey error after the new constant  ~0.3-0.6 mm when views are stable
+    END TO END, PREDICTED                ~1.2-1.3 mm
+
+That is inside the 1-2 mm target. It is a PREDICTION, not a measurement.
+
+WHAT IS LEFT, IN ORDER
+----------------------
+1. VERIFY END TO END. The number above has never been measured in one run.
+   Full autonomous run at 3-4 bearings, caliper at the 8 mm park, nudge typed
+   so it records with its sign. This is the only thing that proves the target.
+2. Re-run position K with the mat correctly taped, and re-fit. One row.
+3. Q2, the in-zone sweep (block anywhere in a fixed zone). Untouched so far and
+   still open: top-face parallax is 6.5 mm at the zone edge, corrected but never
+   tested off-centre since the correction landed.
+4. J1_RESIDUAL_BIAS_DEG 1.10 -> 0.85 if the +0.25 deg over-correction holds up
+   across bearings. Worth ~0.9 mm of tangential. Needs the verification data
+   from (1), not a fresh experiment.
+5. OPTIONAL robustness: make choose()'s accepted view set stable, since O showed
+   a 9-vs-6 view difference moving the origin 3.66 mm. Cheapest version is to
+   warn when the view count is low rather than to change the gates.
