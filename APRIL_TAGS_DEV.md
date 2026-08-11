@@ -5,11 +5,20 @@ approach was chosen, the staging, the long-form justifications. This file is the
 **bench state**: which machine runs what, what currently works, what is broken
 right now, and the exact commands to reproduce and fix it.
 
-Written 2026-08-02. If you are a fresh session picking this up, read "Where we
-are" and "THE OPEN BUG" first — everything else is reference.
+Written 2026-08-02, appended to since. If you are a fresh session picking this
+up, **start at the bottom, not the top** — the sections are chronological and
+the early ones describe a state that no longer exists ("Where we are" and "THE
+OPEN BUG" are both from 2026-08-02 and are history now).
 
-**Picking up new work?** Go to "THE STACKED-BLOCK PLAN" — that is the agreed
-direction, with its constraints and the experiment that has to come first.
+**Current state, 2026-08-11:** open-loop grasp error is **0.58 mm RMS, 1.0 mm
+worst**, verified with a caliper across three reaches, two bearings and two
+wrist yaws. Read `CALIBRATION_2026-08-11.md` first, then the
+"2026-08-07 → 2026-08-11" section at the end of this file.
+
+**Picking up new work?** The open list is at the very end of this file, under
+that same section. Item 1 is the in-zone sweep, which is half the scope that was
+agreed on 2026-08-07 and has never been run. "THE STACKED-BLOCK PLAN" is still
+the agreed longer-term direction.
 
 ---
 
@@ -1807,3 +1816,123 @@ a statement about intent, not a measurement. Taping the **block** instead of the
 4. **Per-still lens bias** — one bias learned from the first usable still is
    applied to stills whose true offset differs by 10 mm.
 5. **Place is open-loop** at the surveyed centre, by design and by requirement.
+
+
+# 2026-08-07 → 2026-08-11 — THE ERROR WENT FROM 5.8 mm TO 0.6 mm RMS
+
+**Full write-up: `CALIBRATION_2026-08-11.md`.** This section is the short form
+and the pointers; that file has the tables, the mistakes, and the commands.
+
+## Result
+
+| term | 2026-08-06 evening | 2026-08-11 evening |
+|---|---|---|
+| operator nudge to grasp | 5.8 mm | **0.33 mm mean, 0.58 mm RMS, 1.0 mm worst** |
+| verified across | one pose | 3 reaches (126–225 mm), 2 bearings (91° apart), 2 wrist yaws |
+| measured with | eyeball at a 40 mm hover | caliper at an 8 mm park, repeatable to 0.075 mm |
+
+**The 1–2 mm target is met.** Working envelope is reach **121–222 mm
+(4.8–8.7 in)**; 4 in and 10 in both fail at the bench, bracketing the fitted
+span independently.
+
+## The three things that were actually wrong
+
+1. **J1 lost motion was never live on the pick path.** `move_arm_to` defaults
+   `unidirectional=False` and no `tag_pick_place.py` call site passed it, so the
+   validated `J1_RESIDUAL_BIAS_DEG = 1.10` never ran on the code that picks
+   blocks — only `zone_calibrate.py`, which is why the survey that *measured* it
+   saw it work. Full backlash **1.88°**, which is 4.1 mm of arc at r=126 and
+   7.5 mm at r=229, and it is paid **once** on the first correction of each pose.
+2. **`JAW_TANGENTIAL_OFFSET_M` is a line in reach, not a constant.** +6.0 / +3.0
+   / 0.0 mm at r = 121 / 173 / 222, linear to 0.07 mm. The "4 mm of irreducible
+   scatter" reported on 2026-08-06 was mostly this line sampled at scattered
+   radii — signal, not noise.
+3. **The last 4 mm is TOOL-fixed and no pose-frame constant can express it.**
+   Rotating the wrist 90° rotated the residual 90° *in the world*: `(0,+4)`
+   became `(−4,0)`. `JAW_RADIAL/TANGENTIAL_OFFSET_M` resolve against the
+   **bearing**, so they can never hold it — which is exactly why they kept
+   moving. New term `JAW_PERP_OFFSET_M = -0.004`, applied against the
+   jaw-perpendicular `p_hat`.
+
+## Constants as of 2026-08-11
+
+```python
+# pick_place.py -- POSE frame, resolved against the BEARING to (x, y)
+JAW_RADIAL_OFFSET_M          = -0.0199
+JAW_TANGENTIAL_OFFSET_M      =  0.00368     # base, at zero reach
+JAW_TANGENTIAL_PER_M_REACH   = -0.05930     # per metre of hypot(x, y)
+JAW_TANGENTIAL_REACH_RANGE_M = (0.121, 0.222)
+
+# pick_place.py -- TOOL frame, rotates with the commanded WRIST YAW
+JAW_PERP_OFFSET_M            = -0.004       # perpendicular to jaw closing axis
+
+# explore.py
+ORIGIN_RADIAL_BIAS_M         = -0.0272      # was -0.0285; purely radial, purely constant
+```
+
+`ORIGIN_RADIAL_BIAS_M` closed the question reopened three times in August: at
+n=15 the constant is measured at 4.0 se while **every** shape term (`kx`, `ky`,
+`kr`) is zero within its own standard error. The simple radial model was right.
+
+## New tooling — read this before running a calibration
+
+- **`m dx dy`** at the confirm prompt records a caliper reading and moves
+  nothing. Lands in the row as `open_loop_offset`. **This, not `nudge`, is the
+  error measurement** — a nudge is a control action and is contaminated by the
+  dead band. Sign is pinned: same numbers you would type as a nudge, so **a fit
+  must negate it**.
+- **`--force-grasp-yaw DEG`** pins the wrist so the jaw axis lies on a world
+  axis, which is what makes a caliper gap mean anything. **Calibration only** —
+  with it on the arm will not orient to the block. If the arm hovers dead centre
+  but does not rotate, this flag is on.
+- **`nudge_steps`** records each nudge separately, so the dead band and the real
+  error stay separable.
+- **`calibration.py --fit --zone pickup`** is the default now. Place rows are
+  rank deficient on their own (the place zone never moves; radius constant at
+  229 mm) and pooling them put `kr` at −157 ± 32 mm/m — "measured" at 4.9 se and
+  pure artifact.
+- **Nudge in ONE step, never several small ones.** Each reversal donates up to a
+  full backlash.
+
+## Two operational traps found on 2026-08-11
+
+- **A zone whose tag 1 is not detected caps its trust radius at 72 mm** instead
+  of 144 mm — `MAX_CENTRE_OFFSET_HALF_DIAGONALS = {4: 2.0, 3: 1.0}`. With the
+  pickup mat adjacent to the place mat, the fine pass centres on the place zone
+  and leaves pickup 111–124 mm off image centre, so every sighting is rejected
+  and the run dies with `no pickup zone, so there is nothing to pick`.
+- **`--no-truth-block-on-centre` is an `explore_pick_place.py` flag**, not a
+  `tag_pick_place.py` one. `--truth-block-zone` is **millimetres**;
+  `--truth-block-world` is **metres**.
+
+## Open, in priority order (supersedes the 2026-08-06 list)
+
+1. **Q2, the in-zone sweep — untouched, and it is half the original scope.**
+   Top-face parallax is 6.5 mm at the zone edge, corrected in code but never
+   tested off-centre since the correction landed.
+2. **Pickup mat tag 1** — reprint or clean it. Also: two separate tag squares
+   currently carry the place ids 4–7, 6.4 mm apart. Check for a stray mat.
+3. **The radial axis is not fitted.** Caliper-grade radial reads ~0 at all three
+   reaches, so it may need nothing, but that is not established.
+4. **The survey's tangential error is real and pose-organised**, ~2.3 mm beyond
+   isotropic taping error. Radial sd 1.08/1.13 mm vs tangential 3.56/2.60 in two
+   bearing groups — the noise stays tangential when the frames swap. Not yaw
+   (dYaw sd 0.47°). Does not limit the grasp today; will limit any autonomous
+   no-nudge run.
+5. **`J1_RESIDUAL_BIAS_DEG` 1.10 → 0.85** — over-corrects by +0.25°, confirmed
+   at two radii. Worth ~0.9 mm tangential. Held back deliberately: one change at
+   a time, and it was not needed to hit target.
+6. **The robot was physically replaced 2026-08-11.** The dead band and sag were
+   measured on the previous unit. It appears to transfer, but if a nudge ever
+   under-delivers unexpectedly, re-measure the dead band first.
+7. **Harvest camera-vs-FK pairs** — still the cheapest unused calibration data
+   in the project (carried over from 2026-08-06).
+
+## A sixth lesson, earned twice this week
+
+**A term that reproduces one pose exactly can still be inverted.** A sign error
+in the tangential line was shipped and survived a verification run at H, because
+H's residual was already zero and its required offset is identical on either sign
+convention. Only a pose with a **non-zero** residual tests a sign. The same shape
+of mistake produced "the tool frame is ruled out", asserted from one pose read by
+eye and wrong — one pose cannot separate two frames that coincide there.

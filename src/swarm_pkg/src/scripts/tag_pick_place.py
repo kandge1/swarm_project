@@ -1713,6 +1713,10 @@ def model_provenance(args=None):
         # reproduced. This is exactly the provenance gap that made the first 61
         # rows un-poolable.
         "JAW_TANGENTIAL_PER_M_REACH": pp.JAW_TANGENTIAL_PER_M_REACH,
+        # TOOL-frame, so it rotates with the commanded wrist yaw while the two
+        # above rotate with the bearing. A row missing this cannot be compared
+        # with one taken at a different grasp yaw.
+        "JAW_PERP_OFFSET_M": pp.JAW_PERP_OFFSET_M,
         "GRIPPER_YAW_DEG": pp.GRIPPER_YAW_DEG,
         "GRIPPER_MOUNT_TILT_X_DEG": pp.GRIPPER_MOUNT_TILT_X_DEG,
         "GRIPPER_MOUNT_TILT_Y_DEG": pp.GRIPPER_MOUNT_TILT_Y_DEG,

@@ -3041,6 +3041,34 @@ JAW_TANGENTIAL_PER_M_REACH = -0.05930      # added per metre of hypot(x, y)
 JAW_TANGENTIAL_REACH_RANGE_M = (0.121, 0.222)
 _TANG_REACH_WARNED = []
 
+# TOOL-FIXED LATERAL OFFSET, perpendicular to the jaw closing axis.
+# Measured 2026-08-11 after the bench was stripped and rebuilt -- new tape, mats
+# re-laid, every position re-measured to 1/16 in. Six runs:
+#
+#   pos yaw  bearing   r     correction    radial    tang  |  jaw    PERP
+#    L   90    +89.9  174   (-4.0, +0.0)    -0.01   +4.00  | -0.00  +4.00
+#    O   90     -1.0  170   (-4.0, +0.0)    -4.00   -0.07  | -0.00  +4.00
+#    O    0     -1.0  174   (+0.0, +3.0)    -0.05   +3.00  | +0.00  +3.00
+#    N    0     +0.1  126   (+0.0, +4.0)    +0.01   +4.00  | +0.00  +4.00
+#    O    0     -1.1  177   (+0.0, +4.0)    -0.08   +4.00  | +0.00  +4.00
+#    H    0     -2.0  225   (+0.0, +5.0)    -0.17   +5.00  | +0.00  +5.00
+#
+# In the POSE frame radial swings -4..0 and tangential 0..+4 with no pattern. In
+# the TOOL frame the jaw-axis component is zero everywhere and the perpendicular
+# is +4.00 mm, sd 0.63, across bearings 91 deg apart, two wrist yaws and 101 mm
+# of reach. Rotating the wrist 90 deg rotated the residual 90 deg IN THE WORLD:
+# (0,+4) became (-4,0), and R(+90)*(0,+4) is exactly (-4,0).
+#
+# SO IT IS TOOL-FIXED, and JAW_RADIAL/TANGENTIAL_OFFSET_M -- resolved against the
+# BEARING -- cannot express it at any value. Every earlier attempt to absorb this
+# into a pose-frame constant is why those constants kept moving: fitted at one
+# wrist yaw they look right, and a run at another yaw contradicts them. The
+# 2026-08-11 "tool frame is ruled out" call was made on a single pose read by eye
+# and was simply wrong; two yaws and two bearings settle it.
+#
+# NEGATIVE = the jaws sit on the -p_hat side, so the flange is driven +p_hat.
+JAW_PERP_OFFSET_M = -0.004
+
 
 # RESIDUAL DESCENT BIAS, measured 2026-08-03.
 #
@@ -3097,6 +3125,14 @@ def compensate_for_tip_swing(x, y, z, block_yaw_deg=0.0, holding_block=False):
         # THE TANGENTIAL TERM IS A LINE IN REACH, not a constant -- see
         # JAW_TANGENTIAL_OFFSET_M for the three-reach caliper fit behind it.
         tangential = JAW_TANGENTIAL_OFFSET_M + JAW_TANGENTIAL_PER_M_REACH * r
+        # AND A TOOL-FIXED TERM, which no pose-frame constant can express. See
+        # JAW_PERP_OFFSET_M. p_hat is perpendicular to the jaw closing axis, so
+        # it rotates with the commanded wrist yaw rather than with the bearing.
+        if JAW_PERP_OFFSET_M:
+            jaw_rad = math.radians(block_yaw_deg)
+            px, py = -math.sin(jaw_rad), math.cos(jaw_rad)
+            dx += JAW_PERP_OFFSET_M * px
+            dy += JAW_PERP_OFFSET_M * py
         low, high = JAW_TANGENTIAL_REACH_RANGE_M
         if not low <= r <= high and not _TANG_REACH_WARNED:
             _TANG_REACH_WARNED.append(True)

@@ -670,16 +670,112 @@ If it doesn't work:
   the XML once at process start, so a running launch keeps the old peers.
 
 
-cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+---
 
-python3 explore_pick_place.py --any-block --skip-pick --position A   # (-3,-7) in
-python3 explore_pick_place.py --any-block --skip-pick --position B   # ( 0,-7)
-python3 explore_pick_place.py --any-block --skip-pick --position C   # (+3,-7)
-python3 explore_pick_place.py --any-block --skip-pick --position D   # (+5,-5)
-python3 explore_pick_place.py --any-block --skip-pick --position E   # (+6,-3)
-python3 explore_pick_place.py --any-block --skip-pick --position F   # (+7,-2)
-python3 explore_pick_place.py --any-block --skip-pick --position G   # (+8,-1)
-python3 explore_pick_place.py --any-block --skip-pick --position H   # (+9, 0)
-python3 explore_pick_place.py --any-block --skip-pick --position I   # (+8,+1)
-python3 explore_pick_place.py --any-block --skip-pick --position J   # (+7,+2)
-python3 explore_pick_place.py --any-block --skip-pick --position K   # (+6,+2)
+## Calibration workflow (as of 2026-08-11)
+
+Full record and the reasoning behind every constant:
+**`CALIBRATION_2026-08-11.md`**. Current open-loop grasp error is 0.58 mm RMS.
+
+```bash
+cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+```
+
+### Picking a real block — no calibration flags
+
+```bash
+python3 explore_pick_place.py --any-block --note real_pick
+```
+
+**Never pass `--force-grasp-yaw` here.** It pins the wrist and the arm will
+hover dead over the block without orienting to it. That is the flag working, not
+a bug — it exists so a caliper reading has a known axis.
+
+### Measuring the open-loop error at one position
+
+```bash
+python3 explore_pick_place.py --any-block --skip-pick --position N \
+    --force-grasp-yaw 0 --note my_note
+```
+
+At the confirm prompt the arm is parked 8 mm above the block's top face:
+
+| type | does |
+|---|---|
+| `m 0 4` | **records a caliper reading, MOVES NOTHING.** Do this first. |
+| `0 4` | nudges +4 mm in world Y and re-parks |
+| `0 4 90` | nudge plus 90° of wrist |
+| ENTER | descend and grasp |
+| `q` | abort |
+
+- `m` is the **measurement**; the nudge is a **control action**. They are not the
+  same number — the first nudge at any pose loses one J1 dead band (2.6 mm at
+  r=126, 4.7 mm at r=229). Give `m` the same sign you would type as a nudge.
+- **Nudge in ONE step**, never several small ones: each reversal donates up to a
+  full backlash (1.88°).
+- `--skip-pick` returns before any descent, so the block never moves and repeats
+  are free.
+- Reach must be **121–222 mm (4.8–8.7 in)**. Outside that a `[tool]` warning
+  fires and the tangential term is extrapolated.
+
+### Positions (`--position`, offsets in inches)
+
+```
+A (-3,-7)   B ( 0,-7)   C (+3,-7)   D (+5,-5)   E (+6,-3)
+F (+7,-2)   G (+8,-1)   H (+9, 0)   I (+8,+1)   J (+7,+2)
+K (+6,+2)   L ( 0,+7)   M (+3,+7)   N (+5, 0)   O (+7, 0)
+```
+
+`--position` sets the truth column from the **nominal** inch grid, i.e. where the
+mat was *meant* to go. It is not a measurement — do not fit against
+`truth_world` unless the mat was independently measured.
+
+### Survey only, gripper never leaves home
+
+```bash
+python3 explore_pick_place.py --survey-only --position G --note my_note
+```
+
+### In-zone (block off-centre) against a fixed surveyed origin
+
+Take the origin and yaw from the survey above, then substitute **real numbers**:
+
+```bash
+python3 tag_pick_place.py --zone-origin 0.2059 -0.0315 0.050 --zone-yaw 88.8 \
+    --skip-pick --truth-block-zone 0 -20 --note q2
+```
+
+- `--truth-block-zone` is **MILLIMETRES**, `--truth-block-world` is **METRES**.
+- `--no-truth-block-on-centre` belongs to **`explore_pick_place.py`** and will
+  be rejected by `tag_pick_place.py`.
+- Usable range is 23.1 mm, checked on `max(|zx|,|zy|)`, so ±20 mm corners are
+  legal.
+
+### Reading the results
+
+```bash
+python3 calibration.py --report
+python3 calibration.py --fit --channel survey --zone pickup
+python3 calibration.py --fit --channel nudge --max-clearance-mm 10
+```
+
+`--zone pickup` is the default and should stay that way: place rows are rank
+deficient alone (the place zone never moves) and pooling them corrupts the fit.
+
+### Offline, no robot — all must print `0 failure(s)`
+
+```bash
+python3 -m py_compile tag_pick_place.py pick_place.py zone_vision.py \
+    zone_calibrate.py explore.py explore_pick_place.py calibration.py
+python3 zone_vision_selftest.py
+python3 explore.py --selftest
+python3 calibration.py --selftest
+```
+
+### If a run says `no pickup zone, so there is nothing to pick`
+
+Check the tag count per sighting. Trust radius is tag-count dependent —
+`{4 tags: 144 mm, 3 tags: 72 mm}` from the zone centre. A mat with one
+undetected tag drops to 72 mm, and if it sits adjacent to the other zone the
+fine pass centres on the *other* mat and every sighting is rejected. Clean or
+reprint the missing tag.
