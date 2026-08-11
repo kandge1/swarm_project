@@ -2922,8 +2922,124 @@ def tool_tip_offset(x, y, block_yaw_deg=0.0, holding_block=False):
 # new fit. --jaw-tangential-offset still works if a pose disagrees. If Saturday's
 # 13-position sweep shows a genuine tangential term surviving the J1 fix, it can
 # be fitted then -- on data where J1 is no longer lying about it.
+# RESTORED 2026-08-11, from -0.0033 -> 0.0 -> -0.0045, and this time it is
+# MEASURED rather than argued.
+#
+# The 2026-08-07 removal above reasoned that the whole tangential term was J1
+# lost motion misattributed. That reasoning was half right: J1 lost motion is
+# real, it is 1.88 deg full backlash, and it was worth 2.58 mm at r=126 on the
+# first correction of every pose. But it is not ALL of it. With the J1 fix live
+# on the pick path and one dead band removed from each reading, the six-position
+# sweep of 2026-08-11 still leaves a tangential error at every single pose:
+#
+#     N +7.4   O +6.4   H +10.2   B +1.9   D -0.1   L +1.2   mm
+#     mean +4.50, sd 4.08, and POSITIVE at every bearing from -88 to +91 deg
+#
+# A term that survives the J1 fix, keeps its sign across 179 deg of bearing, and
+# whose mean is larger than zero by any reading is not backlash.
+#
+# WHY THE TOOL FRAME IS RULED OUT, which is what made this safe to write here.
+# A wrist-rotation carousel at N (yaw 0 / -90 / -180, block untouched, rotation
+# only) put the error in the SAME WORLD DIRECTION at every yaw: at yaw 0 the
+# jaws close along X and the error was perpendicular to them, at yaw -90 they
+# close along Y and the error appeared in the gaps (1.50 / 7.54 -> -3.02 mm).
+# A tool-fixed offset would have rotated with the wrist and moved into world X.
+# It did not. So this belongs in a POSE-frame constant -- which is what this one
+# is, resolved against the bearing to (x, y) in compensate_for_tip_swing -- and
+# NOT in the tool-frame terms (GRIPPER_MOUNT_TILT_*, GRIPPER_YAW_DEG).
+#
+# THIS REMOVES THE MEAN, NOT THE SCATTER. sd 4.08 mm survives, and no single
+# constant can touch it: the residual is +7..+10 mm near bearing 0 and +0..+2 mm
+# off-axis, which is a shape, not an offset. Do not expect 1-2 mm from this
+# change alone -- expect the mean to go to roughly zero and the spread to stay.
+#
+# The 180-deg pair that would have separated the tool-fixed part properly is NOT
+# trusted: its two gaps (15.80 / 5.50) imply a 25.65 mm jaw half-span against
+# 19.52 mm from the same session and 20.31 mm from 2026-08-07, so those two
+# numbers were read to a different reference on the gripper. Re-read them and
+# the tool-fixed component can be pinned to ~0.4 mm; until then it is bounded at
+# about a millimetre by the yaw carousel above, which is why it is being ignored
+# rather than fitted.
+# -0.0045 -> -0.0095 later the same day, once the FIRST clean readings existed.
+#
+# The -0.0045 above was fitted to nudge-derived numbers, which carry one J1 dead
+# band each. With --force-grasp-yaw pinning the jaw axis to world X and the 'm'
+# command finally holding the arm still, the residual was measured properly:
+#
+#     N  r=126 mm   Y -5.0 mm        H  r=229 mm   Y -5.0 mm
+#
+# The same -5.0 mm at two radii 103 mm apart is a CONSTANT, which is what this
+# slot is for, so it is simply added: -0.0045 + -0.0050 = -0.0095.
+#
+# The -0.0045 step itself verified before this was written: it predicted a 5.7 mm
+# residual at H and 5.0 mm was measured, and the J1 dead band predicted 4.7 mm of
+# first-nudge loss at r=229 against 5.0 mm observed. The model is behaving.
+#
+# HONEST LIMIT ON THIS NUMBER: at --force-grasp-yaw 0 the jaws close along X, so
+# X is caliper-grade (repeats to 0.075 mm) but Y is PERPENDICULAR to the jaws and
+# can only be eyeballed -- the gap difference is blind to it. Both -5.0 mm
+# figures are eyeballs, agreeing at two radii, which is why this is applied at
+# all; but confirm it at --force-grasp-yaw 90, where Y becomes the measured axis.
+# -0.0095 (constant) -> A LINE IN REACH, 2026-08-11. This is the first term in
+# the project fitted from caliper-grade data at three reaches with a repeat.
+#
+# Measured at grasp_yaw 90 (jaw axis pinned to world Y by --force-grasp-yaw, so
+# the TANGENTIAL axis is the one the gap difference actually resolves), block
+# taped on the zone centre, all three bearings within 2 deg of zero:
+#
+#     r = 121 mm   tangential residual +6.0 mm
+#     r = 173 mm                       +3.0 mm     (two runs, both -3 -3 exactly)
+#     r = 222 mm                        0.0 mm
+#
+# Equal reach steps (52, 49 mm) produced equal error steps (-3, -3 mm). Least
+# squares gives residual(r) = 13.18 - 59.14*r mm, residuals -0.03 / +0.07 / -0.04
+# mm, zero crossing at 222.8 mm. A constant CANNOT fit this and never could: the
+# earlier "sd 4.08 mm that no constant can touch" was mostly this line, sampled
+# at scattered radii.
+#
+# Solving offset(r) = offset_old - correction(r) at each pose gives
+#     offset(r) = +0.00368 - 0.05930 * r     (metres, r = hypot(x, y))
+# which reproduces all three poses to within 0.10 mm.
+#
+# WHAT IT PROBABLY IS: the correction it supplies grows with reach -- 3.5 mm at
+# r=121, 6.5 at 173, 9.5 at 222 -- which is 1.66, 2.15 and 2.45 deg of arc. Not a
+# constant angle and not a constant length, so it is EMPIRICAL. Do not read either
+# coefficient as a physical dimension and do not "simplify" it to one term; the
+# pair is what fits.
+#
+# TWO LIMITS, BOTH REAL:
+#  1. VALID OVER 121-222 mm ONLY. Extrapolating a 3.4 deg angular term past the
+#     measured span is exactly how a good local fit becomes a bad global one, so
+#     going outside it warns.
+#  2. THE RADIAL AXIS IS NOT FITTED HERE. At grasp_yaw 90 radial is PERPENDICULAR
+#     to the jaws, so the gaps are blind to it and it was eyeballed: +3, +3, 0 mm
+#     at the same three reaches. Suggestive of the same shape, not measured.
+#     Pin the jaw axis with --force-grasp-yaw 0 and re-read to fit it.
+#
+# SIGN CORRECTED 2026-08-11, and the bench caught it, not the arithmetic. The
+# first version of this line was shipped as base -0.02270, slope +0.05940 -- both
+# signs inverted. The residuals were built from CORRECTIONS and then added to the
+# offset as though a correction and an offset pushed the same way. They oppose.
+#
+#     d_correction ~= d_offset:   0.0 -> -0.0045 took H from +10.2 to +5.0
+#                                -0.0045 -> -0.0095 took H from +5.0 to  0.0
+#                                -0.0095 -> -0.01551 took N from -6.0 to -10.0
+#
+# N already needed a NEGATIVE correction, so making the offset more negative drove
+# it further out -- 6.0 mm of error became 10.0 mm. The right relation is
+#     offset_new = offset_old - correction
+#
+# H HID IT. Its correction was already 0.0, so its required offset is -0.0095 on
+# either sign convention and it stayed perfect through the mistake. A term fitted
+# so that it reproduces one pose exactly can still be inverted; only a pose with a
+# NON-ZERO residual tests the sign. That is why the confirmation run mattered and
+# why "H is perfect" was not evidence the line was right.
 JAW_RADIAL_OFFSET_M = -0.0199      # negative = jaws hang INBOARD of the flange
-JAW_TANGENTIAL_OFFSET_M = 0.0
+JAW_TANGENTIAL_OFFSET_M = 0.00368          # base, at zero reach
+JAW_TANGENTIAL_PER_M_REACH = -0.05930      # added per metre of hypot(x, y)
+# The span the line above was measured over. Outside it the term is extrapolated.
+JAW_TANGENTIAL_REACH_RANGE_M = (0.121, 0.222)
+_TANG_REACH_WARNED = []
 
 
 # RESIDUAL DESCENT BIAS, measured 2026-08-03.
@@ -2978,9 +3094,21 @@ def compensate_for_tip_swing(x, y, z, block_yaw_deg=0.0, holding_block=False):
     r = math.hypot(x, y)
     if r > 1e-6:
         rx, ry = x / r, y / r
+        # THE TANGENTIAL TERM IS A LINE IN REACH, not a constant -- see
+        # JAW_TANGENTIAL_OFFSET_M for the three-reach caliper fit behind it.
+        tangential = JAW_TANGENTIAL_OFFSET_M + JAW_TANGENTIAL_PER_M_REACH * r
+        low, high = JAW_TANGENTIAL_REACH_RANGE_M
+        if not low <= r <= high and not _TANG_REACH_WARNED:
+            _TANG_REACH_WARNED.append(True)
+            print(f"[tool] reach {r * 1000:.0f} mm is outside the "
+                  f"{low * 1000:.0f}-{high * 1000:.0f} mm span the tangential "
+                  f"term was measured over, so it is EXTRAPOLATED here "
+                  f"({tangential * 1000:+.2f} mm). It carries a 3.4 deg angular "
+                  f"component, which extrapolates badly -- treat any offset seen "
+                  f"at this reach as unverified until it is measured.")
         # t_hat = z_hat x r_hat = (-ry, rx)
-        dx += JAW_RADIAL_OFFSET_M * rx + JAW_TANGENTIAL_OFFSET_M * -ry
-        dy += JAW_RADIAL_OFFSET_M * ry + JAW_TANGENTIAL_OFFSET_M * rx
+        dx += JAW_RADIAL_OFFSET_M * rx + tangential * -ry
+        dy += JAW_RADIAL_OFFSET_M * ry + tangential * rx
     dz -= DESCENT_BIAS_Z
     return x - dx, y - dy, z - dz
 

@@ -610,7 +610,22 @@ MIN_FIT_BEARING_SPAN_DEG = 60.0
 MIN_FIT_ROWS = 6
 
 
-def fit_rows(rows, channel="survey", min_views=3, max_clearance_mm=None):
+def row_zone(row):
+    """"pickup", "place", or None -- which zone a survey row measured.
+
+    record_survey writes note "<note> survey <name>", so the name is the last
+    token. Read from the note rather than a field because every row in the file
+    predates any such field; a `zone` key, if one is ever added, should be
+    preferred here over the note.
+    """
+    note = (row.get("note") or "").strip().split()
+    if len(note) >= 2 and note[-2] == "survey":
+        return note[-1]
+    return row.get("zone")
+
+
+def fit_rows(rows, channel="survey", min_views=3, max_clearance_mm=None,
+             zone="pickup"):
     """Collect (bearing, radius, radial, tangential) for one error channel.
 
     channel: "survey"    -> zone origin vs taped truth. NEEDS NO HAND MEASUREMENT
@@ -624,6 +639,25 @@ def fit_rows(rows, channel="survey", min_views=3, max_clearance_mm=None):
     history): one still gets no cross-view averaging and no parallax correction,
     so its position is not comparable with a fused one.
 
+    zone keeps only survey rows for that zone ("pickup", "place", or None for
+    both). IT DEFAULTS TO PICKUP AND THAT DEFAULT IS THE POINT. The two zones are
+    different measurements and pooling them is not conservative, it is wrong:
+
+      fit_zone computes  origin = mean(hit) - R(yaw) . mean(camera_zone),
+      so the origin's sensitivity to fitted yaw IS |mean(camera_zone)|.
+
+    Measured 2026-08-08 -- pickup 22.4 mm (0.39 mm/deg), place 99.3 mm
+    (1.73 mm/deg). The pickup zone is the sweep's target so its views straddle
+    it; the place zone is caught from wherever the pickup sweep happened to
+    point, every view off to one side. 4.4x the sensitivity on a shorter yaw
+    baseline, which is why the place survey is bimodal across two basins 5.9 mm
+    apart while the pickup zone repeats to 0.30 mm.
+
+    Pooled, 21 place rows carrying 4-10 mm errors at a different radius dragged
+    the survey fit's kr to -157 +- 32 mm/m -- "measured" at 4.9 se, and an
+    artefact of mixing two populations. Rows without a zone (every nudge and
+    open-loop row) are unaffected by this filter.
+
     max_clearance_mm rejects nudges read from too far away. Measured 2026-08-07:
     the same pose read +4.7 mm radial eyeballed from a 25 mm fingertip clearance
     and +0.53 mm with a caliper at 8 mm, with the SIGN of the far reading opposite
@@ -633,6 +667,11 @@ def fit_rows(rows, channel="survey", min_views=3, max_clearance_mm=None):
     getter = {"survey": survey_error, "open-loop": open_loop_error}.get(channel)
     out = []
     for row in rows:
+        if zone is not None:
+            in_zone = row_zone(row)
+            # None means the row is not a survey row at all -- leave it alone.
+            if in_zone is not None and in_zone != zone:
+                continue
         if channel == "nudge":
             if not row.get("nudge_measured"):
                 continue
@@ -1019,6 +1058,15 @@ def main():
                              "25 mm and +0.53 mm from 8 mm on 2026-08-07, with "
                              "opposite sign -- so pooling them fits the viewing "
                              "angle, not the arm")
+    parser.add_argument("--zone", default="pickup",
+                        choices=("pickup", "place", "both"),
+                        help="which zone's survey rows to fit (default "
+                             "%(default)s). The pickup zone repeats to 0.30 mm; "
+                             "the place zone is 4.4x more yaw-sensitive because "
+                             "its views all sit off to one side, and is bimodal "
+                             "across two basins 5.9 mm apart. 'both' pools them "
+                             "and is almost always a mistake -- it is what put "
+                             "kr at -157 mm/m")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
 
@@ -1030,7 +1078,8 @@ def main():
               % (len(rows), args.log or DEFAULT_LOG))
         for line in fit_report(rows, args.channel,
                                min_views=args.min_views,
-                               max_clearance_mm=args.max_clearance_mm):
+                               max_clearance_mm=args.max_clearance_mm,
+                               zone=None if args.zone == "both" else args.zone):
             print(line)
         return 0
     # --report is the default, and used to be dead: args.report was never read.

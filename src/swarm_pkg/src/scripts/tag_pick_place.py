@@ -1451,6 +1451,30 @@ def print_block_report(block, block_yaw_world, grasp_x, grasp_y, grasp_z,
     print("\n[confirm] block  %s  %.1f x %.1f mm  %s"
           % (block_class if block_class else "UNIDENTIFIED",
              block.width * 1000, block.length * 1000, block.shape))
+    # THE ONE PIECE OF GROUND TRUTH THAT COSTS NOTHING. The block is 30 mm by
+    # construction, so the measured footprint is a free check on the whole
+    # vision chain -- threshold, contour, homography, parallax -- needing no
+    # tape, no caliper and no operator.
+    #
+    # Earned on 2026-08-09: position G measured 23.0 x 23.5 mm and needed a
+    # nudge, while N and O measured ~30 x 30 and did not. A footprint 7 mm
+    # short on BOTH axes means the segmentation lost the block's edges, and a
+    # blob eroded unevenly moves its own centroid -- so that run's offset was a
+    # detection failure, not a calibration point. choose() gates only on view
+    # spread and yaw spread, so nothing upstream noticed.
+    #
+    # WARNING, NOT A REJECTION, and deliberately so: tightening a gate in the
+    # middle of a calibration changes which rows survive and makes the day's
+    # data un-poolable with the morning's. Print it, let the operator throw the
+    # row out, and decide the gate afterwards from the numbers.
+    worst = max(abs(block.width - BLOCK_NOMINAL_M),
+                abs(block.length - BLOCK_NOMINAL_M))
+    if worst > BLOCK_SIZE_WARN_M:
+        print("[confirm]   *** FOOTPRINT IS %.1f mm OFF NOMINAL %.0f mm -- the "
+              "vision lost the block's edges."
+              % (worst * 1000, BLOCK_NOMINAL_M * 1000))
+        print("[confirm]   *** An unevenly eroded blob moves its own centroid, "
+              "so treat this run's offset as a DETECTION FAILURE, not data.")
     print("[confirm]   zone-local  (%+.1f, %+.1f) mm      <- raw, straight from "
           "the tags" % (block.zx * 1000, block.zy * 1000))
     print("[confirm]   WORLD       (%.4f, %.4f) m   r %.4f m = %.2f in, "
@@ -1591,6 +1615,13 @@ def select_block(fused, identity=None, want_class=None):
 # size changes.
 MEASURE_CLEARANCE_M = 0.008
 
+# The block's true edge length. Not a tuning knob -- it is what was printed.
+BLOCK_NOMINAL_M = 0.030
+# How far the measured footprint may sit from nominal before it is called out.
+# 4 mm is wide on purpose: view-to-view footprint scatter of 1-2 mm is normal at
+# these ranges, and the failure this is aimed at was 7 mm on both axes.
+BLOCK_SIZE_WARN_M = 0.004
+
 # WHY THIS EXISTS. The standard hover is APPROACH_HEIGHT = 40 mm above the grasp,
 # which puts the fingertips 25 mm above the block's top face. Judging a lateral
 # offset from up there, by eye, was measured on 2026-08-07 as the weakest link in
@@ -1677,6 +1708,11 @@ def model_provenance(args=None):
         "DESCENT_BIAS_Z": pp.DESCENT_BIAS_Z,
         "JAW_RADIAL_OFFSET_M": pp.JAW_RADIAL_OFFSET_M,
         "JAW_TANGENTIAL_OFFSET_M": pp.JAW_TANGENTIAL_OFFSET_M,
+        # The tangential term is a LINE in reach as of 2026-08-11, so the base
+        # alone no longer identifies it -- a row without the slope cannot be
+        # reproduced. This is exactly the provenance gap that made the first 61
+        # rows un-poolable.
+        "JAW_TANGENTIAL_PER_M_REACH": pp.JAW_TANGENTIAL_PER_M_REACH,
         "GRIPPER_YAW_DEG": pp.GRIPPER_YAW_DEG,
         "GRIPPER_MOUNT_TILT_X_DEG": pp.GRIPPER_MOUNT_TILT_X_DEG,
         "GRIPPER_MOUNT_TILT_Y_DEG": pp.GRIPPER_MOUNT_TILT_Y_DEG,
@@ -1809,6 +1845,38 @@ def run_stage1(io_client, detector, args, log):
     block_yaw_world = block.zyaw + detector.zone_yaw
     grasp_yaw = reduce_yaw(block_yaw_world, block.symmetry)
     grasp_yaw_deg = math.degrees(grasp_yaw)
+    # YAW OUT OF THE LOOP, on request, for x/y calibration runs.
+    #
+    # The measured yaw has two ways to go wrong on a 4-fold block, and both bit
+    # on 2026-08-11 when the gripper came up 22.5 deg off world X:
+    #
+    #   1. FUSION DEGENERACY. Folding a symmetry-4 yaw maps 90 deg onto a full
+    #      circle, so two views disagreeing by 45 deg are ANTIPODAL and their
+    #      circular mean is undefined -- zone_vision._circular_mean has an
+    #      explicit s~0 and c~0 guard for exactly this. 22.5 deg is the midpoint
+    #      of 0 and 45, i.e. the fingerprint of that degeneracy.
+    #   2. SYMMETRY MISCLASSIFICATION. The surveyed zone_yaw flipped sign
+    #      between 2026-08-08 (-90.2) and 2026-08-09 (+88.9). At symmetry 4 that
+    #      is absorbed (180 mod 90 = 0) and stays invisible; if a marginal
+    #      footprint ever classifies the square as "rect" (symmetry 2, period
+    #      180) it is NOT absorbed and the grasp yaw jumps ~90 deg. Footprints
+    #      have been marginal -- position G measured 23.0 x 23.5 mm.
+    #
+    # For a calibration sweep neither risk is worth carrying: the block is
+    # oriented the same way every run by hand, so its yaw is KNOWN and does not
+    # need measuring. Pinning it also fixes the jaw axis to a world axis, which
+    # is the difference between a caliper gap that means something and one that
+    # is measuring a 22.5 deg projection of an unknown mixture of x and y.
+    #
+    # NOT for picking real blocks in anger -- there the measured yaw is the whole
+    # point and this flag must stay off.
+    if getattr(args, "force_grasp_yaw", None) is not None:
+        grasp_yaw_deg = float(args.force_grasp_yaw)
+        grasp_yaw = math.radians(grasp_yaw_deg)
+        print("[stage1] --force-grasp-yaw: commanding %+.1f deg instead of the "
+              "measured %+.1f deg. The jaw axis is now pinned to a known world "
+              "direction." % (grasp_yaw_deg, math.degrees(reduce_yaw(
+                  block_yaw_world, block.symmetry))))
     print("\n[stage1] block: %.1f x %.1f mm %s, zone (%+.1f, %+.1f) mm, "
           "yaw %+.1f deg -> grasp yaw %+.1f deg (symmetry %d)"
           % (block.width * 1000, block.length * 1000, block.shape,
@@ -1816,10 +1884,34 @@ def run_stage1(io_client, detector, args, log):
              grasp_yaw_deg, block.symmetry))
 
     usable = args.zone_size / 2.0 - args.tag_size / 2.0 - max(block.width, block.length) / 2.0
-    if max(abs(block.zx), abs(block.zy)) > usable:
+    off_centre = max(abs(block.zx), abs(block.zy))
+    if off_centre > usable:
         print("[stage1] WARNING: block centre is %.1f mm off, past the %.1f mm "
               "at which it starts covering a tag. See APRIL_TAGS.md 'Usable "
-              "area'." % (max(abs(block.zx), abs(block.zy)) * 1000, usable * 1000))
+              "area'." % (off_centre * 1000, usable * 1000))
+        # REFUSE the one combination that cannot be a real block. Outside the
+        # usable area the block is covering the very tags the homography needs,
+        # so a lone view claiming a position out there has nothing corroborating
+        # it and nothing constraining it.
+        #
+        # Both halves of this were already WARNINGS and both fired on the same
+        # run -- 2026-08-11 11:39, views=1, spread=0.0, block placed 52.4 mm from
+        # the surveyed centre, 2.3x outside the usable area. It was accepted, the
+        # arm drove there, and the operator hand-dragged the jaws (-35, +50) mm to
+        # the real block. Two warnings that each mean "probably wrong" add up to
+        # certainly wrong, and the run cost 8 minutes of a short day.
+        #
+        # Deliberately narrow: it needs BOTH a single view AND an impossible
+        # position, so no legitimately fused detection can trip it, including the
+        # Q2 in-zone corners at +-20 mm (inside the 23.1 mm usable area anyway).
+        if getattr(block, "n_views", 2) < 2:
+            print("[stage1] REFUSING: a SINGLE view placing the block outside "
+                  "the usable area has nothing corroborating it. Out there the "
+                  "block covers the tags the homography is built on, so this is "
+                  "a tag border or tape edge, not the block.")
+            print("[stage1] Re-run. If it repeats, fix framing/lighting -- do "
+                  "not nudge your way to the block, it records as arm error.")
+            return False
 
     # --- 2. work out where to put the JAWS --------------------------------
     # The tags already answer this. The block's zone-local position came from
@@ -1988,6 +2080,24 @@ def run_stage1(io_client, detector, args, log):
     # asked", and nudge_total alone cannot tell them apart -- see
     # nudge_measured in save_calibration.
     nudge_offered = [False]
+    # EVERY NUDGE SEPARATELY, in the order it was typed, mm. nudge_total is a
+    # SUM, and a sum cannot show that the first correction did nothing.
+    #
+    # Measured 2026-08-09 at N and O: a 5 mm tangential nudge barely moved the
+    # arm, so a second identical 5 mm was typed and that one landed. The row
+    # recorded +10 mm -- but the ARM only moved about 5, so the file says the
+    # open-loop error was twice what it was. A 5 mm tangential nudge is 1.63 deg
+    # of J1 at r=176 against a full backlash of 1.88 deg, i.e. the correction is
+    # SMALLER THAN THE SLACK, so whether it lands at all depends on which flank
+    # the joint was resting on.
+    #
+    # This is the plan's "a nudge is a control action, not a measurement" made
+    # concrete: fitting the nudge column fits the dead band. Recording the steps
+    # is what makes the two separable after the fact, and it costs one append.
+    nudge_steps = []
+    # Caliper readings typed at the park with 'm dx dy'. The FIRST one is the
+    # open-loop error at this pose; later ones track what the nudges achieved.
+    measured_offsets = []
 
     # Filled by descend(), read by save_calibration(). Both are closures over
     # run_stage1, and the descent happens between them.
@@ -2043,6 +2153,14 @@ def run_stage1(io_client, detector, args, log):
             # a terminal; fatal the moment anything fits them, since they drag
             # every mean toward zero with rows that measured nothing.
             nudge_measured=bool(nudge_offered[0]),
+            nudge_steps=list(nudge_steps),
+            nudge_n_steps=len(nudge_steps),
+            measured_offsets=list(measured_offsets),
+            # The open-loop error at this pose, in METRES to match every other
+            # vector in the schema. This -- not `nudge` -- is what a fit wants.
+            open_loop_offset=([measured_offsets[0]["dx_mm"] / 1000.0,
+                               measured_offsets[0]["dy_mm"] / 1000.0]
+                              if measured_offsets else None),
             # THREE RADII, because a radial correction has to be fitted against
             # the radius it will be applied at, and these differ by ~20 mm:
             #   zone_r    the surveyed zone origin -- where a survey/lens-scale
@@ -2092,6 +2210,11 @@ def run_stage1(io_client, detector, args, log):
                 nudge_total[1] += nudge[1]
                 grasp_yaw_deg += nudge[2]
                 yaw_nudge_total[0] += nudge[2]
+                # at_park False: typed BEFORE the arm moved, so the operator
+                # could not see the jaws. Not a measurement of anything.
+                nudge_steps.append({"dx_mm": nudge[0] * 1000,
+                                    "dy_mm": nudge[1] * 1000,
+                                    "dyaw_deg": nudge[2], "at_park": False})
                 grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z,
                                           grasp_yaw_deg)
                 continue
@@ -2206,30 +2329,95 @@ def run_stage1(io_client, detector, args, log):
                   "+y is world +Y.")
             print("[confirm]   'dx dy dyaw' also turns the wrist, dyaw in "
                   "DEGREES.")
+            print("[confirm]   'm dx dy' RECORDS a caliper reading and moves "
+                  "NOTHING. Do this FIRST.")
+            # SIGN, PINNED. 2026-08-11 at N the operator typed 'm -3 -6' and then
+            # nudged '-3 -6' -- the same numbers -- so what lands in
+            # measured_offsets is the CORRECTION, not the error, and the two
+            # differ by a minus sign. Either convention works as long as it never
+            # changes, and asking for the same numbers as the nudge is the one
+            # that matches what a person at the bench actually does.
+            # ANY FIT ON open_loop_offset MUST NEGATE IT TO GET THE ERROR.
+            print("[confirm]   sign: give 'm' the SAME numbers you would type as "
+                  "a nudge (the correction), not the error.")
             # The gripper is parked and the operator can see it. From here a
             # nudge of zero is a measurement.
             nudge_offered[0] = True
-            answer = _ask("[confirm] ENTER = descend and grasp   'dx dy' mm = "
-                          "nudge and re-park   q = abort > ")
-            if answer in ("q", "quit", "n", "no"):
-                print("[stage1] aborted at the hover. Nothing descended.")
-                save_calibration(False)
-                return False
-            nudge = _parse_nudge(answer)
-            if nudge is not None:
-                grasp_x += nudge[0]
-                grasp_y += nudge[1]
-                nudge_total[0] += nudge[0]
-                nudge_total[1] += nudge[1]
-                grasp_yaw_deg += nudge[2]
-                yaw_nudge_total[0] += nudge[2]
-                grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z,
-                                          grasp_yaw_deg)
-                print("[confirm] re-parking")
-                continue
-            if answer == "":
+            # AN INNER LOOP, AND THIS IS THE WHOLE POINT OF IT. `continue` in the
+            # OUTER loop jumps back to "Move over the block" and re-parks the arm
+            # -- so when 'm' was first added it ended its branch with `continue`
+            # and every "moves NOTHING" reading silently re-parked. So did every
+            # typo, which fell off the bottom of the body into the same re-park.
+            #
+            # Caught on hardware 2026-08-11 at position N: typing 'm 0 5' twice
+            # walked the jaw-axis gaps 3.86/6.00 -> 6.00/3.00 -> 3.86/6.00, i.e.
+            # the arm ALTERNATED between two positions 2.6 mm apart on the radial
+            # axis while the operator was told nothing had moved. Every reading
+            # taken that way is of a different pose than the one before it.
+            #
+            # Only a real nudge or ENTER leaves this loop. Measurements and typos
+            # re-prompt, and the arm holds absolutely still.
+            action = None
+            while True:
+                answer = _ask("[confirm] ENTER = descend and grasp   'dx dy' mm "
+                              "= nudge and re-park   'm dx dy' = record a "
+                              "caliper reading   q = abort > ")
+                if answer in ("q", "quit", "n", "no"):
+                    print("[stage1] aborted at the hover. Nothing descended.")
+                    save_calibration(False)
+                    return False
+                # THE MEASUREMENT, KEPT APART FROM THE CONTROL ACTION. A nudge is
+                # what the operator DID; this is what they SAW. They are not the
+                # same number and this run proved it -- 2026-08-09 at position N
+                # the caliper read -9.70 mm and the operator typed +15 mm of
+                # nudge to correct it, because the first 5 mm nudge delivered
+                # only 2.42 mm (one J1 dead band, 2.58 mm at r=126) and the third
+                # overshot. The row recorded +15: the nudge column overstated a
+                # 9.70 mm error by 5.3 mm, and no amount of care in the nudge
+                # loop can undo that, because the caliper reading was never
+                # written down anywhere.
+                #
+                # Moves nothing -- see the inner-loop comment above for the bug
+                # that made that false for one afternoon. Read it FIRST, before
+                # any nudge, and the first entry is the open-loop error at this
+                # pose, which is the number the whole calibration wants and the
+                # only one admissible in a fit.
+                if (answer[:1] in ("m", "M")
+                        and _parse_nudge(answer[1:]) is not None):
+                    seen = _parse_nudge(answer[1:])
+                    measured_offsets.append({"dx_mm": seen[0] * 1000,
+                                             "dy_mm": seen[1] * 1000,
+                                             "after_nudges": len(nudge_steps)})
+                    print("[confirm] recorded caliper reading (%+.2f, %+.2f) mm "
+                          "after %d nudge(s). THE ARM HAS NOT MOVED."
+                          % (seen[0] * 1000, seen[1] * 1000, len(nudge_steps)))
+                    if len(measured_offsets) == 1:
+                        print("[confirm] that is the OPEN-LOOP error at this "
+                              "pose.")
+                    continue
+                nudge = _parse_nudge(answer)
+                if nudge is not None:
+                    grasp_x += nudge[0]
+                    grasp_y += nudge[1]
+                    nudge_total[0] += nudge[0]
+                    nudge_total[1] += nudge[1]
+                    grasp_yaw_deg += nudge[2]
+                    yaw_nudge_total[0] += nudge[2]
+                    nudge_steps.append({"dx_mm": nudge[0] * 1000,
+                                        "dy_mm": nudge[1] * 1000,
+                                        "dyaw_deg": nudge[2], "at_park": True})
+                    grasp_hover = hover_z_for(grasp_x, grasp_y, grasp_z,
+                                              grasp_yaw_deg)
+                    print("[confirm] re-parking")
+                    action = "nudge"
+                    break
+                if answer == "":
+                    action = "descend"
+                    break
+                print("[confirm] did not understand %r. Nothing moved."
+                      % answer)
+            if action == "descend":
                 break
-            print("[confirm] did not understand %r." % answer)
         # Already parked; do not queue the hover again below.
         steps = []
 
@@ -2446,6 +2634,15 @@ def parse_args(argv=None):
     parser.add_argument("--calibration-log", default=None,
                         help="where calibration rows go (default: %s)"
                              % calibration.DEFAULT_LOG)
+    parser.add_argument("--force-grasp-yaw", type=float, default=None,
+                        metavar="DEG",
+                        help="command this grasp yaw instead of the one measured "
+                             "from the block. For CALIBRATION, where the block "
+                             "is deliberately oriented the same way every run "
+                             "and only x/y is being measured: it pins the jaw "
+                             "axis to a known world direction, which is what "
+                             "makes a caliper gap reading mean anything. Use 0 "
+                             "with the block's far side toward -Y")
     parser.add_argument("--block-class", choices=bc.BLOCK_CLASSES,
                         default=bc.BLOCK_CLASSES[0],
                         help="which block to pick, identified by the face tags "

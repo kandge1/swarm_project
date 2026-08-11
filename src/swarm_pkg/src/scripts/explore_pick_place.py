@@ -351,6 +351,11 @@ def main():
     parser.add_argument("--any-block", action="store_true",
                         help="pick whatever is best measured, ignoring "
                              "identity. Only safe with ONE block in the zone")
+    parser.add_argument("--force-grasp-yaw", type=float, default=None,
+                        metavar="DEG",
+                        help="forwarded to tag_pick_place: command this grasp "
+                             "yaw instead of the measured one. Use 0 for x/y "
+                             "calibration with the block's far side toward -Y")
     parser.add_argument("--yes", action="store_true",
                         help="no operator checkpoints -- survey, pick, place, "
                              "hands off")
@@ -499,6 +504,10 @@ def main():
             argv += ["--block-class", args.block_class]
         if args.yes:
             argv.append("--yes")
+        # Pinning the grasp yaw is useless unless it reaches the child -- this
+        # argv list is an allowlist, so a flag absent here is silently dropped.
+        if args.force_grasp_yaw is not None:
+            argv += ["--force-grasp-yaw", "%.3f" % args.force_grasp_yaw]
         # THE TRUTH COLUMN, forwarded at last. Without this the block row carries
         # truth_world=None and truth_zone=None, so calibration.vision_error and
         # calibration.survey_error both return None on it and the only signal in
