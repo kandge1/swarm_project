@@ -87,10 +87,12 @@ PRIMITIVE fields of the response -- so it is unaffected by any trouble in the
 nested BlockDetection[] path.
 """
 import argparse
+import json
 import math
 import os
 import subprocess
 import sys
+import time
 
 import rclpy
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -105,7 +107,37 @@ ARM_JOINT_NAMES = list(pp.HOME_RADIANS.keys())
 # nothing useful -- it is a known, safe place to start from, not a viewpoint.
 RESET_JOINTS_DEG = (0.0, 0.0, 0.0, 0.0, 0.0, -45.0)
 
-# The lookout pose. See the module docstring for why -71 and why J2/J3 are 0.
+# The lookout pose. See the module docstring for why J2/J3 are 0.
+#
+# THIS IS THE COARSE PITCH, and that is the correction made on 2026-08-12 -- the
+# value is unchanged, what changed is that the FINE pass no longer inherits it.
+#
+# The docstring used to claim "at -71 the axis lands on the zone centre". It does
+# not: pitch -71 puts the optical axis on the mat at r = 0.1961 m = 7.72 in,
+# while the nominal zone sits at 9.00 in. The axis lands 33 mm SHORT, radially,
+# at every J1 in the sweep -- and radial framing error is the one component
+# panning J1 cannot remove.
+#
+# MEASURED CONSEQUENCE, from logs.txt 2026-08-12. Two runs at a mat 9.15-9.34 in
+# out reported the image centre 80-89 mm from the mat centre at every stop of the
+# FINE arc. The 3-tag trust radius is 72 mm, so every 3-tag sighting was rejected
+# for being 8-17 mm too far off-centre, exactly one 4-tag still survived, and one
+# still cannot solve the zone yaw -- "no pickup zone, so there is nothing to
+# pick", with the arm never moving. It also explains the already-documented
+# "corner tag fell outside by two pixels, every time": at 85 mm off-centre the
+# far corner of a 102 mm mat sits 157 mm off-axis against a ~161 mm vertical
+# half-frame at this distance.
+#
+# WHY -71 STAYS ANYWAY, rather than being re-derived to 9 in. The coarse pass has
+# to FIND a mat anywhere on the bench, 5 to 10 in, and it only needs one tag to
+# do it. -71 aims at 7.72 in, near the middle of that range: worst case 69 mm off
+# at 5 in, 58 mm off at 10 in. Aiming at 9.00 in instead (pitch -66.6) would be
+# better at the far end and much WORSE at the near one -- 102 mm off at position
+# N -- so it trades a working coarse pass for a tidier number.
+#
+# The fine pass is the one whose sightings must survive the centre-offset gate,
+# and it now gets its own pitch from the coarse pass's measured radius. See
+# refine_pitch, and pitch_for_radius for the arithmetic.
 EXPLORE_PITCH_DEG = -71.0
 EXPLORE_WRIST_DEG = -135.0
 
@@ -194,6 +226,154 @@ def axis_hits_mat(joint_values, mat_z=None):
 def joints_for(j1_deg, pitch_deg, wrist_deg):
     return [math.radians(j1_deg), 0.0, 0.0, math.radians(pitch_deg), 0.0,
             math.radians(wrist_deg)]
+
+
+def axis_hit_radius(pitch_deg, wrist_deg=None, j1_deg=0.0):
+    """Radius at which the optical axis meets the mat, for a sweep pitch.
+
+    The number EXPLORE_PITCH_DEG should have been chosen against, and was not.
+    Independent of J1 by symmetry (J2/J3 are zero, so the arm is planar), so the
+    default j1_deg=0 is the whole answer rather than a sample of it.
+    """
+    wrist_deg = EXPLORE_WRIST_DEG if wrist_deg is None else wrist_deg
+    hit = axis_hits_mat(joints_for(j1_deg, pitch_deg, wrist_deg))
+    return None if hit is None else math.hypot(hit[0], hit[1])
+
+
+# The sweep looks outward and down; pitching further negative pulls the axis in.
+# Bracket wide enough to cover any mat this arm can reach and no wider -- past
+# about -95 the axis lands under the shoulder and the sign argument stops
+# holding.
+_PITCH_SEARCH_DEG = (-95.0, -45.0)
+
+
+def pitch_for_radius(radius_m, wrist_deg=None, tolerance_m=0.0002):
+    """Sweep pitch whose optical axis lands on `radius_m`. Bisection.
+
+    Monotonic over _PITCH_SEARCH_DEG -- the axis hit falls from 0.42 m at -45 to
+    0.06 m at -95 -- so bisection is exact rather than a search. Clamped to the
+    bracket and returned anyway if the radius is outside it: a mat that far out
+    is a framing problem the caller should hear about from the tag counts, not a
+    reason to refuse to point the camera somewhere.
+
+    THIS IS FRAMING ONLY, exactly as survey_flange_for_yaw is. Getting it wrong
+    walks tags out of frame; it never biases the position that comes back, which
+    is measured from the tags themselves.
+    """
+    lo, hi = _PITCH_SEARCH_DEG
+    r_lo, r_hi = axis_hit_radius(lo, wrist_deg), axis_hit_radius(hi, wrist_deg)
+    if r_lo is None or r_hi is None:
+        return EXPLORE_PITCH_DEG
+    if radius_m <= r_lo:
+        return lo
+    if radius_m >= r_hi:
+        return hi
+    for _ in range(60):
+        mid = (lo + hi) / 2.0
+        r_mid = axis_hit_radius(mid, wrist_deg)
+        if r_mid is None:
+            return EXPLORE_PITCH_DEG
+        if abs(r_mid - radius_m) <= tolerance_m:
+            return mid
+        if r_mid < radius_m:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0
+
+
+def dump_sightings(path, per_zone):
+    """Write every sighting to JSON so a failed survey can be re-fitted offline.
+
+    WHY THIS EXISTS. On 2026-08-12 two runs ended "no pickup zone" and the
+    question -- is there a good zone solution in this data that the gate threw
+    away? -- was unanswerable, because the only record was printed text. An
+    attempt to rebuild the sightings by parsing the log recovered none of a
+    known-good run's, so no conclusion could be drawn from it either way. Every
+    field choose() and fit_zone() need is primitive, so this costs one file.
+
+    Never raises: losing the dump must not fail a survey that otherwise worked.
+    """
+    rows = {}
+    for zone, sightings in per_zone.items():
+        rows[zone] = [{"j1_deg": s.j1_deg, "joints": list(s.joints),
+                       "tag_ids": list(s.tag_ids),
+                       "camera_zx": s.camera_zx, "camera_zy": s.camera_zy,
+                       "rms": s.rms, "scale": s.scale,
+                       "zone_origin": list(s.zone_origin) if s.zone_origin
+                       else None}
+                      for s in sightings]
+    try:
+        directory = os.path.dirname(os.path.abspath(path))
+        if directory and not os.path.isdir(directory):
+            os.makedirs(directory)
+        with open(path, "w") as handle:
+            json.dump({"schema": 1, "time": time.time(),
+                       "pitch_deg": EXPLORE_PITCH_DEG,
+                       "wrist_deg": EXPLORE_WRIST_DEG,
+                       "zone_size": tpp.zv.DEFAULT_ZONE_SIZE,
+                       "gate_half_diagonals": MAX_CENTRE_OFFSET_HALF_DIAGONALS,
+                       "zones": rows}, handle, indent=1, sort_keys=True)
+        print("[explore] wrote %d sighting(s) to %s"
+              % (sum(len(v) for v in rows.values()), path))
+    except Exception as exc:                                # noqa: BLE001
+        print("[explore] could NOT write %s (%s: %s) -- the run is unaffected"
+              % (path, type(exc).__name__, exc))
+
+
+def load_sightings(path):
+    """Sightings back out of a dump_sightings file. -> {zone: [Sighting, ...]}
+
+    Rebuilds real Sighting objects so choose() / fit_zone() run on them
+    unchanged -- which is the point: an offline re-fit that used a different
+    code path would prove nothing about what the robot decided.
+    """
+    class _Resp(object):
+        def __init__(self, row):
+            self.tag_ids = row["tag_ids"]
+            self.camera_zx = row["camera_zx"]
+            self.camera_zy = row["camera_zy"]
+            self.homography_rms = row["rms"]
+            self.scale_px_per_m = row["scale"]
+
+    with open(path) as handle:
+        data = json.load(handle)
+    out = {}
+    for zone, rows in (data.get("zones") or {}).items():
+        out[zone] = [Sighting(r["j1_deg"], r["joints"], _Resp(r),
+                              r.get("zone_origin"), None) for r in rows]
+    return out
+
+
+def refine_pitch(anchor, pitch_deg, label="zone"):
+    """Pitch for the FINE arc, aimed at where the coarse pass says the mat is.
+
+    The coarse pass's origin is coarse -- a couple of centimetres, and its yaw is
+    not solved yet -- but framing does not need better than that: it only has to
+    get the mat's CENTRE near the optical axis so all four corners stay in frame.
+    Being 20 mm out on a 102 mm mat is fine; being 33 mm out systematically, as
+    the old fixed pitch was, is what threw away eleven sightings on 2026-08-12.
+
+    Returns pitch_deg unchanged when the anchor carries no origin, so a caller
+    can pass any sighting without checking first.
+    """
+    origin = getattr(anchor, "zone_origin", None)
+    if not origin:
+        return pitch_deg
+    radius = math.hypot(origin[0], origin[1])
+    # A coarse origin can land anywhere if the sighting was a single tag at the
+    # frame edge. Refuse the absurd rather than aim the camera at the floor.
+    if not 0.05 <= radius <= 0.40:
+        print("[explore] %s: coarse radius %.3f m is not credible -- keeping "
+              "pitch %+.1f" % (label, radius, pitch_deg))
+        return pitch_deg
+    refined = pitch_for_radius(radius)
+    was = axis_hit_radius(pitch_deg)
+    print("[explore] %s: coarse radius %.4f m; pitch %+.1f aims the axis at "
+          "%.4f (%+.0f mm off the mat centre) -> using pitch %+.1f, axis %.4f"
+          % (label, radius, pitch_deg, was, (was - radius) * 1000,
+             refined, axis_hit_radius(refined)))
+    return refined
 
 
 # ---------------------------------------------------------------------------
@@ -440,10 +620,18 @@ def coarse_then_fine(io_client, detector, args):
     print("\n[explore] coarse best: J1 %+.1f with %d tag(s) -- refining +-%.1f "
           "deg around it\n" % (anchor.j1_deg, len(anchor.tag_ids),
                                args.fine_span))
-    fine = sweep_range(io_client, detector, args,
-                       anchor.j1_deg - args.fine_span,
-                       anchor.j1_deg + args.fine_span,
-                       args.fine_step, "fine")
+    # AIM THE FINE ARC AT THE RADIUS THE COARSE PASS FOUND. The coarse pass runs
+    # at whatever pitch was configured; the fine pass is the one whose sightings
+    # have to survive the centre-offset gate, so it gets the mat's own radius.
+    saved_pitch = args.pitch
+    args.pitch = refine_pitch(anchor, args.pitch, "fine arc")
+    try:
+        fine = sweep_range(io_client, detector, args,
+                           anchor.j1_deg - args.fine_span,
+                           anchor.j1_deg + args.fine_span,
+                           args.fine_step, "fine")
+    finally:
+        args.pitch = saved_pitch
     return coarse, fine
 
 
@@ -967,7 +1155,22 @@ class _ReplaySighting(object):
         return math.hypot(self.camera_zx, self.camera_zy) * 1000.0
 
 
-def selftest(pitch=EXPLORE_PITCH_DEG, wrist=EXPLORE_WRIST_DEG):
+# The sweep pose the 2026-08-05 replay fixtures were RECORDED at. Pinned, not
+# read from EXPLORE_PITCH_DEG, and that distinction cost two failing checks on
+# 2026-08-12: selftest() bound `pitch=EXPLORE_PITCH_DEG` as a default argument,
+# so correcting the live constant from -71 to -66.6 silently re-aimed the replay
+# and moved the reconstructed origins from 9.57 in to 10.85 in.
+#
+# The fixtures are raw camera_zx/zy plus a J1 angle. Turning those back into a
+# world origin needs FK through the pose they were taken at -- so the pose is
+# part of the data, and reading it from a live constant means the test measures
+# today's configuration against yesterday's observations. A dump_sightings file
+# records `pitch_deg` for the same reason.
+REPLAY_PITCH_DEG = -71.0
+REPLAY_WRIST_DEG = -135.0
+
+
+def selftest(pitch=REPLAY_PITCH_DEG, wrist=REPLAY_WRIST_DEG):
     failures = []
     # The replay fixtures are raw camera_zx/zy from 2026-08-05, logged before
     # ORIGIN_RADIAL_BIAS_M existed and against a bench whose truth was asserted
@@ -1055,6 +1258,70 @@ def selftest(pitch=EXPLORE_PITCH_DEG, wrist=EXPLORE_WRIST_DEG):
           apply_origin_radial_bias((0.0, 0.0)) == (0.0, 0.0))
     check("the correction pulls IN, never out",
           math.hypot(*apply_origin_radial_bias((0.25, 0.0))) < 0.25)
+
+    print("\nsweep framing -- where the optical axis actually lands:")
+    # THE BUG THIS PINS. The coarse pitch aims 33 mm short of the nominal zone,
+    # which is FINE for finding a mat and was fatal when the fine pass inherited
+    # it -- see the EXPLORE_PITCH_DEG comment and refine_pitch.
+    check("the coarse pitch really is 33 mm short of the nominal zone",
+          abs(axis_hit_radius(EXPLORE_PITCH_DEG)
+              - NOMINAL_ZONE_RADIUS_M + 0.0325) < 0.002,
+          "axis at %.4f, zone at %.4f"
+          % (axis_hit_radius(EXPLORE_PITCH_DEG), NOMINAL_ZONE_RADIUS_M))
+    # It stays because it is a mid-range compromise for a 5-10 in bench. Aiming
+    # it at 9 in would double the error at the near end, where position N lives.
+    near_now = abs(axis_hit_radius(EXPLORE_PITCH_DEG) - 5 * 0.0254)
+    near_at_9 = abs(axis_hit_radius(pitch_for_radius(0.2286)) - 5 * 0.0254)
+    check("the coarse pitch is a better compromise than aiming at 9 in",
+          near_now < near_at_9,
+          "%.0f mm vs %.0f mm off at 5 in" % (near_now * 1000, near_at_9 * 1000))
+    check("the axis hit is independent of J1 (J2/J3 are zero, so planar)",
+          max(abs(axis_hit_radius(EXPLORE_PITCH_DEG, j1_deg=j)
+                  - axis_hit_radius(EXPLORE_PITCH_DEG))
+              for j in (-135, -90, 0, 90, 135)) < 1e-9)
+    check("pitch_for_radius inverts axis_hit_radius over the bench range",
+          max(abs(axis_hit_radius(pitch_for_radius(i * 0.0254)) - i * 0.0254)
+              for i in (5, 7, 9, 10)) < 0.0005)
+    check("pitch_for_radius is monotonic (bisection is valid)",
+          all(pitch_for_radius(a * 0.0254) < pitch_for_radius(b * 0.0254)
+              for a, b in ((5, 6), (6, 7), (7, 8), (8, 9), (9, 10))))
+    check("an absurd radius is clamped, not extrapolated",
+          _PITCH_SEARCH_DEG[0] <= pitch_for_radius(5.0) <= _PITCH_SEARCH_DEG[1])
+
+    class _Anchor(object):
+        def __init__(self, origin): self.zone_origin = origin
+
+    check("refine_pitch aims the fine arc at the coarse radius",
+          abs(axis_hit_radius(refine_pitch(_Anchor((0.0, 0.2372)), -71.0))
+              - 0.2372) < 0.0005)
+    check("refine_pitch keeps the pitch when there is no coarse origin",
+          refine_pitch(_Anchor(None), -66.6) == -66.6)
+    check("refine_pitch refuses a non-credible coarse radius",
+          refine_pitch(_Anchor((2.0, 2.0)), -66.6) == -66.6)
+
+    print("\nsighting dump round trip:")
+    import tempfile
+
+    class _R(object):
+        tag_ids = [0, 1, 2, 3]
+        camera_zx, camera_zy = -0.032, -0.109
+        homography_rms, scale_px_per_m = 0.9, 1488.0
+
+    original = {"pickup": [Sighting(-57.5, joints_for(-57.5, EXPLORE_PITCH_DEG,
+                                                      EXPLORE_WRIST_DEG),
+                                    _R(), (0.179, -0.156), None)]}
+    path = os.path.join(tempfile.mkdtemp(), "sightings.json")
+    dump_sightings(path, original)
+    back = load_sightings(path)
+    got, want = back["pickup"][0], original["pickup"][0]
+    check("a dumped sighting reloads identically",
+          got.j1_deg == want.j1_deg and got.tag_ids == want.tag_ids
+          and abs(got.camera_zx - want.camera_zx) < 1e-12
+          and abs(got.camera_zy - want.camera_zy) < 1e-12
+          and got.joints == want.joints)
+    check("a reloaded sighting goes through gate() unchanged",
+          gate(got, tpp.zv.DEFAULT_ZONE_SIZE)
+          == gate(want, tpp.zv.DEFAULT_ZONE_SIZE))
 
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0

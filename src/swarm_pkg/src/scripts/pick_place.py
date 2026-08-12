@@ -3369,7 +3369,16 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw, block_yaw_deg=0.0,
             best = (travel, label, joint_values)
 
     if best is None:
-        print(f"[ik] All seeds exhausted for ({x:.3f},{y:.3f},{z:.3f}) -- falling back to constraint sampling")
+        # DOES NOT SAY WHAT HAPPENS NEXT, because it does not know. This used to
+        # read "-- falling back to constraint sampling", which is a claim about
+        # the CALLER: move_arm_to falls back only when allow_constraint_sampling
+        # is true, and detect_multiview passes False precisely so a survey still
+        # is either taken from the pose it was planned for or not taken at all.
+        # So on 2026-08-12 every skipped survey still logged a fallback that
+        # never happened, and reading the log cost an hour of chasing a
+        # constraint-sampled pose that was in fact never commanded.
+        print(f"[ik] All seeds exhausted for ({x:.3f},{y:.3f},{z:.3f}) -- no "
+              f"deterministic IK solution; the caller decides what happens next")
         return None
 
     travel, label, joint_values = best

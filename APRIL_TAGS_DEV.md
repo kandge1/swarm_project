@@ -1355,6 +1355,290 @@ What does **not** cancel, and is therefore the real floor:
 writes `place_open_loop_offset` on a `kind: "place"` row. No such number exists
 anywhere in the history yet.
 
+### OPEN: BEARING AND ORIENTATION — what still does not work off the +Y axis
+
+**The pickup zone has been at bearing +90° for the life of the project.** Every
+constant, gate and pose was tuned there, and moving the mat off that axis broke
+things in four separate places. Two are fixed, two are open. **Test at bearing 0
+until the open ones are closed.**
+
+Evidence throughout: `logs.txt` 2026-08-12, eight runs.
+
+#### FIXED — the fine arc inherited the coarse pitch
+
+`EXPLORE_PITCH_DEG = -71` aims the optical axis at **7.72 in**, not the 9 in its
+comment claimed. Fine as a *coarse* compromise across a 5–10 in bench; fatal when
+the fine pass inherited it. The axis landed 33–41 mm short of the mat centre at
+every J1, the image centre sat 80–89 mm off, the 3-tag trust radius is 72 mm, so
+**every 3-tag sighting was rejected** → one surviving still → cannot solve zone
+yaw → `no pickup zone`, arm never moves.
+
+The fine arc now takes its own pitch from the coarse pass's measured radius
+(`explore.refine_pitch` / `pitch_for_radius`). Framing error 18–69 mm → **under
+0.2 mm** at any bench radius.
+
+#### FIXED — the survey's wrist yaws were absolute world angles
+
+`survey_flange_for_yaw` places the flange at `zone centre − lens offset`, and the
+offset direction came from an absolute angle. So whether a still pulled the
+flange *in* or shoved it *out past the mat* depended on the mat's bearing — right
+only at the bearing it was tuned at. Worst-of-5 flange radius:
+
+| mat bearing | before | after |
+|---|---|---|
+| 0° (N, O, H) | — | **bit-identical** |
+| +90° (standard pickup) | 0.2640 | 0.2115 (−52 mm) |
+| −41° | 0.2478 | 0.2200 (−28 mm) |
+| −135° | 0.2711 | **0.2152 (−56 mm)** |
+
+At −135° all five stills were refused (`[multiview] NO usable view`) while a
+still at 0.2087 reached fine the same day. Framing is now bearing-invariant.
+
+#### OPEN 1 — the fine arc is aimed at the wrong BEARING
+
+Runs 5 and 6 still failed after the pitch fix, with framing radially correct
+(−8 mm). From the sighting dump: the camera track never passes closer than
+**80.6 mm** to the mat centre, and *both* zone components move together across
+the arc. That is a **tangential/bearing** aiming error — the fine arc is centred
+on the wrong J1 — and it is untouched by the pitch correction.
+
+`bearing = J1 − 6.9°` is the documented relation. The coarse anchor is chosen on
+tag count, so its J1 can be a frame-edge glimpse rather than the mat's true
+direction. Worth testing: centre the fine arc on the tag-count-weighted mean J1,
+or on the anchor's own solved bearing, rather than on the anchor's J1.
+
+#### OPEN 2 — `refine_pitch` trusts a coarse radius that can be 53 mm wrong
+
+My own fix, and it needs a second pass. It takes the radius from the coarse
+**anchor's** origin — the estimate explore's own comment says not to trust ("at
+coarse spacing the origin is expected to be poor"). Runs 6 and 8 report a place
+coarse radius of **0.287 m against a true 0.234** — 53 mm out — and the fine arc
+was aimed there. It survived only because the place mat shows 4 tags and gets the
+144 mm gate.
+
+Fix: take the **median** radius over the coarse sightings rather than one
+anchor's, and clamp the correction to a sane delta. The credibility band is
+currently 0.05–0.40 m, which is far too wide to catch this.
+
+#### OPEN 3 — no per-zone yaw override
+
+`--zone-yaw` fixes **both** zones. On this bench the two mats sit at different
+yaws (place +89°, an angled pickup −73 to −93°), so it cannot rescue one without
+corrupting the other. A single surviving 4-tag view is rejected only because one
+view cannot solve yaw — a `--pickup-zone-yaw` / `--place-zone-yaw` split would
+make a measured yaw an escape hatch. ~10 lines, deliberately not done before a
+hardware test.
+
+#### Also fixed: a log message that lied
+
+`[ik] All seeds exhausted … falling back to constraint sampling` is printed by
+`solve_ik_state`, which does not know what the caller will do — and
+`detect_multiview` passes `allow_constraint_sampling=False`, so those stills were
+**skipped**, not sampled. Every skipped survey still logged a fallback that never
+happened. Cost an hour of chasing a pose that was never commanded.
+
+#### Diagnosing the next one: `--dump-sightings`
+
+```bash
+python3 stack_blocks.py --survey-only --dump-sightings /tmp/s1.json
+```
+
+Written **before** the gate, so a survey that rejects everything still leaves its
+evidence; `explore.load_sightings()` rebuilds real `Sighting` objects so
+`choose()` / `fit_zone()` run on them unchanged. Added because "is there a good
+solution in this data the gate threw away?" was unanswerable from printed text —
+an attempt to parse it recovered **none** of a known-good run's sightings, so no
+conclusion could be drawn either way. OPEN 1 above was diagnosed from the dump in
+minutes.
+
+---
+
+### NEIGHBOURING BLOCKS — the clearance rule, and why 90° is mandatory
+
+Built 2026-08-12 (`tag_pick_place.grasp_clearance` / `choose_jaw_axis` /
+`merged_contour_reason`). Before it, **nothing looked at what was beside the
+block being grasped** — `select_block` ranks on measurement agreement alone — so
+two blocks in one zone meant the open jaw came down on the neighbour.
+
+**The detection merges before the collision happens, and that is the worse bug.**
+
+| situation | merged footprint | outcome |
+|---|---|---|
+| blocks **touching** | 30 × **60** mm | `MAX_BLOCK_LENGTH_M = 60` → **accepted as one block** |
+| blocks 2 mm apart | 30 × 62 mm | rejected → "zone is empty" |
+
+The touching case lands exactly on the length cap and passes as one fat block
+whose centroid sits **in the seam**. The arm then descends into the gap with the
+jaws straddling nothing — a successful-looking detection of a thing that is not
+there. Not hypothetical: single blocks on this bench have read **34 × 44 mm**,
+so the segmentation already over-reads by up to 14 mm.
+
+Two signals, strongest first:
+
+1. **Two different block classes' TOP tags matching one contour.** Definitive, no
+   threshold. `identify_blocks` already computed this and already said "the
+   contour is not one block … neither is safe to grasp" — then dropped only the
+   *identity*, leaving it a fine candidate for `--any-block`. Now recorded in
+   `LAST_IDENTITY_CONFLICTS` and refused.
+2. **Footprint ≥ `MERGED_FOOTPRINT_M` (50 mm).** The fallback, and the only
+   signal the colour path will have. The window between "one block, badly
+   measured" (44 mm observed) and "two blocks, merged" (60 mm) is **16 mm wide**,
+   so this threshold has 6 mm either side. Tight, and stated rather than hidden.
+
+**The geometry, and the asymmetry the whole rule turns on.** Each finger is a
+plate normal to the closing axis: along that axis it is only its *thickness*,
+across it its *width*. So a neighbour on the closing axis blocks the grasp and the
+same neighbour across it does not. For 30 mm blocks:
+
+| | minimum centre separation |
+|---|---|
+| **along** the closing axis | **51.3 mm** |
+| **across** it | **20.8 mm** |
+| usable box for a block centre | **46.2 mm** across |
+
+**51.3 mm does not fit in a 46.2 mm box.** Two 30 mm blocks can never both be
+graspable along the same axis inside one 4-inch zone — so the 90° rotation is not
+an optimisation, it is **mandatory**. Across the axis, 20.8 mm is below the 30 mm
+at which two blocks physically touch, so any separated pair passes. The rule
+reduces to one sentence: **put the jaw axis perpendicular to the line joining the
+two blocks.**
+
+Symmetry decides whether that is available at all, because **a jaw axis is a line
+and repeats every 180°, not 360°**:
+
+- **symmetry 4** — base and base+90 are *different* axes, both valid grasps. Two
+  chances to dodge a neighbour. This is the case that works.
+- **symmetry 2** — base+180 is the *same* axis. **No alternative orientation
+  exists**; the jaws must span the short face, so the grasp is reachable or it is
+  not. Most of `block_database/` is non-cubic, so this is step 2's problem.
+- **symmetry 0** — `reduce_yaw` folds it to 4, so it gets both axes.
+
+The neighbour is modelled as a **disc of its half-diagonal**, not its rectangle,
+because the neighbour's *yaw* is the least trustworthy number available about it
+(a 30 mm square has classified `circle`, symmetry 0, yaw discarded, in two stills
+of three). Yaw-free and errs outward.
+
+**THE THREE INPUTS ARE UNMEASURED**, and every run says so
+(`JAW_GEOMETRY_MEASURED = False`). The repo records a 0.75 rad jaw span and an
+inferred "~5 mm margin over a 30 mm block", and nowhere records the aperture,
+finger thickness, or finger width. With the gripper at `GRIPPER_OPEN`, measure:
+
+```
+JAW_APERTURE_OPEN_M      inner face to inner face
+JAW_FINGER_THICKNESS_M   one finger, ALONG the closing axis
+JAW_FINGER_WIDTH_M       one finger, ACROSS it
+```
+
+Then set `JAW_GEOMETRY_MEASURED = True`. Until then a *pass* is provisional and
+the 51.3 / 20.8 mm figures move with the assumption.
+
+**Free strategy that composes with all of it:** pick the **most isolated block
+first**. Removing it makes room for the next, which is why `stack_blocks` passes
+the shrinking candidate list to each pick. Not yet used to *order* the picks —
+the order comes from `--stack` — which is the obvious next improvement.
+
+Not yet handled: **height**. Both blocks are 30 mm today, so any footprint
+overlap is a collision. A shorter neighbour the fingers could pass over needs the
+fingertip depth below the block's top face, which is the fourth unmeasured
+number.
+
+### FIXED — fusion could produce a `square` carrying symmetry 0
+
+Found 2026-08-12 when the **first real `stack_blocks` run refused at LEVEL 0**,
+reporting "its footprint measured symmetry 0, not 4". The clearance check never
+ran; nothing was too close together. The block was a 30 mm cube with a decoded
+TOP tag, correctly identified as `orange_cube`.
+
+`fuse_detections` took **two independent majority votes** over one cluster:
+
+```python
+shape    = max(set(shapes), key=shapes.count)
+symmetry = max(set(syms),   key=syms.count)
+```
+
+`_classify` only ever emits the pairs `(unknown,1) (circle,0) (square,4)
+(rect,2)`, so per view the two agree by construction — but two separate votes
+over a non-unanimous cluster need not, and `max(set(...))` breaks a tie by set
+iteration order, which differs between a set of strings and a set of small ints.
+
+**Proof it happened, straight from the log line**, with no need to know the
+cluster membership:
+
+```
+[multiview] [0] zone (+22.5, -16.1) mm  yaw +0.0 deg  23.9 x 30.0 mm  square  views=3 spread=3.3 mm/0.0 deg
+```
+
+Shape `square` — and `zyaw` / `spread_yaw` are forced to `0.0` **only** in the
+`if symmetry:` else-branch, so that same detection carried symmetry 0.
+Self-contradictory.
+
+The cost was not only the refusal. Its per-view yaws were **−5.8, −95.0, +85.3,
+−95.0, +82.3**; folded mod 90 that is **−5.8, −5.0, −4.7, −5.0, −7.7** — agreeing
+to 3°. A perfectly good yaw was discarded for want of a consistent symmetry,
+which is the exact failure `promote_tagged_tops_to_square` was written to prevent
+one level up. Re-running the real cluster through the fix:
+
+| | shape | symmetry | yaw | spread |
+|---|---|---|---|---|
+| before | `square` | **0** | forced 0.0 | forced 0.0 |
+| after | `square` | **4** | +84.8° | **0.6°** |
+
+Fixed by voting **once**: symmetry is now derived from the fused shape through
+`zone_vision.SHAPE_SYMMETRY`, the single definition of the mapping, asserted
+against `_classify` in `zone_vision_selftest.test_shape_symmetry_consistency`
+along with the hardware cluster itself. A shape and its symmetry can no longer
+disagree.
+
+### OPEN — the footprint classifier is the recurring disease, and this was symptom four
+
+The fusion bug above was the trigger; the underlying cause is that **the
+segmentation does not measure this block reliably**. One 30 mm cube, five stills
+of the same run:
+
+```
+26.0 x 26.2  square  sym=4
+27.2 x 34.1  unknown sym=1
+34.7 x 37.4  circle  sym=0
+35.2 x 37.6  circle  sym=0
+27.0 x 27.6  square  sym=4
+```
+
+Fused: **23.9 × 30.0 mm** for a 30 × 30 block. That is a 6 mm under-read on one
+axis, and the shape verdict changes three ways across stills of one scene.
+
+This is the fourth distinct failure traced to it:
+
+1. `circle` in 2 of 3 stills → symmetry 0 → yaw discarded → jaws driven at the
+   44 mm diagonal. Patched by `promote_tagged_tops_to_square` (per view).
+2. 34 × 44 mm footprints displacing the centroid ~7 mm, matching the +5 to
+   +7 mm `measured_zone` seen with the block taped on the zone centre.
+3. `unknown sym=1` on 216 of 481 detections in one session's log.
+4. The inconsistent fused symmetry above.
+
+Every fix so far has been a patch downstream of it. The patches are individually
+justified and they are accumulating, which is the signal that the real work is in
+`find_blocks` / `_classify` — thresholds `SQUARE_ASPECT_TOL 0.88`,
+`CIRCLE_FILL_MAX 0.86`, `RECT_FILL_MIN 0.80`, `SQUARE_TOP_ASPECT_MIN 0.80` are
+all being asked to separate classes that a 6 mm measurement error smears
+together.
+
+Two knock-ons worth knowing before that work starts:
+
+- **`MERGED_FOOTPRINT_M` has only 6 mm either side.** The window between "one
+  block, badly measured" (44 mm observed) and "two blocks, merged" (60 mm) is
+  16 mm wide. Improving the footprint accuracy widens it; degrading it closes it.
+- **`SQUARE_TOP_ASPECT_MIN = 0.80` nearly blocked the tag-based rescue too.** The
+  fused 23.9 × 30.0 is aspect **0.797** — under the gate by 0.003. So even
+  `promote_tagged_tops_to_square` applied post-fusion would have refused this
+  block. The tag path is not the safety net it looks like while the footprint is
+  this noisy.
+
+`zone_view.py` runs the same `analyze()` offline against saved stills and can
+draw the contour it found (`--method canny|otsu`, `--show`, `--write`,
+`--summary`). No frames corpus exists on disk yet; capturing one with
+`--debug-image` is the prerequisite for fixing this properly rather than
+threshold-twiddling.
+
 ### CONSTRAINT 1 — stacking costs reach, and 3 tall is exactly the ceiling
 
 The reach envelope shrinks with height (`FLANGE_REACH_ENVELOPE`) and a stacked

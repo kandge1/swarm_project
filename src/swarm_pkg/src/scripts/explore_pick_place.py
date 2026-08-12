@@ -158,10 +158,21 @@ def coarse_then_fine_both(io_client, detector, args, zones=("pickup", "place")):
         print("\n[explore] %s coarse best: J1 %+.1f with %d tag(s) -- refining "
               "+-%.1f deg around it\n"
               % (zone, anchor.j1_deg, len(anchor.tag_ids), args.fine_span))
-        fine = sweep_both(io_client, detector, args,
-                          anchor.j1_deg - args.fine_span,
-                          anchor.j1_deg + args.fine_span,
-                          args.fine_step, (zone,))[zone]
+        # PER-ZONE PITCH, aimed at the radius the coarse pass found for THIS mat.
+        # The two zones can sit at different radii, and each fine arc is swept
+        # separately, so each one gets its own aim -- which the single shared
+        # args.pitch could not express. See explore.refine_pitch for what the
+        # fixed pitch cost on 2026-08-12.
+        saved_pitch = args.pitch
+        args.pitch = explore.refine_pitch(anchor, args.pitch,
+                                          "%s fine arc" % zone)
+        try:
+            fine = sweep_both(io_client, detector, args,
+                              anchor.j1_deg - args.fine_span,
+                              anchor.j1_deg + args.fine_span,
+                              args.fine_step, (zone,))[zone]
+        finally:
+            args.pitch = saved_pitch
         # The fine pass REPLACES the coarse one rather than adding to it, for
         # the reason explore.py gives: mixing them lets a coarse sighting --
         # taken exactly where the framing is worst -- win on tag count by luck.
@@ -359,6 +370,11 @@ def main():
     parser.add_argument("--yes", action="store_true",
                         help="no operator checkpoints -- survey, pick, place, "
                              "hands off")
+    parser.add_argument("--dump-sightings", default=None, metavar="PATH",
+                        help="write every sighting to JSON, so a survey that "
+                             "found nothing can be re-fitted offline instead of "
+                             "reverse-engineered from the log. See "
+                             "explore.load_sightings")
     parser.add_argument("--note", default="explore_pick_place")
     args = parser.parse_args()
 
@@ -434,6 +450,10 @@ def main():
             seen = coarse_then_fine_both(io_client, detector, sweep_args, zones)
             fit_step = args.fine_step
         seen.setdefault("place", [])
+        # BEFORE the gate runs, so a survey that rejects everything still leaves
+        # the evidence behind. That is the case the dump exists for.
+        if args.dump_sightings:
+            explore.dump_sightings(args.dump_sightings, seen)
 
         print()
         pickup = survey_zone("pickup", seen["pickup"], detector.zone_size,

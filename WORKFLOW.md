@@ -829,6 +829,31 @@ this is a hover-ceiling limit, not a workspace one, and it bites **before**
 the reach margin that document tabulates (which is about *picking* from
 level 2). `--max-level 2` does not rescue it; the hover check catches it too.
 
+### Blocks next to each other
+
+Two checks now run before any descent, in `stack_blocks.py` and
+`tag_pick_place.py` alike:
+
+- **Merged contour.** Two touching 30 mm blocks read as one 30 × 60 mm blob whose
+  centroid is in the seam — and `MAX_BLOCK_LENGTH_M` is exactly 60, so it used to
+  be *accepted*. Refused now, definitively when two block classes' TOP tags claim
+  one contour, otherwise on footprint ≥ 50 mm. `--ignore-merged` overrides.
+- **Jaw clearance.** The fingers need room along the **closing** axis and almost
+  none across it. On a square face, base and base+90 are different axes and both
+  are valid grasps, so a blocked axis is retried 90° round. Refused if neither has
+  room. `--ignore-clearance` overrides.
+
+For 30 mm blocks: **51.3 mm** of centre separation is needed *along* the closing
+axis and **20.8 mm** *across* it, against a usable box only **46.2 mm** across.
+So the 90° rotation is mandatory, not optional — the jaw axis must end up
+perpendicular to the line joining the two blocks. A 2-fold block (most of
+`block_database/`) has no second axis and no escape.
+
+**The jaw aperture and finger dimensions are UNMEASURED** — every run prints so.
+Three caliper readings at `GRIPPER_OPEN` turn the rule from conservative into
+exact; see `JAW_GEOMETRY_MEASURED` in `tag_pick_place.py`. Full reasoning in
+`APRIL_TAGS_DEV.md`, "NEIGHBOURING BLOCKS".
+
 ### The pose memory
 
 ```bash
@@ -855,6 +880,56 @@ The default surveys the pickup zone **once**: `identify_blocks` returns a class
 per contour, and lifting one block does not move another. Use `--resurvey` when
 blocks start out touching, which is the case where the cached position of the
 second block can go stale.
+
+### Angled / off-axis zones — fixed 2026-08-12
+
+Two independent bugs made a pickup mat away from the +Y axis fail. Both are
+fixed; this is what to know when reading older logs.
+
+**1. The fine arc inherited the coarse pitch.** `EXPLORE_PITCH_DEG = -71` aims
+the optical axis at **7.72 in**, not the 9 in its old comment claimed. That is a
+fine *coarse* compromise for a 5–10 in bench, and it was fatal for the fine pass:
+the axis landed 33–41 mm short of the mat centre at every J1, the image centre
+sat 80–89 mm off, the 3-tag trust radius is 72 mm, so **every 3-tag sighting was
+rejected** → one surviving still → cannot solve zone yaw → `no pickup zone`, arm
+never moves. The fine arc now gets its own pitch from the coarse pass's measured
+radius (`explore.refine_pitch`), which brings framing error under 0.2 mm at any
+bench radius.
+
+**2. The 5-still survey's wrist yaws were absolute world angles.**
+`survey_flange_for_yaw` places the flange at `zone centre − lens offset`, and the
+offset direction comes from that absolute angle — so whether a still pulls the
+flange *in* or pushes it *out past the mat* depended on the mat's bearing. The
+yaws are now relative to the mat's bearing. Worst-of-5 flange radius:
+
+| mat bearing | before | after |
+|---|---|---|
+| 0° (N, O, H) | — | **bit-identical** |
+| +90° (standard pickup) | 0.2640 | 0.2115 (−52 mm) |
+| −41° | 0.2478 | 0.2200 (−28 mm) |
+| −135° | 0.2711 | 0.2152 (−56 mm) |
+
+Framing is now bearing-invariant: any bearing frames as well as bearing 0, which
+is the case with the track record.
+
+**Also:** `[ik] All seeds exhausted … falling back to constraint sampling` was a
+lie whenever the caller passed `allow_constraint_sampling=False` (which
+`detect_multiview` always does). Skipped survey stills logged a fallback that
+never happened. The message no longer claims what the caller will do.
+
+### `--dump-sightings` — for when a survey finds nothing
+
+```bash
+python3 stack_blocks.py --survey-only --dump-sightings /tmp/sightings.json
+```
+
+Written **before** the gate runs, so a survey that rejects everything still
+leaves its evidence. Re-fit it offline with `explore.load_sightings(path)`, which
+rebuilds real `Sighting` objects so `choose()` / `fit_zone()` run on them
+unchanged. Added because on 2026-08-12 the question "is there a good solution in
+this data that the gate threw away?" was unanswerable — the only record was
+printed text, and rebuilding sightings by parsing it recovered none of a
+known-good run's.
 
 ### If a run says `no pickup zone, so there is nothing to pick`
 

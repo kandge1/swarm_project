@@ -816,8 +816,29 @@ def _segment(gray, search_mask, method):
     return cv2.bitwise_and(binary, binary, mask=search_mask)
 
 
+# The ONE definition of which shape carries which rotational symmetry.
+#
+# _classify emits these pairs and fuse_detections derives symmetry from the
+# fused shape through this map, so the two can never disagree. Before 2026-08-12
+# fusion voted on them independently and produced a `square` carrying symmetry 0
+# on real hardware -- see the note in fuse_detections.
+#
+# Asserted against _classify below rather than trusted: a new shape added there
+# without a line here would fall back to the old independent vote, loudly.
+SHAPE_SYMMETRY = {
+    "unknown": 1,   # do not trust the yaw
+    "circle": 0,    # yaw is meaningless -- but see reduce_yaw, which folds it
+    "square": 4,    # 90 deg
+    "rect": 2,      # 180 deg
+}
+
+
 def _classify(width, length, fill_ratio):
-    """(shape, symmetry). See BlockDetection.msg for what symmetry means."""
+    """(shape, symmetry). See BlockDetection.msg for what symmetry means.
+
+    Every pair returned here must appear in SHAPE_SYMMETRY -- fuse_detections
+    relies on that to keep a fused shape and its symmetry consistent.
+    """
     if length <= 0.0:
         return "unknown", 1
     aspect = width / length
@@ -1112,12 +1133,48 @@ def fuse_detections(per_view_blocks, match_radius_m=MATCH_RADIUS_M):
         zy = float(np.median([d.zy for d in cluster]))
         width = float(np.median([d.width for d in cluster]))
         length = float(np.median([d.length for d in cluster]))
-        # Shape and symmetry by majority: a single still misreading a square as a
-        # rectangle must not decide the grasp for all of them.
+        # Shape by majority: a single still misreading a square as a rectangle
+        # must not decide the grasp for all of them.
+        #
+        # SYMMETRY IS DERIVED FROM THE VOTED SHAPE, NOT VOTED SEPARATELY, and
+        # that is a bug fix from 2026-08-12. The two used to be independent
+        # majority votes over the same cluster:
+        #
+        #     shape    = max(set(shapes), key=shapes.count)
+        #     symmetry = max(set(syms),   key=syms.count)
+        #
+        # _classify only ever emits the pairs (unknown,1) (circle,0) (square,4)
+        # (rect,2), so per view the two agree by construction -- but two separate
+        # votes over a non-unanimous cluster need not, and `max(set(...))` breaks
+        # a tie by set iteration order, which differs between a set of strings
+        # and a set of small ints. The result is a fused detection that is
+        # self-contradictory.
+        #
+        # OBSERVED ON HARDWARE, logs.txt 2026-08-12: a fused orange cube came out
+        # `23.9 x 30.0 mm square ... yaw +0.0 deg spread 0.0 deg`. Shape "square"
+        # -- but zyaw and spread_yaw are forced to 0.0 ONLY in the `if symmetry:`
+        # else-branch below, so that same detection carried symmetry 0. It then
+        # failed stack_blocks' 4-fold gate and refused the run.
+        #
+        # The cost was not just the refusal. Its five per-view yaws were -5.8,
+        # -95.0, +85.3, -95.0, +82.3 -- folded mod 90 that is -5.8, -5.0, -4.7,
+        # -5.0, -7.7, agreeing to 3 degrees. A perfectly good yaw was discarded
+        # for want of a consistent symmetry, which is the exact failure
+        # promote_tagged_tops_to_square was written to prevent one level up.
+        #
+        # One vote, one answer. A shape and its symmetry now cannot disagree.
         shapes = [d.shape for d in cluster]
         shape = max(set(shapes), key=shapes.count)
-        syms = [d.symmetry for d in cluster]
-        symmetry = max(set(syms), key=syms.count)
+        symmetry = SHAPE_SYMMETRY.get(shape)
+        if symmetry is None:
+            # An unknown shape name means _classify grew a case this map did not.
+            # Fall back to the old vote rather than guess a symmetry, and say so:
+            # silently assuming 1 would drive the jaws at a diagonal.
+            syms = [d.symmetry for d in cluster]
+            symmetry = max(set(syms), key=syms.count)
+            print("[fuse] shape %r has no entry in SHAPE_SYMMETRY -- falling "
+                  "back to voting symmetry separately (%d). Add it."
+                  % (shape, symmetry))
 
         if symmetry:
             period = math.pi * 2.0 / symmetry

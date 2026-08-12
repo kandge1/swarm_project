@@ -979,6 +979,21 @@ def survey_flange_for_yaw(detector, yaw_deg, z, iterations=3):
     return fx, fy
 
 
+def survey_start_flange(detector, z, base_yaw_deg=0.0):
+    """Flange for the FIRST still of a multiview survey. -> (x, y)
+
+    Exists so callers cannot disagree with detect_multiview about where the
+    survey starts. Both go through survey_flange_for_yaw with the SAME
+    bearing-relative yaw -- see the long note in detect_multiview. Before this,
+    run_stage1 computed its starting flange from the raw offset while
+    detect_multiview used the bearing-relative one, so the first arm move of
+    every survey went somewhere the survey then did not want to be.
+    """
+    bearing = math.degrees(math.atan2(detector.zone_y, detector.zone_x))
+    return survey_flange_for_yaw(
+        detector, bearing + base_yaw_deg + MULTIVIEW_YAW_OFFSETS_DEG[0], z)
+
+
 def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
                      holding_block=False, debug_prefix=None):
     """Several stills at different wrist yaws, fused into one answer.
@@ -1015,13 +1030,48 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
     lens_bias = (0.0, 0.0)
     bias_known = False
 
+    # THE WRIST YAWS ARE RELATIVE TO THE MAT'S BEARING, not to world +X.
+    #
+    # Added 2026-08-12, and it is the whole reason a pickup zone off the +Y axis
+    # did not work. MULTIVIEW_YAW_OFFSETS_DEG is an ABSOLUTE wrist angle, but
+    # survey_flange_for_yaw puts the flange at `zone centre - lens offset`, and
+    # the lens offset direction is set by that absolute angle. So whether a given
+    # still pulls the flange IN toward the base or pushes it OUT past the mat
+    # depends on the angle between the wrist yaw and the mat's bearing -- and
+    # that relationship was only ever right for the bearing it was tuned at.
+    #
+    # Measured, worst-of-5 flange radius, before -> after:
+    #   bearing    0 (N, O, H)      unchanged, to the last digit
+    #   bearing  +90 (the standard pickup zone)   0.2640 -> 0.2115   -52.4 mm
+    #   bearing  -41 (logs.txt run 4, 9.34 in)    0.2478 -> 0.2200   -27.8 mm
+    #   bearing -135 (logs.txt run 2, 9.15 in)    0.2711 -> 0.2152   -55.9 mm
+    #
+    # Run 2 asked for 0.2253-0.2711 m and every one of its five stills was
+    # REFUSED -- "[multiview] NO usable view" -- while a still at 0.2087 on the
+    # same day reached fine. The five radii are now bearing-invariant to within
+    # the mats' own radius difference, so any bearing frames as well as bearing 0
+    # does, which is the case with the track record.
+    #
+    # Nothing about occlusion is lost: the offsets still span 30-150 deg, so the
+    # gripper still rotates 120 deg across the stills, and the set is now fixed
+    # relative to the MAT rather than to the world -- so which tag pair hides on
+    # which still is reproducible between mat placements instead of depending on
+    # where the mat happens to be.
+    #
+    # base_yaw_deg stays an ADDITIONAL offset on top, so callers keep their say
+    # and a caller that passes 0.0 (every one of them) gets this for free rather
+    # than having to remember it.
+    zone_bearing_deg = math.degrees(math.atan2(detector.zone_y, detector.zone_x))
+    print("[multiview] wrist yaws are relative to the mat's bearing %+.1f deg "
+          "(see the note in detect_multiview)" % zone_bearing_deg)
+
     for index, offset in enumerate(MULTIVIEW_YAW_OFFSETS_DEG):
         if used >= MULTIVIEW_ENOUGH_VIEWS:
             print("[multiview] %d usable views, skipping the remaining %d still(s)"
                   % (used, len(MULTIVIEW_YAW_OFFSETS_DEG) - index))
             break
 
-        yaw = base_yaw_deg + offset
+        yaw = zone_bearing_deg + base_yaw_deg + offset
         # Re-centre the LENS for this yaw. See survey_flange_for_yaw: one
         # flange position cannot frame the zone at more than one wrist angle.
         vx, vy = survey_flange_for_yaw(detector, yaw, z)
@@ -1379,6 +1429,9 @@ def identify_blocks(fused, block_tags):
     the block is PRESENT, which is why it is reported.
     """
     identity = {}
+    # Cleared per call, so a stale conflict from the previous survey cannot
+    # refuse a grasp in this one. See LAST_IDENTITY_CONFLICTS.
+    LAST_IDENTITY_CONFLICTS.clear()
     positioned = [t for t in block_tags if t.zone_xy is not None]
     sideways = [t for t in block_tags if t.zone_xy is None]
 
@@ -1402,6 +1455,12 @@ def identify_blocks(fused, block_tags):
                   "Dropping its identity rather than guessing."
                   % (best_index, existing, tag.face.block_class))
             identity[best_index] = None
+            # RECORDED, not just dropped. Losing the identity already stops
+            # --block-class picking this contour, but --any-block would still
+            # happily descend on it -- and the comment above says exactly why
+            # that is unsafe: the contour is two blocks touching. This is the
+            # definitive merged-contour signal and it was being thrown away.
+            LAST_IDENTITY_CONFLICTS.add(best_index)
             continue
         if existing is None and best_index in identity:
             continue
@@ -1508,6 +1567,250 @@ def _parse_nudge(answer):
         return None
     return (values[0] / 1000.0, values[1] / 1000.0,
             values[2] if len(values) == 3 else 0.0)
+
+
+# ---------------------------------------------------------------------------
+# Neighbour-aware grasping
+# ---------------------------------------------------------------------------
+# Nothing in this pipeline looked at what was BESIDE the block it was about to
+# grasp, so two blocks in one zone meant the open jaw came down on the neighbour.
+# Added 2026-08-12.
+#
+# THE THREE NUMBERS BELOW ARE NOT MEASURED, and that is stated rather than
+# hidden. The repo records a 0.75 rad total jaw span and infers "~5 mm of margin
+# over a 30 mm block" -- so ~40 mm of aperture -- and nowhere records the
+# aperture, the finger thickness, or the finger width. A clearance rule built on
+# a guessed tolerance is a guessed rule, so every run prints that these are
+# provisional until JAW_GEOMETRY_MEASURED is set.
+#
+# To measure, with the gripper at GRIPPER_OPEN:
+#   JAW_APERTURE_OPEN_M       inner face to inner face
+#   JAW_FINGER_THICKNESS_M    one finger's extent ALONG the closing axis
+#   JAW_FINGER_WIDTH_M        one finger's extent ACROSS it
+# Then set JAW_GEOMETRY_MEASURED = True and the warning stops.
+JAW_APERTURE_OPEN_M = 0.040
+JAW_FINGER_THICKNESS_M = 0.008
+JAW_FINGER_WIDTH_M = 0.018
+JAW_GEOMETRY_MEASURED = False
+
+# Added to every neighbour's radius. The block positions themselves carry
+# ~1 mm of fused vision error and the arm lands within ~1 mm, so 2 mm is one
+# error bar of slack rather than a comfort blanket.
+NEIGHBOUR_SAFETY_M = 0.002
+
+# A footprint at least this long cannot be one 30 mm block, so it is probably
+# two of them merged into one contour.
+#
+# THE MARGIN HERE IS UNCOMFORTABLE AND THE NUMBERS SAY SO. Two touching 30 mm
+# blocks read as one 30 x 60 mm blob -- and MAX_BLOCK_LENGTH_M is exactly 60 mm,
+# so the touching case is ACCEPTED as a single block whose centroid sits in the
+# seam between the two. Meanwhile a genuinely single block has been observed
+# reading 34 x 44 mm on this bench (logs.txt 2026-08-12), i.e. 14 mm over
+# nominal. So the usable window between "one block, badly measured" and "two
+# blocks, merged" is 44-60 mm, and 50 mm splits it with 6 mm either side.
+#
+# This is the FALLBACK signal. The definitive one is two different blocks' TOP
+# tags matching the same contour, which identify_blocks already detects; see
+# LAST_IDENTITY_CONFLICTS. Prefer that whenever tags are on the blocks, and rely
+# on this only for the untagged/colour path.
+MERGED_FOOTPRINT_M = 0.050
+
+# Contours that two different block classes both claimed, by index into the
+# fused list. Written by identify_blocks, read by merged_contour_reason.
+#
+# A module-level scratch rather than a second return value, matching
+# pick_place.LAST_FLANGE_FK / LAST_ARM_GOAL: identify_blocks' {index: class}
+# return is consumed in three places and none of them wants a tuple.
+LAST_IDENTITY_CONFLICTS = set()
+
+
+def block_radius(detection):
+    """Conservative disc radius for a detection -- its half-diagonal.
+
+    A DISC, not the block's own rectangle, and deliberately so: the neighbour's
+    YAW is the least trustworthy number available about it. A 30 mm square has
+    classified as `circle` with symmetry 0 (yaw discarded to 0.0) in two stills
+    of three on this hardware, and a footprint has read 34 x 44 mm when it is
+    30 x 30. Rotating a rectangle by a yaw that may be 45 deg wrong turns a
+    safety check into a coin flip; a disc is yaw-free and errs outward.
+    """
+    half_diagonal = math.hypot(detection.width, detection.length) / 2.0
+    return half_diagonal
+
+
+def jaw_footprint_rects(grip_width_m):
+    """The two rectangles the OPEN fingers occupy, in the jaw frame.
+
+    Jaw frame: +along is the closing axis, +across is perpendicular, origin at
+    the target block's centre. Each finger is a plate whose face is normal to
+    the closing axis, so along that axis it is only its THICKNESS, and across it
+    is its WIDTH -- which is the asymmetry the whole rule turns on. A neighbour
+    sitting along the closing axis blocks the grasp; the same neighbour sitting
+    across it usually does not, and rotating the wrist 90 deg swaps which.
+
+    grip_width_m is the target's extent along the closing axis -- the SHORT side,
+    since that is the face the jaws must span. max() against the aperture keeps
+    the geometry sane for a block too wide to grip at all, which is a different
+    refusal and not this function's job.
+    """
+    half = max(JAW_APERTURE_OPEN_M, grip_width_m) / 2.0
+    across = JAW_FINGER_WIDTH_M / 2.0
+    return ((half, half + JAW_FINGER_THICKNESS_M, -across, across),
+            (-half - JAW_FINGER_THICKNESS_M, -half, -across, across))
+
+
+def _disc_rect_gap(cx, cy, rect):
+    """Shortest distance from a point to an axis-aligned rectangle. 0 if inside."""
+    a0, a1, c0, c1 = rect
+    return math.hypot(max(a0 - cx, 0.0, cx - a1), max(c0 - cy, 0.0, cy - c1))
+
+
+def grasp_clearance(target, others, jaw_axis_deg):
+    """Room for the open jaws around `target` at this jaw axis.
+
+    -> (ok, margin_m, blocker_index). margin is the smallest gap between a
+    finger and a neighbour: negative means overlap, and its magnitude is how far
+    into the finger the neighbour reaches. blocker_index indexes `others`.
+
+    FRAME: jaw_axis_deg must be measured in the SAME frame as the detections'
+    zx/zy -- zone-local if these are FusedDetections. Everything here is
+    differences between block positions, so the frame cancels as long as the
+    angle agrees with the coordinates. Passing a WORLD wrist yaw against
+    zone-local positions is a silent rotation error of exactly zone_yaw, which on
+    this bench is ~90 deg -- i.e. it would check the wrong axis entirely. The
+    callers convert; see run_stage1.
+    """
+    if not others:
+        return True, None, None
+    ca = math.cos(math.radians(jaw_axis_deg))
+    sa = math.sin(math.radians(jaw_axis_deg))
+    rects = jaw_footprint_rects(min(target.width, target.length))
+    worst, blocker = None, None
+    for index, other in enumerate(others):
+        dx, dy = other.zx - target.zx, other.zy - target.zy
+        along = dx * ca + dy * sa
+        across = -dx * sa + dy * ca
+        need = block_radius(other) + NEIGHBOUR_SAFETY_M
+        for rect in rects:
+            gap = _disc_rect_gap(along, across, rect) - need
+            if worst is None or gap < worst:
+                worst, blocker = gap, index
+    return worst >= 0.0, worst, blocker
+
+
+def candidate_jaw_axes_deg(base_deg, symmetry):
+    """Jaw axes that grasp this block identically, base first.
+
+    A jaw axis is a LINE, so it repeats every 180 deg and not every 360. That is
+    what decides how much freedom a block gives:
+
+      symmetry 4 (a square face)  -> base and base+90 are DIFFERENT axes, both
+                                     valid grasps. Two chances to dodge a
+                                     neighbour, and this is the case that makes
+                                     "try the other orientation" work.
+      symmetry 2 (a rectangle)    -> base+180 is the SAME axis. There is no
+                                     alternative: the jaws must span the short
+                                     face, so the grasp is either reachable or
+                                     it is not.
+      symmetry 1                  -> one axis, same as above.
+      symmetry 0                  -> reduce_yaw folds this to 4 (see its
+                                     comment: symmetry 0 means "un-elongated
+                                     blob", not "measured round"), so it gets
+                                     both axes too.
+    """
+    if symmetry in (0, 4):
+        return [base_deg, base_deg + 90.0]
+    return [base_deg]
+
+
+def choose_jaw_axis(target, others, base_deg, symmetry, label="block"):
+    """Pick a jaw axis with room for the fingers. -> (axis_deg, ok)
+
+    Prefers `base_deg`: it is the measured orientation and costs no extra wrist
+    travel. Only when that one is blocked does it try the alternative, and it
+    says so -- a silent 90 deg rotation would be a surprising thing to watch the
+    arm do.
+    """
+    if not JAW_GEOMETRY_MEASURED:
+        print("[clearance] NOTE: jaw aperture %.0f mm, finger %.0f x %.0f mm are "
+              "NOT MEASURED -- see JAW_GEOMETRY_MEASURED. Treat a pass as "
+              "provisional and watch the first descent."
+              % (JAW_APERTURE_OPEN_M * 1000, JAW_FINGER_THICKNESS_M * 1000,
+                 JAW_FINGER_WIDTH_M * 1000))
+    if not others:
+        print("[clearance] %s is alone in the zone -- nothing to collide with."
+              % label)
+        return base_deg, True
+
+    axes = candidate_jaw_axes_deg(base_deg, symmetry)
+    results = []
+    for axis in axes:
+        ok, margin, blocker = grasp_clearance(target, others, axis)
+        results.append((axis, ok, margin, blocker))
+        print("[clearance] %s at jaw axis %+.1f deg: %s (%.1f mm %s"
+              "%s)"
+              % (label, axis, "CLEAR" if ok else "BLOCKED",
+                 abs(margin) * 1000,
+                 "of room" if margin >= 0 else "of overlap",
+                 "" if blocker is None else ", nearest neighbour #%d" % blocker))
+    for axis, ok, _margin, _blocker in results:
+        if ok:
+            if axis != base_deg:
+                print("[clearance] %s: the measured axis %+.1f is blocked, so "
+                      "grasping at %+.1f instead -- a %.0f deg rotation, which "
+                      "is the SAME grasp on a %d-fold face."
+                      % (label, base_deg, axis, axis - base_deg, symmetry or 4))
+            return axis, True
+
+    best = max(results, key=lambda r: r[2] if r[2] is not None else -1e9)
+    print("[clearance] %s: NO jaw axis has room. Best was %+.1f deg, still "
+          "%.1f mm into a neighbour." % (label, best[0], abs(best[2]) * 1000))
+    if len(axes) == 1:
+        print("[clearance] This block's footprint is %d-fold, so base+180 is the "
+              "SAME jaw axis -- there is no alternative orientation to try. Move "
+              "the blocks apart, or pick the neighbour first."
+              % (symmetry or 1))
+    else:
+        print("[clearance] Both axes are blocked. In a %.0f mm zone the usable "
+              "box for a block centre is only %.0f mm across, so two 30 mm "
+              "blocks can be at most %.0f mm apart -- there may simply not be "
+              "room. Pick the more isolated block first."
+              % (zv.DEFAULT_ZONE_SIZE * 1000,
+                 (zv.DEFAULT_ZONE_SIZE - zv.DEFAULT_TAG_SIZE
+                  - pp.BLOCK_HEIGHT_M) * 1000,
+                 (zv.DEFAULT_ZONE_SIZE - zv.DEFAULT_TAG_SIZE
+                  - pp.BLOCK_HEIGHT_M) * 1000))
+    return best[0], False
+
+
+def merged_contour_reason(detection, index):
+    """Why this contour is probably two blocks rather than one, or None.
+
+    TWO SIGNALS, strongest first.
+
+    1. TWO BLOCK CLASSES CLAIMED IT. identify_blocks already computes this and
+       already says "the contour is not one block, or a tag was misread. Neither
+       is safe to grasp" -- and then only dropped the contour's IDENTITY, leaving
+       it a perfectly good grasp candidate for --any-block. Definitive, needs no
+       threshold, and free.
+
+    2. THE FOOTPRINT IS TOO LONG TO BE ONE BLOCK. The fallback for untagged
+       blocks, and the only signal the colour path will have. See
+       MERGED_FOOTPRINT_M for why its margin is only 6 mm either side.
+
+    Returns a string to print and refuse on, or None.
+    """
+    if index in LAST_IDENTITY_CONFLICTS:
+        return ("two different block classes' TOP tags both matched this "
+                "contour, so it is two blocks touching, not one")
+    longest = max(detection.width, detection.length)
+    if longest >= MERGED_FOOTPRINT_M:
+        return ("its footprint is %.0f mm long, past the %.0f mm at which one "
+                "%.0f mm block becomes implausible -- two blocks touching read "
+                "as one blob whose centroid sits in the seam between them"
+                % (longest * 1000, MERGED_FOOTPRINT_M * 1000,
+                   BLOCK_NOMINAL_M * 1000))
+    return None
 
 
 def select_block(fused, identity=None, want_class=None):
@@ -1783,8 +2086,7 @@ def run_stage1(io_client, detector, args, log):
     # LENS on the zone centre at ITS wrist yaw -- see survey_flange_for_yaw,
     # and the table above MULTIVIEW_YAW_OFFSETS_DEG for why one fixed flange
     # cannot do that job.
-    survey_flange = survey_flange_for_yaw(detector, MULTIVIEW_YAW_OFFSETS_DEG[0],
-                                          hover)
+    survey_flange = survey_start_flange(detector, hover)
     print("[stage1] survey: %d stills, flange re-centred per wrist yaw so the "
           "lens is over the zone centre in every one" %
           len(MULTIVIEW_YAW_OFFSETS_DEG))
@@ -1886,6 +2188,48 @@ def run_stage1(io_client, detector, args, log):
           % (block.width * 1000, block.length * 1000, block.shape,
              block.zx * 1000, block.zy * 1000, math.degrees(block_yaw_world),
              grasp_yaw_deg, block.symmetry))
+
+    # --- 1b. is this contour one block, and can the jaws get to it? --------
+    chosen_index = next((i for i, f in enumerate(fused_blocks) if f is block),
+                        None)
+    merged = (merged_contour_reason(block, chosen_index)
+              if chosen_index is not None else None)
+    if merged and not getattr(args, "ignore_merged", False):
+        print("[stage1] REFUSING to grasp this contour: %s." % merged)
+        print("[stage1] Its centroid is not on a block, so descending would put "
+              "the jaws in the gap. Separate the blocks, or pass "
+              "--ignore-merged if you are certain and watching.")
+        return False
+    if merged:
+        print("[stage1] --ignore-merged: proceeding despite '%s'." % merged)
+
+    # THE JAW AXIS IS CHECKED IN THE ZONE FRAME, because that is the frame the
+    # detections live in. grasp_yaw_deg is a WORLD wrist yaw, and the two differ
+    # by the surveyed zone yaw -- ~90 deg on this bench, so mixing them would
+    # check an axis perpendicular to the real one and pass exactly the layouts it
+    # should refuse. Convert here, once, and hand grasp_clearance a zone angle.
+    others = [f for i, f in enumerate(fused_blocks) if i != chosen_index]
+    zone_yaw_deg = math.degrees(detector.zone_yaw)
+    axis_zone_deg, clear = choose_jaw_axis(
+        block, others, grasp_yaw_deg - zone_yaw_deg, block.symmetry,
+        label=args.block_class or "block")
+    if not clear and not getattr(args, "ignore_clearance", False):
+        print("[stage1] REFUSING to descend: the open jaws would strike a "
+              "neighbouring block. Nothing has moved.")
+        print("[stage1] --ignore-clearance overrides, and the jaw geometry is "
+              "unmeasured (JAW_GEOMETRY_MEASURED), so a refusal here may be "
+              "conservative -- but check the bench before overriding it.")
+        return False
+    if not clear:
+        print("[stage1] --ignore-clearance: descending anyway. WATCH THE JAWS.")
+    # Back to world for everything downstream. Applied even when the axis did not
+    # change, so there is exactly one path and no branch to get wrong.
+    rotated = axis_zone_deg + zone_yaw_deg
+    if abs(rotated - grasp_yaw_deg) > 1e-6:
+        grasp_yaw_deg = rotated
+        grasp_yaw = math.radians(grasp_yaw_deg)
+        print("[stage1] grasp yaw is now %+.1f deg to clear the neighbour."
+              % grasp_yaw_deg)
 
     usable = args.zone_size / 2.0 - args.tag_size / 2.0 - max(block.width, block.length) / 2.0
     off_centre = max(abs(block.zx), abs(block.zy))
@@ -2647,6 +2991,16 @@ def parse_args(argv=None):
                              "axis to a known world direction, which is what "
                              "makes a caliper gap reading mean anything. Use 0 "
                              "with the block's far side toward -Y")
+    parser.add_argument("--ignore-clearance", action="store_true",
+                        help="descend even when the open jaws would strike a "
+                             "neighbouring block. The jaw geometry the check "
+                             "uses is UNMEASURED (see JAW_GEOMETRY_MEASURED), so "
+                             "a refusal can be conservative -- but look at the "
+                             "bench before you use this")
+    parser.add_argument("--ignore-merged", action="store_true",
+                        help="grasp a contour that looks like two blocks merged "
+                             "into one. Its centroid sits in the seam between "
+                             "them, so the jaws close on nothing")
     parser.add_argument("--block-class", choices=bc.BLOCK_CLASSES,
                         default=bc.BLOCK_CLASSES[0],
                         help="which block to pick, identified by the face tags "

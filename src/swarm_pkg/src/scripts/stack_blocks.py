@@ -752,8 +752,10 @@ def survey_pickup_blocks(io_client, detector, args):
     rank pick up a tape edge.
     """
     hover = tpp.DETECT_HOVER_Z
-    flange = tpp.survey_flange_for_yaw(
-        detector, tpp.MULTIVIEW_YAW_OFFSETS_DEG[0], hover)
+    # survey_start_flange, not survey_flange_for_yaw: the survey's wrist yaws are
+    # relative to the mat's bearing, and this is the one place a caller could
+    # disagree with detect_multiview about where the first still is taken from.
+    flange = tpp.survey_start_flange(detector, hover)
     print("[stack] pickup survey: %d stills at hover %.3f, flange re-centred "
           "per wrist yaw" % (len(tpp.MULTIVIEW_YAW_OFFSETS_DEG), hover))
     debug_prefix = (os.path.splitext(args.debug_image)[0]
@@ -813,11 +815,18 @@ def have_every_block(candidates, wanted):
 # ---------------------------------------------------------------------------
 # One pick
 # ---------------------------------------------------------------------------
-def pick_block(io_client, detector, args, memory, block, want_class):
+def pick_block(io_client, detector, args, memory, block, want_class,
+               others=()):
     """Grasp `block`. -> dict with the pose it was grasped at, or None.
 
     Everything here is run_stage1's arithmetic, in the same order, with the
     confirm loop factored out so the place side can use it too.
+
+    `others` is every OTHER detection in the zone, for the neighbour-clearance
+    check. It matters more here than in run_stage1: a stack run puts at least two
+    blocks in the pickup zone by definition, so the open jaw has something to hit
+    on every single pick. run_stage1's single-block case is the exception, not
+    this.
     """
     block_yaw_world = block.zyaw + detector.zone_yaw
     grasp_yaw_deg = math.degrees(tpp.reduce_yaw(block_yaw_world,
@@ -844,6 +853,36 @@ def pick_block(io_client, detector, args, memory, block, want_class):
                   "own centroid by N/2, and that error is carried into the "
                   "stack." % (axis, measured * 1000,
                               tpp.BLOCK_NOMINAL_M * 1000))
+
+    # --- is this one block, and can the jaws get to it? -------------------
+    # A stack run always has a second block in the zone, so this is the normal
+    # case here rather than an edge one. See tag_pick_place.choose_jaw_axis.
+    merged = tpp.merged_contour_reason(block, None)
+    if merged and not args.ignore_merged:
+        print("[stack] REFUSING to grasp the %s: %s." % (want_class, merged))
+        print("[stack] Its centroid is not on a block, so the jaws would close "
+              "in the gap. Separate the blocks, or pass --ignore-merged.")
+        return None
+    # ZONE frame for the clearance check -- grasp_yaw_deg is a WORLD wrist yaw
+    # and the two differ by the surveyed zone yaw, ~90 deg on this bench. See
+    # grasp_clearance's FRAME note.
+    zone_yaw_deg = math.degrees(detector.zone_yaw)
+    axis_zone_deg, clear = tpp.choose_jaw_axis(
+        block, list(others), grasp_yaw_deg - zone_yaw_deg, block.symmetry,
+        label="%s block" % want_class)
+    if not clear and not args.ignore_clearance:
+        print("[stack] REFUSING to descend on the %s: the open jaws would "
+              "strike a neighbouring block. Nothing has moved." % want_class)
+        print("[stack] Pick the more isolated block first, move them apart, or "
+              "pass --ignore-clearance and watch it.")
+        return None
+    if not clear:
+        print("[stack] --ignore-clearance: descending anyway. WATCH THE JAWS.")
+    rotated = axis_zone_deg + zone_yaw_deg
+    if abs(rotated - grasp_yaw_deg) > 1e-6:
+        grasp_yaw_deg = rotated
+        print("[stack] grasp yaw is now %+.1f deg to clear the neighbour."
+              % grasp_yaw_deg)
 
     grasp_hover = pp.hover_z_for(grasp_x, grasp_y, grasp_z, grasp_yaw_deg)
     nudges, measurements = [], []
@@ -1121,6 +1160,15 @@ def build_parser():
                              "%(default)s). Level 2 needs a release flange z of "
                              "0.2055 against MAX_HOVER_Z 0.205, so its "
                              "pre-place hover clamps BELOW the release point")
+    parser.add_argument("--ignore-clearance", action="store_true",
+                        help="descend even when the open jaws would strike a "
+                             "neighbouring block. The jaw geometry the check "
+                             "uses is UNMEASURED -- see "
+                             "tag_pick_place.JAW_GEOMETRY_MEASURED -- so a "
+                             "refusal can be conservative")
+    parser.add_argument("--ignore-merged", action="store_true",
+                        help="grasp a contour that looks like two touching "
+                             "blocks read as one. Its centroid is in the seam")
     parser.add_argument("--allow-any-symmetry", action="store_true",
                         help="place a block whose footprint did not measure "
                              "symmetry 4. 'Near side faces the robot' is only "
@@ -1211,6 +1259,10 @@ def build_parser():
     parser.add_argument("--debug-image", default=None, metavar="PATH",
                         help="write the survey's annotated frames, one per "
                              "still, prefixed from this path")
+    parser.add_argument("--dump-sightings", default=None, metavar="PATH",
+                        help="write every sweep sighting to JSON, so a survey "
+                             "that found nothing can be re-fitted offline "
+                             "rather than reverse-engineered from the log")
     parser.add_argument("--calibration-log", default=None)
     parser.add_argument("--note", default="stack_blocks")
     # Listed so --help mentions it. main() intercepts it from sys.argv BEFORE
@@ -1390,6 +1442,158 @@ def _selftest():
     check("a missing block refuses",
           not have_every_block(pairs[:1], ["orange_cube", "green_cube"]))
 
+    print("neighbour clearance")
+
+    class _Blk(object):
+        """Enough of a FusedDetection for the clearance geometry."""
+        def __init__(self, zx, zy, w=0.030, l=0.030, sym=4):
+            self.zx, self.zy, self.width, self.length = zx, zy, w, l
+            self.symmetry, self.shape = sym, "square"
+            self.n_views, self.spread_m, self.zyaw = 3, 0.001, 0.0
+
+    target = _Blk(0.0, 0.0)
+    check("a block alone in the zone is always clear",
+          tpp.grasp_clearance(target, [], 0.0)[0])
+    # A neighbour straight along the closing axis blocks it; the SAME neighbour
+    # is clear once the wrist turns 90 deg. This is the whole rule.
+    east = _Blk(0.035, 0.0)
+    ok_0, m0, _ = tpp.grasp_clearance(target, [east], 0.0)
+    ok_90, m90, _ = tpp.grasp_clearance(target, [east], 90.0)
+    check("a neighbour ON the closing axis blocks the grasp",
+          not ok_0, "margin %+.1f mm" % (m0 * 1000))
+    check("the same neighbour is clear across the axis (rotate 90 deg)",
+          ok_90, "margin %+.1f mm" % (m90 * 1000))
+    check("choose_jaw_axis finds the 90 deg escape on a 4-fold block",
+          tpp.choose_jaw_axis(target, [east], 0.0, 4) == (90.0, True))
+    check("a jaw axis is a line: 180 deg is the same clearance",
+          abs(tpp.grasp_clearance(target, [east], 0.0)[1]
+              - tpp.grasp_clearance(target, [east], 180.0)[1]) < 1e-12)
+    # Two neighbours, one on each axis, leave nowhere to go.
+    north = _Blk(0.0, 0.035)
+    axis, ok = tpp.choose_jaw_axis(target, [east, north], 0.0, 4)
+    check("neighbours on BOTH axes are refused, not silently grasped", not ok)
+    # A 2-fold block has no alternative axis -- base+180 is the same line.
+    check("symmetry 4 offers two distinct jaw axes",
+          len(tpp.candidate_jaw_axes_deg(10.0, 4)) == 2)
+    check("symmetry 2 offers ONE (base+180 is the same axis)",
+          tpp.candidate_jaw_axes_deg(10.0, 2) == [10.0])
+    check("symmetry 1 offers one",
+          tpp.candidate_jaw_axes_deg(10.0, 1) == [10.0])
+    check("symmetry 0 gets both (reduce_yaw folds it to 4)",
+          len(tpp.candidate_jaw_axes_deg(10.0, 0)) == 2)
+    check("a 2-fold block with a neighbour on its only axis is refused",
+          not tpp.choose_jaw_axis(_Blk(0, 0, 0.030, 0.060, 2), [east], 0.0, 2)[1])
+    # A far neighbour must not trip it, or the check is useless in a real zone.
+    check("a neighbour at the far corner of the usable box is clear",
+          tpp.grasp_clearance(target, [_Blk(0.046, 0.046)], 0.0)[0])
+    # The neighbour is modelled as a DISC, so its own yaw cannot change the
+    # answer -- that is the point, since neighbour yaw is the least trusted
+    # number available.
+    check("the neighbour's own yaw does not change the verdict",
+          tpp.grasp_clearance(target, [_Blk(0.035, 0.0)], 0.0)[0]
+          == tpp.grasp_clearance(target, [_Blk(0.035, 0.0, sym=0)], 0.0)[0])
+    # Sign convention: negative margin is overlap, and its size is meaningful.
+    deep = tpp.grasp_clearance(target, [_Blk(0.022, 0.0)], 0.0)[1]
+    far = tpp.grasp_clearance(target, [_Blk(0.030, 0.0)], 0.0)[1]
+    check("margin is signed and monotonic in separation", deep < far,
+          "%.1f vs %.1f mm" % (deep * 1000, far * 1000))
+
+    # THE PRACTICAL UPSHOT, pinned because it is the sentence to remember:
+    # along the closing axis two 30 mm blocks need 51.3 mm of separation, which
+    # does not FIT in the 46.2 mm usable box -- so the 90 deg escape is not an
+    # optimisation, it is mandatory. Across the axis they need 20.8 mm, and two
+    # blocks physically touch at 30 mm, so any separated pair passes. The rule
+    # reduces to: put the jaw axis PERPENDICULAR to the line joining them.
+    def min_separation(axis_deg):
+        d = 0.0
+        while d < 0.20:
+            d += 0.0001
+            n = _Blk(d * math.cos(math.radians(axis_deg)),
+                     d * math.sin(math.radians(axis_deg)))
+            if tpp.grasp_clearance(target, [n], 0.0)[0]:
+                return d
+        return None
+
+    along, across = min_separation(0.0), min_separation(90.0)
+    box = tpp.zv.DEFAULT_ZONE_SIZE - tpp.zv.DEFAULT_TAG_SIZE - pp.BLOCK_HEIGHT_M
+    check("along the closing axis, 30 mm blocks need more room than a zone has",
+          along > box, "needs %.1f mm, box is %.1f mm"
+          % (along * 1000, box * 1000))
+    check("across the axis, any physically separated pair fits",
+          across < pp.BLOCK_HEIGHT_M, "needs %.1f mm, blocks touch at %.0f mm"
+          % (across * 1000, pp.BLOCK_HEIGHT_M * 1000))
+
+    print("merged-contour guard")
+    tpp.LAST_IDENTITY_CONFLICTS.clear()
+    check("a normal 30x30 footprint is not flagged",
+          tpp.merged_contour_reason(_Blk(0, 0, 0.030, 0.030), 0) is None)
+    # The observed worst single-block over-read on this bench, 34 x 44 mm, must
+    # NOT be flagged -- that is the false-positive edge of a 6 mm margin.
+    check("the observed 34 x 44 mm single-block over-read is not flagged",
+          tpp.merged_contour_reason(_Blk(0, 0, 0.034, 0.044), 0) is None)
+    check("two touching 30 mm blocks (30 x 60) ARE flagged",
+          tpp.merged_contour_reason(_Blk(0, 0, 0.030, 0.060), 0) is not None)
+    check("the flag names the seam problem",
+          "seam" in tpp.merged_contour_reason(_Blk(0, 0, 0.030, 0.060), 0))
+    # The definitive signal beats the size heuristic and needs no threshold.
+    tpp.LAST_IDENTITY_CONFLICTS.add(7)
+    reason = tpp.merged_contour_reason(_Blk(0, 0, 0.030, 0.030), 7)
+    check("two block classes claiming one contour is flagged at ANY size",
+          reason is not None and "TOP tags" in reason)
+    check("a different contour index is unaffected",
+          tpp.merged_contour_reason(_Blk(0, 0, 0.030, 0.030), 8) is None)
+    tpp.LAST_IDENTITY_CONFLICTS.clear()
+    check("the conflict set is per-survey, not sticky",
+          tpp.merged_contour_reason(_Blk(0, 0, 0.030, 0.030), 7) is None)
+
+    print("survey framing (the 2026-08-12 angled-mat fix)")
+
+    class _Zone(object):
+        def __init__(self, x, y):
+            self.zone_x, self.zone_y, self.zone_z = x, y, 0.0
+
+    def worst_flange(mx, my, bearing_relative):
+        base = math.degrees(math.atan2(my, mx)) if bearing_relative else 0.0
+        d = _Zone(mx, my)
+        return max(math.hypot(*tpp.survey_flange_for_yaw(d, base + o,
+                                                         tpp.DETECT_HOVER_Z))
+                   for o in tpp.MULTIVIEW_YAW_OFFSETS_DEG)
+
+    # Bearing 0 must be BIT-IDENTICAL: those are positions N, O and H, the ones
+    # with the track record, and the fix must not have moved them.
+    for label, (mx, my) in (("N", (0.127, 0.0)), ("O", (0.1778, 0.0)),
+                            ("H", (0.2286, 0.0))):
+        check("bearing 0 (%s) is unchanged by the bearing-relative yaw" % label,
+              worst_flange(mx, my, False) == worst_flange(mx, my, True))
+    # Every other bearing must IMPROVE, and land where bearing 0 lands at the
+    # same radius -- that is what "bearing-invariant framing" means.
+    ref = worst_flange(0.2286, 0.0, True)
+    for label, (mx, my) in (("standard pickup +90", (0.0, 0.2286)),
+                            ("place zone -90", (0.0, -0.2286)),
+                            ("run 4, -41 deg", (0.1790, -0.1556)),
+                            ("run 2, -135 deg", (-0.1647, -0.1638))):
+        before, after = worst_flange(mx, my, False), worst_flange(mx, my, True)
+        check("%s improves (%.4f -> %.4f)" % (label, before, after),
+              after < before - 0.010, "%+.1f mm" % ((after - before) * 1000))
+        radius_excess = math.hypot(mx, my) - 0.2286
+        check("%s lands where bearing 0 does at its radius" % label,
+              abs(after - ref - radius_excess) < 0.002,
+              "%.4f vs %.4f + %.4f" % (after, ref, radius_excess))
+    # run 2's five stills all wanted >= 0.2253 and every one was REFUSED on
+    # hardware; a still at 0.2087 the same day reached. Pin that they now sit
+    # under the radius that was observed to work.
+    check("run 2's worst still is now under the 0.2087 that reached on hardware"
+          " + its extra radius",
+          worst_flange(-0.1647, -0.1638, True) < 0.2087
+          + (math.hypot(0.1647, 0.1638) - 0.2087) + 0.010,
+          "%.4f" % worst_flange(-0.1647, -0.1638, True))
+    check("survey_start_flange agrees with detect_multiview's first still",
+          math.hypot(*tpp.survey_start_flange(_Zone(0.0, 0.2286),
+                                              tpp.DETECT_HOVER_Z))
+          == math.hypot(*tpp.survey_flange_for_yaw(
+              _Zone(0.0, 0.2286), 90.0 + tpp.MULTIVIEW_YAW_OFFSETS_DEG[0],
+              tpp.DETECT_HOVER_Z)))
+
     print("calibration row")
     # THE CLAIM stack_row's docstring makes, tested rather than asserted: a place
     # row must be INERT to every pick-side statistic. If one of these ever
@@ -1533,6 +1737,10 @@ def main():
                                              zones)
             fit_step = args.fine_step
         seen.setdefault("place", [])
+        # Dumped BEFORE the gate, so a survey that rejects everything still
+        # leaves its evidence on disk. That is the case it exists for.
+        if args.dump_sightings:
+            explore.dump_sightings(args.dump_sightings, seen)
 
         print()
         pickup = epp.survey_zone("pickup", seen["pickup"], detector.zone_size,
@@ -1625,8 +1833,13 @@ def main():
                                 args.allow_any_symmetry):
                 return 1
 
+            # Every OTHER block still in the zone is a potential obstacle. Note
+            # this shrinks as the stack grows -- picking the orange one first
+            # makes room for the green one, which is why "pick the most isolated
+            # first" is a real strategy and not just an optimisation.
+            others = [det for det, _klass in candidates if det is not block]
             pick_pose = pick_block(io_client, detector, args, memory, block,
-                                   want_class)
+                                   want_class, others)
             if pick_pose is None:
                 return 1
 

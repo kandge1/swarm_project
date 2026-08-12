@@ -517,6 +517,69 @@ def test_wrong_zone_ignored(method, failures):
                    "matched the place zone's tags while asked for pickup")
 
 
+def test_shape_symmetry_consistency(failures):
+    """A fused shape and its symmetry can never disagree.
+
+    THE BUG THIS PINS, from hardware logs.txt 2026-08-12. fuse_detections used to
+    take two independent majority votes over one cluster -- one for shape, one for
+    symmetry -- and `max(set(...), key=count)` breaks a tie by set iteration
+    order, which differs for strings and for small ints. A fused orange cube came
+    out `square` while carrying symmetry 0, so its yaw was discarded (the
+    `if symmetry:` else-branch forces zyaw and spread to 0.0) and a 4-fold gate
+    downstream refused the run. Its five per-view yaws agreed to 3 degrees once
+    folded mod 90.
+    """
+    print("\n--- shape/symmetry consistency ---")
+
+    # Every pair _classify can emit must be in the map fusion derives from.
+    for shape, symmetry in (zv._classify(0.030, 0.030, 0.95),
+                            zv._classify(0.030, 0.030, 0.50),
+                            zv._classify(0.020, 0.060, 0.95),
+                            zv._classify(0.020, 0.060, 0.50),
+                            zv._classify(0.030, 0.0, 0.95)):
+        failures.check(zv.SHAPE_SYMMETRY.get(shape) == symmetry,
+                       "_classify pair (%r, %d) matches SHAPE_SYMMETRY"
+                       % (shape, symmetry),
+                       "map says %r" % (zv.SHAPE_SYMMETRY.get(shape),))
+
+    class _D(object):
+        def __init__(self, shape, symmetry, zyaw):
+            self.zx = self.zy = 0.0
+            self.width, self.length = 0.030, 0.030
+            self.shape, self.symmetry, self.zyaw = shape, symmetry, zyaw
+
+    # The hardware cluster: three views disagreeing three ways, and yaws that
+    # agree to 3 degrees once folded mod 90.
+    cluster = [_D("square", 4, math.radians(-5.8)),
+               _D("circle", 0, math.radians(-95.0)),
+               _D("unknown", 1, math.radians(85.3))]
+    fused = zv.fuse_detections([[d] for d in cluster])
+    failures.check(len(fused) == 1, "the three-way-tie cluster fuses to one block")
+    if fused:
+        f = fused[0]
+        failures.check(zv.SHAPE_SYMMETRY[f.shape] == f.symmetry,
+                       "fused shape %r and symmetry %d agree"
+                       % (f.shape, f.symmetry),
+                       "map says %d" % zv.SHAPE_SYMMETRY[f.shape])
+        # If it fused to a square, the yaw must have SURVIVED rather than been
+        # zeroed -- that is the whole point of fixing the inconsistency.
+        if f.symmetry:
+            failures.check(f.spread_yaw_rad > 0.0 or abs(f.zyaw) > 1e-9,
+                           "a symmetric fused block keeps a real yaw",
+                           "zyaw %.3f spread %.3f"
+                           % (f.zyaw, f.spread_yaw_rad))
+
+    # A unanimous cluster must be untouched by the change.
+    for shape, symmetry in (("square", 4), ("rect", 2), ("circle", 0),
+                            ("unknown", 1)):
+        unanimous = [_D(shape, symmetry, 0.0) for _ in range(3)]
+        got = zv.fuse_detections([[d] for d in unanimous])
+        failures.check(got and got[0].shape == shape
+                       and got[0].symmetry == symmetry,
+                       "a unanimous %r cluster still fuses to (%r, %d)"
+                       % (shape, shape, symmetry))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -546,6 +609,9 @@ def main():
         test_empty_zone_is_success(method, failures)
         test_no_tags_fails_cleanly(method, failures)
         test_wrong_zone_ignored(method, failures)
+
+    # Method-independent: this is fusion arithmetic, not segmentation.
+    test_shape_symmetry_consistency(failures)
 
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0
