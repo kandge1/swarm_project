@@ -766,11 +766,95 @@ deficient alone (the place zone never moves) and pooling them corrupts the fit.
 
 ```bash
 python3 -m py_compile tag_pick_place.py pick_place.py zone_vision.py \
-    zone_calibrate.py explore.py explore_pick_place.py calibration.py
+    zone_calibrate.py explore.py explore_pick_place.py calibration.py \
+    stack_blocks.py
 python3 zone_vision_selftest.py
 python3 explore.py --selftest
 python3 calibration.py --selftest
+python3 stack_blocks.py --selftest
+python3 block_tags_selftest.py
 ```
+
+---
+
+## Stacking workflow (`stack_blocks.py`, new 2026-08-12)
+
+Surveys both zones, picks two blocks **by name**, and stacks them at the place
+zone centre with the near face square to the robot.
+
+```bash
+cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+
+# check the whole plan without touching a block
+python3 stack_blocks.py --survey-only
+
+# every pose parked at, nothing grasped or released
+python3 stack_blocks.py --dry-run
+
+# the real thing, with the operator checkpoints ON
+python3 stack_blocks.py --stack "orange block" "the green one"
+```
+
+Names are plain English: `orange`, `orange top`, `the orange block`,
+`the block named green` all resolve. Anything ambiguous or unknown is
+**refused**, not guessed. `python3 stack_blocks.py --selftest` lists the
+phrasings that are covered.
+
+### The two checkpoints, and why the first runs must keep them
+
+Same protocol as the pick side — `m dx dy` records and moves nothing, `dx dy`
+nudges and re-parks, ENTER goes. **The place park is where the one measurement
+this project has never taken gets taken.** The place side has never been
+calibrated (stage 0 declared ±25 mm acceptable), so type `m` at the place park
+on every early run. It writes a row with `kind: "place"` and
+`place_open_loop_offset`.
+
+### What limits a stack
+
+| | |
+|---|---|
+| Absolute position of the stack | the place **survey**, a few mm — needs ±25 mm, so fine |
+| Straightness of the stack | **not** the survey. A systematic place error is common to both blocks and displaces the whole stack instead of tipping it |
+| Real floor | the per-block grasp residual (~1 mm) and the **unmeasured** level-0-vs-level-1 droop difference |
+
+`DESCENT_BIAS_Z` and the far-corner compliance term were both measured at
+level 0 and neither has been checked 30 mm higher.
+
+### Level 2 is refused, and not for the reason `APRIL_TAGS_DEV.md` gives
+
+A level-2 release wants flange z **0.2055** against `MAX_HOVER_Z` **0.205**, so
+`hover_z_for` clamps the pre-place hover *below* the release point and the
+descent inverts. The flange can physically reach 0.2055 at the zone radius —
+this is a hover-ceiling limit, not a workspace one, and it bites **before**
+the reach margin that document tabulates (which is about *picking* from
+level 2). `--max-level 2` does not rescue it; the hover check catches it too.
+
+### The pose memory
+
+```bash
+python3 stack_blocks.py --memory ~/stack_memory.json     # persist between runs
+python3 stack_blocks.py --no-memory                      # measure what it buys
+```
+
+Caches the **commanded** joint target of each move (`pick_place.LAST_ARM_GOAL`),
+keyed on the world pose asked for, and replays it as a joint goal instead of
+re-solving IK.
+
+- **Commanded, never achieved.** Storing achieved angles would bake in J1's
+  arrival backlash and re-command it, compounding the error
+  `j1_unidirectional_approach` exists to cancel — and it would look perfectly
+  repeatable while doing it.
+- **Keyed on the target, not on a label**, so a mat that has moved simply
+  *misses* the cache. That is what makes `--memory` safe across sessions.
+- It saves IK and planning latency, **not arm motion**. The real speedup in this
+  script is that one pickup survey serves both blocks.
+
+### One survey, two picks
+
+The default surveys the pickup zone **once**: `identify_blocks` returns a class
+per contour, and lifting one block does not move another. Use `--resurvey` when
+blocks start out touching, which is the case where the cached position of the
+second block can go stale.
 
 ### If a run says `no pickup zone, so there is nothing to pick`
 

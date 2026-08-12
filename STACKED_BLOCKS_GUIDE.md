@@ -16,10 +16,18 @@ Six tags per block — TOP, BOTTOM and **four distinct SIDE ids**. Zone tags own
 | | TOP | BOTTOM | SIDE0 | SIDE1 | SIDE2 | SIDE3 |
 |---|---|---|---|---|---|---|
 | **orange_cube** | 8 | 9 | 10 | 11 | 12 | 13 |
-| **yellow_cube** | 14 | 15 | 16 | 17 | 18 | 19 |
+| **green_cube** | 14 | 15 | 16 | 17 | 18 | 19 |
 
 Defined once, in `src/swarm_pkg/src/scripts/block_coordinates.py`. Nothing else
 hardcodes it.
+
+**`yellow_cube` became `green_cube` on 2026-08-12** — the block is green, and
+the operator is colourblind, so the label was wrong for the one person reading
+it. **No reprint needed and no sticker moved:** ids 14–19 are "the second entry
+in `BLOCK_CLASSES`, in `FACE_ORDER`", and that entry was renamed in place, not
+moved. The only stale artefact is the *printed sheet's title text*, which still
+reads YELLOW CUBE until `print_block_tags.py --block green_cube` is re-run —
+cosmetic, and the ids on it are correct.
 
 **The classes were `cube` and `cuboid` until 2026-08-05.** A tag id means
 nothing on its own — the sticker is a number, and the whole "id 8 is a TOP
@@ -69,7 +77,7 @@ cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
 python3 print_block_tags.py --out-dir ../../../../print_sheets
 ```
 
-Writes `block_tags_orange_cube_LETTER` and `block_tags_yellow_cube_LETTER` as **both `.pdf`
+Writes `block_tags_orange_cube_LETTER` and `block_tags_green_cube_LETTER` as **both `.pdf`
 and `.png`** — six **25.4 mm (1 in)** tags each, with cut lines, centre
 cross-hairs, an orientation arrow, a per-face placement hint and a **150 mm
 calibration ruler**. `--paper a4` and `--fit-face` (22.5 mm tags) are the other
@@ -642,8 +650,8 @@ limit; `MAX_BLOCKS` enforces it and the node warns past 1300 B.
   the survey pose meanwhile; it bypasses IK, which is where the fragile things
   in this project live.
 - **Both classes are assumed to be 30 mm cubes**, which is what one
-  `--face-size` for the whole run means. If the yellow block is not 30 mm,
+  `--face-size` for the whole run means. If the green block is not 30 mm,
   regenerate that sheet alone with
-  `--block yellow_cube --face-size <metres>`.
+  `--block green_cube --face-size <metres>`.
 - **`/detect_block` still times out** — THE OPEN BUG. The block-tag work does
   not depend on it (the log and debug image are robot-side), but stage 0 does.

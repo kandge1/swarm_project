@@ -1311,6 +1311,50 @@ there are two hard constraints below that shape the whole design.
 
 **Constraint: stacks are at most 3 tall.**
 
+### BUILT 2026-08-12 — `stack_blocks.py`, and two corrections to this plan
+
+`stack_blocks.py` does stage 0's pick plus a **precise** place: survey both
+zones, pick two blocks by name, stack them at the place zone centre with the
+near face square to the robot. It is a driver over `tag_pick_place`'s
+primitives, not a fork of `run_stage1` — see its module docstring for why.
+`--selftest` runs 61 offline checks, including that a `kind: "place"` row is
+inert to every existing `calibration.py` statistic. `WORKFLOW.md` has the
+commands.
+
+**Correction 1: placing at level 2 is blocked by `MAX_HOVER_Z`, not by reach.**
+A level-2 release wants flange z **0.2055** against `MAX_HOVER_Z` **0.205**, so
+`hover_z_for` clamps the pre-place hover *below* the release point and the
+descent inverts — the arm would rise into the block it is placing. The flange
+itself can reach 0.2055 at the zone radius (the envelope allows ~0.2358 at
+r = 0.2316), so this is a hover-ceiling limit and it is **a different constraint
+from CONSTRAINT 1 below**, which is about *picking* from level 2. This one bites
+first. Two blocks (levels 0 and 1) is the default ceiling.
+
+**Correction 2: stage 0's "stop calibrating the place zone" survives stacking,
+and the reason is worth keeping.** ±25 mm was declared acceptable for a block
+tossed into a box; a stack needs the second block within ~10 mm of the first,
+which looks like it reopens the problem. It does not, because the stack is a
+**relative** measurement: block 2 is commanded to the same world XY as block 1,
+so the place zone's survey error, the jaw model at that bearing and J1's lost
+motion there are all **common to both releases** and displace the whole stack
+together rather than tipping it. Same-direction repeatability is 0.20 mm
+(TESTS.md Test 1), so the common part cancels to well under a millimetre.
+
+What does **not** cancel, and is therefore the real floor:
+
+- the **per-block grasp residual** — the two blocks sit at different points in
+  the pickup zone, so each is grasped with its own error and sits slightly
+  differently in the jaws (~1 mm, from the 2026-08-11 six-run residual);
+- the **level-0 vs level-1 droop difference**. The two releases are at flange z
+  0.1455 and 0.1755 — different arm configurations, different sag.
+  `DESCENT_BIAS_Z` and the −5.75 mm far-corner compliance term were both
+  measured at level 0. **UNMEASURED**, and the one term that could exceed the
+  first.
+
+`stack_blocks.py`'s place park exists to measure it: `m dx dy` at the park
+writes `place_open_loop_offset` on a `kind: "place"` row. No such number exists
+anywhere in the history yet.
+
 ### CONSTRAINT 1 — stacking costs reach, and 3 tall is exactly the ceiling
 
 The reach envelope shrinks with height (`FLANGE_REACH_ENVELOPE`) and a stacked

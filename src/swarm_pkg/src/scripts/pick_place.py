@@ -2593,6 +2593,26 @@ def _fk_gripper_base(joint_values):
 # argument. Empty until a descent has happened.
 LAST_FLANGE_FK = []
 
+# {joint_name: radians} of the last joint-space goal move_arm_to COMMANDED, as
+# a dict so a caller can replay it without knowing the trajectory's name order.
+# Empty until a joint-space move has been planned.
+#
+# COMMANDED, NOT ACHIEVED, and that distinction is the whole reason this exists
+# rather than a caller just reading /joint_states after the move. J1 loses a
+# measured 0.94 deg (1.88 deg full backlash) of lost motion in whichever
+# direction it last travelled, and j1_unidirectional_approach cancels it by
+# re-approaching THE COMMANDED TARGET with a J1_RESIDUAL_BIAS_DEG overshoot --
+# see its comment in move_arm_to, which says explicitly that re-approaching the
+# achieved position "would bake in whatever backlash offset the arrival happened
+# to leave, which is the thing being removed".
+#
+# So a pose memory built from ACHIEVED angles would store the arm's arrival
+# error and re-command it as a target, compounding the very error the
+# unidirectional approach removes -- and it would do it silently, because the
+# replay would look beautifully repeatable while sitting a backlash width off.
+# stack_blocks.PoseMemory stores this instead.
+LAST_ARM_GOAL = {}
+
 
 def record_flange_fk(io_client):
     """Refresh LAST_FLANGE_FK from /joint_states. Returns it, or None.
@@ -3668,6 +3688,13 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
         return False
 
     print(f"Executing joint-space move to ({x}, {y}, {z})...")
+    # The commanded goal, snapshotted BEFORE execution so it is recorded even if
+    # the arm does not converge -- a move that missed still says what was asked
+    # for, and that is the number worth replaying. See LAST_ARM_GOAL.
+    if joint_trajectory.points:
+        LAST_ARM_GOAL.clear()
+        LAST_ARM_GOAL.update(zip(joint_trajectory.joint_names,
+                                 joint_trajectory.points[-1].positions))
     ok = io_client.arm_execute(joint_trajectory)
     record_flange_fk(io_client)
     if ok is not False and unidirectional:

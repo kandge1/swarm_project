@@ -3,7 +3,7 @@
 
 PURE PYTHON. No ROS, no OpenCV. Imported by the printer (print_block_tags.py),
 the Pi-side detector (block_detector_node.py) and anything on mars that has to
-turn an id back into "the yellow cube's left face" -- so there is exactly one
+turn an id back into "the green cube's left face" -- so there is exactly one
 definition of the scheme and the printed paper cannot drift from the code.
 
 ------------------------------------------------------------------------------
@@ -14,7 +14,7 @@ id. Zone tags own 0-7 (zone_vision.PICKUP_TAG_IDS / PLACE_TAG_IDS), so blocks
 start at 8:
 
     orange_cube  TOP  8   BOTTOM  9   SIDE0 10  SIDE1 11  SIDE2 12  SIDE3 13
-    yellow_cube  TOP 14   BOTTOM 15   SIDE0 16  SIDE1 17  SIDE2 18  SIDE3 19
+    green_cube   TOP 14   BOTTOM 15   SIDE0 16  SIDE1 17  SIDE2 18  SIDE3 19
 
 A CLASS NAME IS A LABEL, NOT A MEASUREMENT. An AprilTag id carries no meaning
 of its own -- the sticker is a number and every "id 8 means X" lives in the
@@ -85,7 +85,7 @@ BLOCK_TAG_ID_BASE = 8
 # Order matters as much as FACE_ORDER does: position in this tuple picks the
 # id block (first -> 8-13, second -> 14-19). Renaming an entry is free; MOVING
 # one means the printed stickers now say something else.
-BLOCK_CLASSES = ("orange_cube", "yellow_cube")
+BLOCK_CLASSES = ("orange_cube", "green_cube")
 
 # Order matters: it IS the id assignment. Do not reorder without reprinting.
 FACE_ORDER = ("top", "bottom", "side0", "side1", "side2", "side3")
@@ -106,7 +106,7 @@ class BlockFace(NamedTuple):
 
     @property
     def label(self) -> str:
-        """Short human string, e.g. 'yellow cube SIDE2'. What the logs print.
+        """Short human string, e.g. 'green cube SIDE2'. What the logs print.
 
         The underscore in the class id is spelled as a space here and nowhere
         else: 'orange_cube' is the key callers pass to tag_id_for(), and this

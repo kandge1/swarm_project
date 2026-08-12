@@ -173,8 +173,8 @@ def test_side_tags_get_no_position():
     print("\nmat-plane projection")
     dictionary = _dictionary()
     canvas = np.full((480, 640), 120, np.uint8)
-    _paste(canvas, bc.tag_id_for("yellow_cube", "top"), (100, 100), 64, dictionary)
-    _paste(canvas, bc.tag_id_for("yellow_cube", "side3"), (320, 100), 64, dictionary)
+    _paste(canvas, bc.tag_id_for("green_cube", "top"), (100, 100), 64, dictionary)
+    _paste(canvas, bc.tag_id_for("green_cube", "side3"), (320, 100), 64, dictionary)
 
     # Any invertible homography will do; the point is which tags get used.
     H_px_to_zone = np.array([[1e-4, 0, -0.03],
