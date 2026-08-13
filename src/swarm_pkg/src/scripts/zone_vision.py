@@ -379,6 +379,12 @@ COLOUR_NAMES = (
     "unknown",
     "red", "orange", "yellow", "green", "blue", "purple", "pink",
     "white", "wood",
+    # APPENDED 2026-08-12. No block in the set is cyan, but green (60) and blue
+    # (112) are 52 hue units apart and the give-up radius is 21, so hues 82-90
+    # reached NO prototype and came back "unknown" -- and blue paint under warm
+    # light drifts exactly that way. Appended, never inserted: an index is a wire
+    # value.
+    "cyan",
 )
 
 # HSV prototypes: (hue 0-179 as OpenCV counts it, min saturation, min value).
@@ -397,14 +403,66 @@ COLOUR_NAMES = (
 # Circular because red wraps 0/179 and any linear distance gets red wrong.
 # Order-independent, and it yields a real distance to threshold on.
 COLOUR_HUES = {
-    "red":    (0, 90, 55),
+    # RED'S SATURATION FLOOR IS 60, NOT 90, and it has to be: pink is red below
+    # COLOUR_PINK_MAX_SAT, so a floor of 90 made every pink paler than that come
+    # back "unknown" -- the split could never fire. 60 is exactly
+    # COLOUR_WHITE_MAX_SAT, so red/pink picks up precisely where white leaves off
+    # and there is no band between them that matches nothing.
+    "red":    (0, 60, 55),
     "orange": (14, 90, 60),
     "yellow": (28, 75, 75),
     "green":  (60, 45, 35),
     "blue":   (112, 55, 35),
     "purple": (140, 40, 35),
-    "pink":   (168, 30, 70),
+    "cyan":   (86, 40, 40),
 }
+
+# PINK IS NOT IN THE HUE TABLE, and that is a fix from 2026-08-12, not an
+# omission.
+#
+# MEASURED ON HARDWARE. A red prism in the pickup zone was named
+# `pink (score 0.72)`. Working the score back through the metric --
+# distance = (1 - score) * COLOUR_MAX_HUE_DIST -- puts its median hue 5.0 units
+# from pink's 168 prototype, i.e. at ~163 or ~173. Then the arithmetic:
+#
+#   hue  dist to red(0)  dist to pink(168)   nearest
+#   160      20.0              8.0            pink
+#   170      10.0              2.0            pink
+#   172       8.0              4.0            pink
+#   175       5.0              7.0            red
+#
+# Pink's prototype sat only 12 hue units from red's, INSIDE red's own 18-unit
+# tolerance, so it captured every hue from 160 to 174 -- which is where real
+# crimson paint lives. Red and pink are not separable by hue at this resolution
+# and never were.
+#
+# THEY ARE SEPARABLE BY SATURATION, because that is physically what pink IS: a
+# TINT of red, i.e. red mixed with white. So pink is decided from red afterwards,
+# on saturation and value, in the same spirit as white and wood being decided
+# before hue is consulted at all.
+#
+# BIASED TOWARDS RED. Both thresholds are unmeasured, so the split is set where a
+# borderline block reads "red": the pink disc is ungraspable lying flat anyway
+# (55.9 mm through its centre against a ~40 mm aperture), while a red block
+# misnamed pink is a block the operator asked for and did not get. Print the
+# H/S/V -- classify_colour returns it and the detector node logs it -- and move
+# these two numbers once, from a reading, rather than nudging them per run.
+COLOUR_PINK_MAX_SAT = 140       # above this it is red, not a tint of red
+COLOUR_PINK_MIN_VAL = 150       # ... and a tint is light, not dark
+
+# Hue used to SCORE pink, never to select it. Selection is by saturation, above.
+#
+# Needed because the score is a hue distance, and pink is reached through red's
+# prototype at 0 -- so a perfectly good pink at hue 165 scored 1 - 15/21 = 0.29
+# and would have been thrown out by tag_pick_place.COLOUR_MIN_SCORE (0.45)
+# despite being classified correctly. Detected and then discarded is the worst of
+# the three outcomes.
+#
+# 172 is the middle of where magenta actually sits, so both a pale true red
+# (hue ~0, distance 8) and a magenta-ish pink (hue ~165, distance 7) score around
+# 0.6-0.7. Kept OUT of COLOUR_HUES on purpose: putting it back there is precisely
+# the bug this whole block exists to fix.
+COLOUR_PINK_HUE_REF = 172
 
 # Achromatic classes, decided by saturation/value BEFORE hue is consulted at
 # all: the hue of a near-grey pixel is numerically defined and physically
@@ -414,9 +472,36 @@ COLOUR_WHITE_MIN_VAL = 140      # ... and above this value it is white
 COLOUR_WOOD_MAX_SAT = 110       # tan/beech: a real but weak hue in the orange
 COLOUR_WOOD_HUE_RANGE = (5, 32) # band. Checked before the chromatic prototypes.
 
-# Hue distance beyond which no prototype is claimed, in OpenCV hue units (so
-# ~2 deg each). 18 is a quarter of the gap between adjacent prototypes here.
-COLOUR_MAX_HUE_DIST = 18
+# Hue distance beyond which no prototype is claimed, in OpenCV hue units (~2 deg
+# each). A GIVE-UP RADIUS, not a band half-width: which prototype wins is decided
+# by nearest-neighbour, so adjacent prototypes may sit closer together than this
+# (red 0 and orange 14 do) without anything being ambiguous.
+#
+# 18 -> 21 on 2026-08-12, and for a specific hole. Taking pink out of the hue
+# table (see COLOUR_PINK_MAX_SAT) left purple at 140 as the last prototype before
+# red wraps at 180 -- a 40-unit span covered 18 either side, so hues 159-161
+# matched NOTHING and came back "unknown". Caught by the selftest asserting that
+# a saturated hue 160 is red. 21 closes it exactly at the midpoint, 160, with a
+# unit to spare on each side.
+COLOUR_MAX_HUE_DIST = 21
+
+
+# Hue BANDS: names whose hue is a range rather than a point. Distance is 0
+# anywhere inside the band and grows from the nearest edge outside it.
+#
+# RED IS A BAND AND HAS TO BE. It straddles the 0/179 wrap and real red paints
+# spread right across it -- scarlet near 5, crimson near 172. Scored against a
+# single point at 0, the red prism measured on hardware 2026-08-12 (median hue
+# ~163-173) scored 0.19-0.29 against tag_pick_place.COLOUR_MIN_SCORE of 0.45:
+# named correctly and then thrown away for want of confidence, which is the worst
+# of the three outcomes.
+#
+# The band stops at 6 on the upper side rather than 10 so it does not crowd
+# orange's prototype at 14 -- a hue of 12 should be an honest toss-up between red
+# and orange, not a confident red.
+COLOUR_HUE_BANDS = {
+    "red": (168, 6),            # wraps through 0
+}
 
 
 def _hue_distance(a, b):
@@ -425,41 +510,76 @@ def _hue_distance(a, b):
     return min(d, 180.0 - d)
 
 
+def _in_hue_band(h, band):
+    """Is hue `h` inside `band`, which may wrap through 0?"""
+    lo, hi = band
+    if lo <= hi:
+        return lo <= h <= hi
+    return h >= lo or h <= hi
+
+
+def _band_distance(h, name, hue):
+    """Hue distance from `h` to `name`'s band, or to its point prototype."""
+    band = COLOUR_HUE_BANDS.get(name)
+    if band is None:
+        return _hue_distance(h, hue)
+    if _in_hue_band(h, band):
+        return 0.0
+    return min(_hue_distance(h, band[0]), _hue_distance(h, band[1]))
+
+
 def classify_colour(hsv, mask):
-    """(name, score) for the pixels of `hsv` selected by `mask`.
+    """(name, score, (h, s, v)) for the pixels of `hsv` selected by `mask`.
 
     score is 1.0 at the prototype hue and falls linearly to 0.0 at
     COLOUR_MAX_HUE_DIST, so it is a DISTANCE turned into a confidence and not a
     pixel fraction -- a fully-agreeing blob of a colour we have no prototype for
     scores 0 and is called "unknown", which is the honest answer.
 
-    Achromatic first, chromatic second. See COLOUR_WHITE_MAX_SAT.
+    THE MEDIAN H/S/V IS RETURNED, not just the verdict, and that is the whole
+    reason the red-vs-pink question above was answerable at all: the first
+    hardware run of this path could only be diagnosed by working the hue
+    backwards out of the score, which is a thing to do once. block_detector_node
+    logs these three numbers per contour, on the Pi, where the pixels are -- they
+    deliberately do NOT go on the wire, which has 4 bytes of margin left.
+
+    ORDER MATTERS: achromatic (white, wood) before hue, because the hue of a
+    near-grey pixel is numerically defined and physically meaningless; then the
+    chromatic prototypes; then pink, split off red by saturation. See
+    COLOUR_PINK_MAX_SAT.
     """
     if hsv is None or mask is None:
-        return "unknown", 0.0
+        return "unknown", 0.0, (0.0, 0.0, 0.0)
     selected = hsv[mask > 0]
     if selected.size == 0:
-        return "unknown", 0.0
+        return "unknown", 0.0, (0.0, 0.0, 0.0)
     h = float(np.median(selected[:, 0]))
     s = float(np.median(selected[:, 1]))
     v = float(np.median(selected[:, 2]))
+    hsv_median = (h, s, v)
 
     if s < COLOUR_WHITE_MAX_SAT and v >= COLOUR_WHITE_MIN_VAL:
-        return "white", 1.0
+        return "white", 1.0, hsv_median
     if (s < COLOUR_WOOD_MAX_SAT
             and COLOUR_WOOD_HUE_RANGE[0] <= h <= COLOUR_WOOD_HUE_RANGE[1]):
-        return "wood", 1.0
+        return "wood", 1.0, hsv_median
 
     best, best_d = "unknown", None
     for name, (hue, s_min, v_min) in COLOUR_HUES.items():
         if s < s_min or v < v_min:
             continue
-        d = _hue_distance(h, hue)
+        d = _band_distance(h, name, hue)
         if best_d is None or d < best_d:
             best, best_d = name, d
     if best_d is None or best_d > COLOUR_MAX_HUE_DIST:
-        return "unknown", 0.0
-    return best, max(0.0, 1.0 - best_d / float(COLOUR_MAX_HUE_DIST))
+        return "unknown", 0.0, hsv_median
+    # PINK IS A TINT OF RED, so it is decided here and not by hue -- and rescored
+    # against its own reference, because the distance that selected it was
+    # measured to RED. See COLOUR_PINK_HUE_REF.
+    if best == "red" and s < COLOUR_PINK_MAX_SAT and v >= COLOUR_PINK_MIN_VAL:
+        best = "pink"
+        best_d = _band_distance(h, "red", COLOUR_PINK_HUE_REF)
+    return best, max(0.0, 1.0 - best_d / float(COLOUR_MAX_HUE_DIST)), hsv_median
 
 
 def colour_index(name):
@@ -487,7 +607,7 @@ class Detection:
 
     def __init__(self, zx, zy, zyaw, width, length, shape, symmetry,
                  fill_ratio, area_px, box_px, colour="unknown",
-                 colour_score=0.0):
+                 colour_score=0.0, colour_hsv=(0.0, 0.0, 0.0)):
         self.zx = zx
         self.zy = zy
         self.zyaw = zyaw            # MAJOR (long) axis direction, rad
@@ -500,6 +620,10 @@ class Detection:
         self.box_px = box_px        # 4x2 pixel corners, for the debug overlay
         self.colour = colour        # a COLOUR_NAMES entry
         self.colour_score = colour_score
+        # Median H/S/V of the contour's own pixels. LOCAL TO THE DETECTOR -- it
+        # is what makes a wrong colour verdict diagnosable, and it is logged on
+        # the Pi rather than sent, because the wire has 4 bytes of margin.
+        self.colour_hsv = colour_hsv
 
     def world_pose(self, zone):
         x, y = zone.zone_to_world(self.zx, self.zy)
@@ -1139,7 +1263,7 @@ def find_blocks(gray, H_zone_to_px, H_px_to_zone, zone, search_mask, accept_mask
         # Colour from THIS CONTOUR'S OWN PIXELS, not the bounding box: the box of
         # a rotated block is up to 41% mat, which drags the median saturation
         # down and is exactly how a coloured block reads "white".
-        colour, colour_score = "unknown", 0.0
+        colour, colour_score, colour_hsv = "unknown", 0.0, (0.0, 0.0, 0.0)
         if hsv is not None:
             blob = np.zeros(binary.shape[:2], dtype=np.uint8)
             cv2.drawContours(blob, [contour], -1, 255, thickness=-1)
@@ -1149,14 +1273,15 @@ def find_blocks(gray, H_zone_to_px, H_px_to_zone, zone, search_mask, accept_mask
             blob = cv2.erode(blob, np.ones((3, 3), np.uint8), iterations=1)
             if cv2.countNonZero(blob) == 0:      # a blob thinner than the erode
                 cv2.drawContours(blob, [contour], -1, 255, thickness=-1)
-            colour, colour_score = classify_colour(hsv, blob)
+            colour, colour_score, colour_hsv = classify_colour(hsv, blob)
 
         detections.append(Detection(
             zx=float(centre_zone[0]), zy=float(centre_zone[1]),
             zyaw=wrap_angle(math.atan2(major[1], major[0])),
             width=width, length=length, shape=shape, symmetry=symmetry,
             fill_ratio=fill_ratio, area_px=area_px, box_px=box_px,
-            colour=colour, colour_score=colour_score))
+            colour=colour, colour_score=colour_score,
+            colour_hsv=colour_hsv))
 
     detections.sort(key=lambda d: d.width * d.length, reverse=True)
     return detections

@@ -139,7 +139,11 @@ COLOUR_SWATCHES = {
     "green":  (60, 170, 70),
     "blue":   (200, 90, 40),
     "purple": (150, 50, 120),
-    "pink":   (170, 105, 235),
+    # A real TINT: high value, moderate saturation. The obvious "pink" BGR
+    # (170, 105, 235) comes out HSV 165/141/235 -- saturation 141, which is over
+    # COLOUR_PINK_MAX_SAT and correctly reads RED. Pink is not a hue, it is
+    # desaturated red, and the swatch has to actually be one.
+    "pink":   (205, 165, 245),
 }
 
 
@@ -734,39 +738,129 @@ def test_colour_names_are_stable(failures):
     for name in zv.COLOUR_HUES:
         failures.check(name in zv.COLOUR_NAMES,
                        "prototype %r is in COLOUR_NAMES" % name)
+    # Two prototypes closer together than the tolerance cannot be separated by
+    # hue at all -- one simply captures the other's band. That is the red/pink
+    # bug of 2026-08-12, and this is what stops it being reintroduced by adding a
+    # prototype next to an existing one.
+    # Not "further apart than the tolerance" -- the tolerance is a GIVE-UP radius
+    # and nearest-neighbour resolves closer pairs perfectly well (red 0 and
+    # orange 14). What must hold is that no two prototypes are close enough to be
+    # confused by a couple of units of noise.
+    # Measured to BAND EDGES, not prototype points: red is a band (see
+    # COLOUR_HUE_BANDS) and comparing its notional 0 against orange's 14 would
+    # report 14 units of separation where the real gap is 8.
+    MIN_PROTOTYPE_GAP = 6
+
+    def reach(name, hue):
+        """The hues at which `name` is claimed, as (lo, hi) possibly wrapping."""
+        band = zv.COLOUR_HUE_BANDS.get(name)
+        return band if band is not None else (hue, hue)
+
+    def edge_gap(n1, h1, n2, h2):
+        """Smallest hue distance between two names' claimed hues."""
+        a, b = reach(n1, h1), reach(n2, h2)
+        return min(zv._hue_distance(x, y) for x in a for y in b)
+
+    items = sorted((hue, name) for name, (hue, _s, _v) in zv.COLOUR_HUES.items())
+    pairs = list(zip(items, items[1:])) + [(items[-1], items[0])]   # incl. wrap
+    for (h1, n1), (h2, n2) in pairs:
+        gap = edge_gap(n1, h1, n2, h2)
+        failures.check(gap >= MIN_PROTOTYPE_GAP,
+                       "%s and %s are at least %d hue units apart at their "
+                       "nearest edges" % (n1, n2, MIN_PROTOTYPE_GAP),
+                       "%.1f apart" % gap)
+
+    # THE HARDWARE CASE, pinned by number. A red prism measured a median hue in
+    # 163-173; every hue in that span must be named red AND clear the identity
+    # gate, or it is detected and then discarded.
+    for hue in range(160, 180):
+        name, score, _med = zv.classify_colour(
+            np.full((4, 4, 3), (hue, 220, 200), np.uint8),
+            np.full((4, 4), 255, np.uint8))
+        failures.check(name == "red" and score >= 0.45,
+                       "saturated hue %d is red AND clears the 0.45 identity "
+                       "gate" % hue, "%s at %.2f" % (name, score))
+    # NO GAPS. Every hue on the circle must reach some prototype at high
+    # saturation, or a block comes back "unknown" for no reason the operator can
+    # see. This is what caught the 159-161 hole that removing pink opened up.
+    for hue in range(0, 180):
+        name, _score, _med = zv.classify_colour(
+            np.full((4, 4, 3), (hue, 220, 200), np.uint8),
+            np.full((4, 4), 255, np.uint8))
+        if not failures.check(name != "unknown",
+                              "hue %d at high saturation reaches a prototype"
+                              % hue):
+            break                       # one report is enough; they cluster
 
 
 def test_colour_classifier(failures):
     """classify_colour on flat patches, plus the two traps it exists to avoid."""
     print("\n--- colour classifier ---")
     mask = np.full((20, 20), 255, np.uint8)
+
+    def classify_hsv(h, s_, v):
+        """classify_colour on a flat patch of one HSV value."""
+        patch = np.full((20, 20, 3), (h, s_, v), np.uint8)
+        return zv.classify_colour(patch, mask)
+
     for name, bgr in sorted(COLOUR_SWATCHES.items()):
         patch = np.full((20, 20, 3), bgr, np.uint8)
         hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
-        got, score = zv.classify_colour(hsv, mask)
+        got, score, med = zv.classify_colour(hsv, mask)
         failures.check(got == name, "a %s patch classifies as %s" % (name, name),
-                       "got %r (score %.2f)" % (got, score))
+                       "got %r (score %.2f, HSV %.0f/%.0f/%.0f)"
+                       % (got, score, med[0], med[1], med[2]))
         failures.check(score > 0.5, "%s scores above 0.5" % name,
                        "%.2f" % score)
 
     # RED WRAPS. A red slightly on the 179 side must not become pink or unknown;
     # this is the case a linear hue distance gets wrong, and the reason
-    # _hue_distance is circular.
+    # _hue_distance is circular. Saturated, so the pink split does not apply.
     for hue in (0, 2, 178, 179):
-        patch = np.full((20, 20, 3), (0, 0, 0), np.uint8)
-        patch[:, :] = cv2.cvtColor(
-            np.full((1, 1, 3), (hue, 200, 200), np.uint8),
-            cv2.COLOR_HSV2BGR)[0, 0]
-        hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
-        got, _ = zv.classify_colour(hsv, mask)
+        got, _, _ = classify_hsv(hue, 220, 200)
         failures.check(got == "red", "hue %d is red across the 0/179 wrap" % hue,
                        "got %r" % got)
+
+    # THE HARDWARE BUG, 2026-08-12: a red prism was named "pink" because pink's
+    # 168 prototype sat inside red's 18-unit tolerance and captured hues 160-174.
+    # Pink is now split off red by SATURATION, so a SATURATED block anywhere in
+    # that band must be red.
+    for hue in (160, 165, 168, 172, 175):
+        got, _, _ = classify_hsv(hue, 220, 200)
+        failures.check(got == "red",
+                       "hue %d at high saturation is RED, not pink" % hue,
+                       "got %r" % got)
+    # ... and a genuine TINT -- same hue, less saturation, still bright -- is pink.
+    for hue in (168, 175, 2):
+        got, _, _ = classify_hsv(hue, 90, 220)
+        failures.check(got == "pink",
+                       "hue %d at low saturation and high value is PINK" % hue,
+                       "got %r" % got)
+    # A DARK desaturated red must NOT become pink: a tint is light by definition,
+    # and this is the half of the rule that keeps a shadowed red block red.
+    got, _, _ = classify_hsv(175, 90, 100)
+    failures.check(got == "red", "a DARK low-saturation red stays red",
+                   "got %r" % got)
+    # The split is biased to red on purpose, so assert which side the boundary
+    # falls on rather than trusting the constant to stay put.
+    at = zv.COLOUR_PINK_MAX_SAT
+    failures.check(classify_hsv(170, at + 10, 220)[0] == "red",
+                   "just above COLOUR_PINK_MAX_SAT is red")
+    failures.check(classify_hsv(170, at - 10, 220)[0] == "pink",
+                   "just below COLOUR_PINK_MAX_SAT is pink")
+    # And pink must still be a name the wire can carry, now that it is not a
+    # prototype -- this is exactly the gap that would make it undeliverable.
+    failures.check("pink" in zv.COLOUR_NAMES,
+                   "pink is still in COLOUR_NAMES even though it left "
+                   "COLOUR_HUES")
+    failures.check("pink" not in zv.COLOUR_HUES,
+                   "and it is NOT a hue prototype any more")
 
     # ACHROMATIC FIRST. A near-grey pixel has a numerically defined and
     # physically meaningless hue; deciding on it is how a white block becomes
     # "pink".
     white = np.full((20, 20, 3), (235, 235, 235), np.uint8)
-    got, _ = zv.classify_colour(cv2.cvtColor(white, cv2.COLOR_BGR2HSV), mask)
+    got, _, _ = zv.classify_colour(cv2.cvtColor(white, cv2.COLOR_BGR2HSV), mask)
     failures.check(got == "white", "a white patch is white, not a hue",
                    "got %r" % got)
     failures.check(zv.classify_colour(None, mask)[0] == "unknown",
@@ -775,6 +869,9 @@ def test_colour_classifier(failures):
         cv2.cvtColor(white, cv2.COLOR_BGR2HSV),
         np.zeros((20, 20), np.uint8))[0] == "unknown",
         "an empty mask is 'unknown', not a crash")
+    failures.check(len(zv.classify_colour(None, mask)) == 3,
+                   "classify_colour returns (name, score, hsv) even on the "
+                   "no-image path")
 
 
 def test_colour_segmentation(failures):

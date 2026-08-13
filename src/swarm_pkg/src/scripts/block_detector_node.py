@@ -465,12 +465,15 @@ class BlockDetector(Node):
         for index, block in enumerate(result.blocks):
             self.get_logger().info(
                 "  [%d] zone (%+.1f, %+.1f) mm yaw %+.1f deg  %.1fx%.1f mm "
-                "%s sym=%d  colour %s (%.2f)"
+                "%s sym=%d  colour %s (%.2f) HSV(%.0f, %.0f, %.0f)"
                 % (index, block.zx * 1000, block.zy * 1000,
                    block.zyaw * 57.2958, block.width * 1000,
                    block.length * 1000, block.shape, block.symmetry,
                    getattr(block, "colour", "unknown"),
-                   getattr(block, "colour_score", 0.0)))
+                   getattr(block, "colour_score", 0.0),
+                   getattr(block, "colour_hsv", (0.0, 0.0, 0.0))[0],
+                   getattr(block, "colour_hsv", (0.0, 0.0, 0.0))[1],
+                   getattr(block, "colour_hsv", (0.0, 0.0, 0.0))[2]))
         self._log_block_tags(block_tags, result)
         return response
 

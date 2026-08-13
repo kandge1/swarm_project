@@ -268,6 +268,25 @@ def resolve_block_class(text, classes=bc.BLOCK_CLASSES):
         "silently and confidently." % (text, len(hits), ", ".join(hits)))
 
 
+# THE DEMO PAIR, 2026-08-12: the green cuboid and the blue hexagonal prism, green
+# on the bottom.
+#
+# Chosen for a reason worth writing down. Both are 1.2 in (30.5 mm) tall in their
+# least-tall rest pose -- the green 2.4 x 1.2 x 1.2 in brick lying down, the blue
+# 1.2 x 1.4 x 1.2 in prism standing -- so the SINGLE --block-thickness of 0.030
+# is correct for BOTH levels to within 0.5 mm. That is the only reason a stack of
+# two DIFFERENT blocks works at all before the rest-pose table exists: the stack
+# arithmetic has one height for every level (see stack_surface_z).
+#
+# Green underneath because its 61 x 30.5 mm footprint is the larger base. Both
+# short sides are under the jaw aperture: 30.5 mm for the brick, 30.5 or 35.6 for
+# the prism depending on which way it lands.
+DEFAULT_STACK_COLOUR = ("green", "blue")
+
+# The tag path's own default, unchanged -- these are BLOCK_CLASSES, not colours.
+DEFAULT_STACK_TAG = ("orange", "green")
+
+
 def resolve_colour(text, names=None):
     """'the red one' -> 'red'. Raises ValueError, exactly like
     resolve_block_class, so main's one try/except covers both paths.
@@ -1379,11 +1398,18 @@ def build_parser():
         description="Pick two named blocks and stack them in the place zone.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    parser.add_argument("--stack", nargs="+", default=["orange", "green"],
-                        metavar="NAME",
+    # THE DEFAULT DEPENDS ON THE MODE, resolved in main() rather than here.
+    #
+    # There is no one list that works for both. DEFAULT_STACK_COLOUR is the demo
+    # pair -- and "blue" is not a BLOCK_CLASS, so using it as a shared default
+    # would make a plain `stack_blocks.py` fail to resolve a name before the arm
+    # so much as homed. Caught by trying it.
+    parser.add_argument("--stack", nargs="+", default=None, metavar="NAME",
                         help="blocks to stack, BOTTOM FIRST. Plain English is "
-                             "fine: 'orange block' 'the green one'. Default: "
-                             "%(default)s")
+                             "fine: 'the green one' 'blue'. Default: %s with "
+                             "--by-colour, %s without."
+                             % (" ".join(DEFAULT_STACK_COLOUR),
+                                " ".join(DEFAULT_STACK_TAG)))
     parser.add_argument("--max-level", type=int, default=DEFAULT_MAX_LEVEL,
                         help="highest stack level to place at (default "
                              "%(default)s). Level 2 needs a release flange z of "
@@ -1441,6 +1467,15 @@ def build_parser():
                         default=None,
                         help="stack at this world XY and do not survey the "
                              "place zone at all")
+    parser.add_argument("--pickup-at", type=float, nargs=2, metavar=("X", "Y"),
+                        default=None,
+                        help="PICK from this world XY and do not survey the "
+                             "pickup zone. LAST RESORT -- unlike --place-at "
+                             "this feeds a GRASP, so every millimetre of your "
+                             "tape measure lands on the jaws. It exists because "
+                             "a single missing zone tag caps the survey's trust "
+                             "radius at 72 mm and can reject every sighting "
+                             "(seen 2026-08-12). Needs --zone-yaw too")
     parser.add_argument("--survey-only", action="store_true",
                         help="find both zones and the blocks, print the whole "
                              "plan, and stop. Nothing is grasped")
@@ -2035,6 +2070,11 @@ def main():
 
     # Resolve every name BEFORE the arm moves. A typo in the last block of the
     # stack should not be discovered after the first one is already placed.
+    if args.stack is None:
+        args.stack = list(DEFAULT_STACK_COLOUR if args.by_colour
+                          else DEFAULT_STACK_TAG)
+        print("[stack] no --stack given; using the %s default: %s"
+              % ("colour" if args.by_colour else "tag", " ".join(args.stack)))
     resolve = resolve_colour if args.by_colour else resolve_block_class
     try:
         wanted = [resolve(name) for name in args.stack]
@@ -2109,8 +2149,22 @@ def main():
             pitch=args.pitch, wrist=args.wrist, settle=args.settle,
             zone_yaw=yaw_fixed,
             coarse_patience=max(0, args.coarse_patience))
-        zones = ("pickup",) if args.place_at is not None else ("pickup", "place")
-        if args.single_pass:
+        # Only sweep for the zones still being surveyed. Sweeping for one that
+        # has been given on the command line costs a full arc and can only
+        # produce sightings that are then discarded.
+        zones = tuple(z for z, given in (("pickup", args.pickup_at),
+                                         ("place", args.place_at))
+                      if given is None)
+        if not zones:
+            # SKIPPED ENTIRELY rather than passed an empty tuple: nothing
+            # downstream promises to handle a sweep over no zones, and a sweep
+            # that can only produce discarded sightings is a minute of arm
+            # travel for nothing.
+            print("[stack] both zones given on the command line -- skipping the "
+                  "explore sweep entirely. NOTHING is measured here except the "
+                  "blocks themselves.")
+            seen, fit_step = {}, args.fine_step
+        elif args.single_pass:
             seen = epp.sweep_both(io_client, detector, sweep_args, args.start,
                                   args.end, args.step, zones,
                                   max(0, args.coarse_patience))
@@ -2119,6 +2173,7 @@ def main():
             seen = epp.coarse_then_fine_both(io_client, detector, sweep_args,
                                              zones)
             fit_step = args.fine_step
+        seen.setdefault("pickup", [])
         seen.setdefault("place", [])
         # Dumped BEFORE the gate, so a survey that rejects everything still
         # leaves its evidence on disk. That is the case it exists for.
@@ -2126,8 +2181,23 @@ def main():
             explore.dump_sightings(args.dump_sightings, seen)
 
         print()
-        pickup = epp.survey_zone("pickup", seen["pickup"], detector.zone_size,
-                                 fit_step, yaw_fixed)
+        if args.pickup_at is not None:
+            pickup = None
+            print("[survey] pickup zone: not surveyed -- picking from the "
+                  "(%.4f, %.4f) you gave." % tuple(args.pickup_at))
+            print("[survey] THE BLOCK POSITION IS STILL MEASURED FROM THE TAGS, "
+                  "in the ZONE frame, so your number only sets where that frame "
+                  "sits in the world -- but it sets it for the GRASP. Tape it, "
+                  "do not estimate it, and keep --confirm on.")
+            if yaw_fixed is None:
+                print("[survey] REFUSING: --pickup-at needs --zone-yaw as well. "
+                      "The zone frame has an origin and a rotation, and a "
+                      "surveyed yaw is exactly what was skipped -- guessing it "
+                      "rotates every block position about your origin.")
+                return 2
+        else:
+            pickup = epp.survey_zone("pickup", seen["pickup"],
+                                     detector.zone_size, fit_step, yaw_fixed)
         if args.place_at is not None:
             place = None
             print("[survey] place zone: not surveyed -- stacking at the "
@@ -2135,11 +2205,19 @@ def main():
         else:
             place = epp.survey_zone("place", seen["place"],
                                     detector.zone_size, fit_step, yaw_fixed)
+        if args.pickup_at is not None:
+            pickup_origin, pickup_yaw = tuple(args.pickup_at), yaw_fixed
+        else:
+            pickup_origin, pickup_yaw = tuple(pickup.origin), pickup.yaw
         epp.record_survey("pickup", pickup, args.truth_pickup, args.note)
         epp.record_survey("place", place, args.truth_place, args.note)
 
-        if pickup is None:
+        if pickup is None and args.pickup_at is None:
             print("\n[stack] no pickup zone, so there is nothing to pick.")
+            print("[stack] If the survey rejected every sighting for being too "
+                  "far off centre, that is the 3-tag trust radius (72 mm "
+                  "instead of 144) -- clean or reprint the missing zone tag. "
+                  "--pickup-at with --zone-yaw is the override.")
             return 1
         if place is None and args.place_at is None:
             print("\n[stack] pickup found but no place zone. Refusing to pick "
@@ -2151,8 +2229,8 @@ def main():
                         else tuple(place.origin))
         print("\n[stack] pick from (%.4f, %.4f) yaw %+.1f  ->  stack at "
               "(%.4f, %.4f) yaw %+.1f"
-              % (pickup.origin[0], pickup.origin[1],
-                 math.degrees(pickup.yaw), place_origin[0], place_origin[1],
+              % (pickup_origin[0], pickup_origin[1],
+                 math.degrees(pickup_yaw), place_origin[0], place_origin[1],
                  radial_yaw_deg(*place_origin)))
         print("[stack] the stack's ABSOLUTE position is only as good as that "
               "place survey (a few mm, and it needs +-25 mm). Its own "
@@ -2168,8 +2246,8 @@ def main():
 
         # Rebuilt with the SOLVED pickup pose -- zone_to_world has to carry the
         # survey's answer, not the nominal pose the sweep used.
-        detector = tpp.Detector(io_client, pickup.origin[0], pickup.origin[1],
-                                0.0, pickup.yaw, args.zone_size)
+        detector = tpp.Detector(io_client, pickup_origin[0], pickup_origin[1],
+                                0.0, pickup_yaw, args.zone_size)
 
         if not pp.go_home(io_client):
             return 1
@@ -2181,14 +2259,25 @@ def main():
         candidates = survey_pickup_blocks(io_client, detector, args)
         if candidates is None:
             return 1
-        if not have_every_block(candidates, wanted):
-            return 1
-
+        # SURVEY-ONLY IS A DIAGNOSTIC, so a missing name is a finding and not a
+        # failure. Returning 1 here before printing the tally is what made the
+        # first colour run on hardware say only "REFUSING: orange (need 1,
+        # found 0)" when the interesting news was that it had found a green
+        # cuboid and named it correctly. A survey must always report what it saw.
+        complete = have_every_block(candidates, wanted)
         if args.survey_only:
-            print("\n[stack] --survey-only: both zones surveyed, every block "
-                  "located and named, geometry checked at every level. Nothing "
-                  "was grasped.")
+            print("\n[stack] --survey-only: both zones surveyed, %d block(s) "
+                  "located and named. Nothing was grasped."
+                  % len(candidates))
+            if not complete:
+                print("[stack] NOTE: the --stack list (%s) is not fully "
+                      "present. That does not matter for a survey -- above is "
+                      "what is actually on the mat. Pass --stack with those "
+                      "names for a real run."
+                      % " -> ".join(wanted))
             return 0
+        if not complete:
+            return 1
 
         # --- 3. pick and place, bottom first ------------------------------
         stack_xy = place_origin
@@ -2243,7 +2332,7 @@ def main():
             # 0.1855. Same unconstrained sweep, same reason to be high.
             if level > 0:
                 traverse(io_client, memory, args, stack_xy,
-                         (pickup.origin[0], pickup.origin[1]),
+                         (pickup_origin[0], pickup_origin[1]),
                          obstacle_top_z(candidates, level, args.block_thickness),
                          "pickup zone", holding=False)
 

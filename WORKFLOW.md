@@ -905,6 +905,49 @@ a different fix: `unknown` (no hue prototype within range, or an achromatic blob
 part shaded side wall), **low agreement** (the views disagreed — lighting, or one
 contour spanning two differently-coloured blocks, which must not be grasped).
 
+#### If the pickup survey rejects every sighting
+
+```
+[survey] pickup J1 -12.5 REJECTED: image centre is 93 mm from the zone centre;
+         3 tags are trusted only to 72 mm out
+[stack] no pickup zone, so there is nothing to pick.
+```
+
+**That is a missing zone tag, not a colour problem.** One undetected tag drops the
+trust radius from 144 mm to 72 mm (`MAX_CENTRE_OFFSET_HALF_DIAGONALS`) and
+everything falls outside it. Clean or reprint the tag. The override, for when you
+cannot:
+
+```bash
+python3 stack_blocks.py --by-colour --confirm     --pickup-at 0.209 0.003 --zone-yaw -93
+```
+
+`--zone-yaw` is **required** with `--pickup-at` and it refuses without it: the zone
+frame has an origin *and* a rotation, and guessing the rotation swings every block
+position about your origin. Unlike `--place-at` this feeds a **grasp**, so tape the
+number, do not estimate it, and keep `--confirm` on.
+
+#### Reading the colour log
+
+`block_detector_node.py` logs the median H/S/V of each contour's own pixels, on
+the Pi:
+
+```
+[0] zone (+20.1, -22.4) mm ... colour red (0.86) HSV(165, 220, 200)
+```
+
+That is the line to look at when a colour comes out wrong — every threshold in
+`COLOUR_HUES` / `COLOUR_PINK_MAX_SAT` / `COLOUR_SAT_MIN` is reasoned rather than
+measured, and this turns tuning them into one reading instead of a sequence of
+guesses. `score` is a hue *distance* turned into a confidence, not a pixel
+fraction: 1.0 at the prototype, 0 at `COLOUR_MAX_HUE_DIST`, and
+`COLOUR_MIN_SCORE = 0.45` is the identity gate.
+
+**Red is a hue BAND (168 → 6 through the wrap), and pink is red below saturation
+140.** Pink is not a hue prototype: it is physically a tint, and having it as a
+prototype meant it captured every hue from 160 to 174 and named a red prism "pink"
+on the first hardware run.
+
 #### Read this before running a non-cube block
 
 - **The 4-fold symmetry gate is relaxed to a warning** in colour mode. This set is

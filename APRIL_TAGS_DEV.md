@@ -2849,3 +2849,166 @@ paper.
 - **Rest poses and per-block grasp heights**, deliberately cut tonight. The
   arithmetic is in the STEP 2 DESIGN section above and unchanged: `g + c <=
   44.5 mm`, grip low.
+
+
+# 2026-08-12, RUNS 1 AND 2 OF THE COLOUR PATH — WHAT THE LOGS SAID
+
+Two `--by-colour --survey-only` runs. **They failed for completely unrelated
+reasons and only one of them was about colour.** Worth separating before anything
+else, because the second one reads like a colour failure and is not.
+
+## Run 1: the segmentation worked. Read these two numbers first
+
+```
+[detect]   [0] zone ( -1.4, +14.9) mm  yaw -81.0 deg  33.9 x 67.4 mm  rect sym=2
+[multiview] [0] zone ( -0.2, +10.8) mm  yaw +10.9 deg  29.7 x 59.1 mm  rect  views=1
+```
+
+The green cuboid is **30.5 x 61.0 mm** by construction. The fused reading is
+**29.7 x 59.1** — within **0.8 mm and 1.9 mm** — classified `rect sym=2`
+correctly, and named **green, score 0.89**, on the first hardware run of a
+segmentation method that did not exist that morning.
+
+That is the saturation segmentation doing exactly what it was supposed to: whole
+regions, no Canny outline to dilate and close, so none of the size over-read the
+old path has. Worth holding onto, because the rest of this section is defects.
+
+**And it confirms `MAX_BLOCK_LENGTH_M` mattered.** The first still measured that
+block at **67.4 mm long**. Under the old 0.060 cap it would have been thrown
+away, on that still, silently.
+
+## Run 1's real defect: a red prism was named "pink"
+
+```
+[identify] contour 1 at zone (+20.1, -22.4) mm is pink (score 0.72, ...)
+```
+
+The score is diagnostic, which is the one good thing here. Distance =
+`(1 - score) * COLOUR_MAX_HUE_DIST` puts the median hue **5.0 units from pink's
+168 prototype**, i.e. ~163 or ~173. Then:
+
+| hue | dist to red (0) | dist to pink (168) | nearest |
+|---|---|---|---|
+| 160 | 20.0 | 8.0 | pink |
+| 170 | 10.0 | 2.0 | pink |
+| 172 | 8.0 | 4.0 | pink |
+| 175 | 5.0 | 7.0 | red |
+
+**Pink's prototype sat 12 hue units from red's, inside red's own 18-unit
+tolerance, so it captured every hue from 160 to 174** — which is exactly where
+crimson paint lives. Red and pink are not separable by hue at this resolution and
+never were. My table, inherited straight from the contributed one, and the flaw is
+mine for keeping both as hue prototypes.
+
+**Pink is physically a TINT of red** — red mixed with white — so it is now split
+off red by **saturation**, in the same spirit as white and wood being decided
+before hue is consulted at all. `COLOUR_PINK_MAX_SAT = 140`, `COLOUR_PINK_MIN_VAL
+= 150`, biased towards red: the pink disc is ungraspable lying flat anyway, while
+a red block misnamed pink is a block the operator asked for and did not get.
+
+### Fixing that broke three more things, each a real hole
+
+1. **A 4-unit hue gap at 159–161.** Removing pink left purple (140) as the last
+   prototype before red wraps at 180 — a 40-unit span with an 18-unit reach either
+   side. `COLOUR_MAX_HUE_DIST` 18 → **21**, which closes it exactly at 160.
+2. **A 9-unit gap at 82–90.** Green (60) to blue (112) is 52 apart. No block in
+   the set is cyan, but blue paint under warm light drifts precisely that way.
+   `cyan` **appended** to `COLOUR_NAMES` (never inserted — an index is a wire
+   value) with a prototype at 86.
+3. **Pink was unreachable below saturation 90**, because red's own `s_min` was 90
+   and the split happens after the prototype loop. Red's floor is now **60**,
+   which is exactly `COLOUR_WHITE_MAX_SAT`, so red/pink picks up precisely where
+   white leaves off with no band between them matching nothing.
+
+The selftest now walks **all 180 hues** at high saturation and asserts none comes
+back `unknown`. That is what found both gaps, and it is cheaper than finding them
+on the bench.
+
+### And then: red was named correctly and thrown away anyway
+
+With pink gone, a saturated hue 163 scored **0.19** against
+`COLOUR_MIN_SCORE = 0.45` — named red, then discarded for want of confidence,
+which is the worst of the three outcomes. **Because red is a BAND, not a point**:
+it straddles the 0/179 wrap and real reds spread from ~168 through 0 to ~6.
+
+`COLOUR_HUE_BANDS = {"red": (168, 6)}` — distance 0 anywhere inside, growing from
+the nearest edge outside. The band stops at 6 rather than 10 so it does not crowd
+orange at 14; a hue of 12 should be an honest toss-up, not a confident red. Every
+saturated hue from 160 to 179 now names red with score **0.62–1.00**, and the
+selftest pins all twenty of them.
+
+Pink is rescored against `COLOUR_PINK_HUE_REF = 172` for the same reason — its
+selecting distance was measured to red.
+
+| blob | verdict | score |
+|---|---|---|
+| H160 S220 V200 | red | 0.62 |
+| H165 S220 V200 | red | 0.86 |
+| H170 S220 V200 | red | 1.00 |
+| H165 S083 V245 | **pink** | 0.86 |
+| H175 S090 V100 | red | 1.00 (dark, so not a tint) |
+
+### The instrument that made all of this possible, and it should have been there first
+
+The only way to diagnose run 1 was to invert the score arithmetic to recover a
+hue. `classify_colour` now returns the **median H/S/V** and
+`block_detector_node.py` logs it per contour:
+
+```
+[0] ... colour red (0.86) HSV(165, 220, 200)
+```
+
+On the Pi, where the pixels are — deliberately **not** on the wire, which has 4
+bytes of margin left. Every threshold above is still reasoned rather than
+measured, and this is the line that turns them into one reading instead of a
+sequence of nudges.
+
+## Run 2 was not a colour failure at all
+
+It never reached a block. The **pickup zone survey rejected all 11 sightings**:
+
+```
+[survey] pickup J1 -12.5 REJECTED: image centre is 93 mm from the zone centre;
+         3 tags are trusted only to 72 mm out (1.0 half-diagonals ...)
+[survey] pickup zone: 11 sighting(s), none of them usable.
+[stack] no pickup zone, so there is nothing to pick.
+```
+
+**This is open item #5, verbatim, and it is now blocking rather than untidy.** One
+missing pickup zone tag drops `MAX_CENTRE_OFFSET_HALF_DIAGONALS` from 4:2.0 to
+3:1.0, i.e. the trust radius from 144 mm to **72 mm**, and every sighting landed
+74–93 mm out. The same run also printed
+`place zone: 2 SEPARATE tag squares carry these ids` — the stray mat, also #5.
+
+**The fix is physical: clean or reprint pickup tag 1, and find the stray place
+mat.** The trust gate is not being loosened to work around a dirty sticker; it is
+the gate that stops a guessed origin sending the arm at a physical target.
+
+For tonight there is now an override: **`--pickup-at X Y --zone-yaw DEG`**, which
+skips the pickup survey. It requires `--zone-yaw` and refuses without it — the
+zone frame has an origin *and* a rotation, and guessing the rotation swings every
+block position about the given origin. Unlike `--place-at` this feeds a **grasp**,
+so the tape measure lands on the jaws: tape it, do not estimate it, keep
+`--confirm` on.
+
+## Two usability defects, both mine
+
+- **`--survey-only` refused instead of reporting.** Run 1's entire output about the
+  pickup zone was `REFUSING: orange (need 1, found 0)` — when the news was that it
+  had found a green cuboid, measured it to 2 mm and named it correctly. A survey
+  is a diagnostic; a missing name is a finding, not a failure. It now always
+  prints the tally and says the `--stack` list is incomplete as a note.
+- **The default `--stack` was still `orange green`.** Now mode-dependent:
+  `green blue` with `--by-colour` (the demo pair), `orange green` without.
+  Not a shared default, because `blue` is not a `BLOCK_CLASS` and a shared list
+  would fail to resolve a name before the arm homed. Caught by trying it.
+
+## Why green + blue is a good demo pair, beyond the colours
+
+Both are **1.2 in (30.5 mm) tall in their least-tall rest pose** — the green
+2.4 x 1.2 x 1.2 in brick lying down, the blue 1.2 x 1.4 x 1.2 in prism standing.
+The stack arithmetic has **one** height for every level (`stack_surface_z`), so a
+single `--block-thickness` of 0.030 is correct for both to within 0.5 mm. That is
+the only reason a stack of two *different* blocks works at all before the
+rest-pose table exists. Green underneath because its 61 x 30.5 mm footprint is the
+larger base, and both short sides (30.5, and 30.5 or 35.6) clear the aperture.
