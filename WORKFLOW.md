@@ -338,7 +338,28 @@ anything over ~1400 bytes.
 ```bash
 source ~/swarm_project/install/setup.bash
 python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py
+
+# ... or, for the AprilTag-free colour path (new 2026-08-12):
+python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py \
+    --ros-args -p method:=colour
 ```
+
+`method` is `canny` (default) | `otsu` | `colour`. **A typo is refused at
+startup**, not ignored: `zone_vision`'s dispatch falls through to canny, so
+`method:=color` would run a whole session reporting no colours with nothing
+saying why.
+
+`method:=colour` segments by **saturation** — the mat is white paper, the blocks
+are painted — which yields whole regions instead of a Canny outline, so it has
+none of the dilate-driven size oversize. Colour travels on the
+`block_detections` topic (`detection_wire.py` **schema 3**), *not* in the service
+response, so **copy `detection_wire.py` and `zone_vision.py` to the Pi and
+restart the node — there is no interface rebuild.** Both machines must be on
+schema 3 or `decode()` refuses outright rather than misreading.
+
+**A white block on a white mat is not found by this method** and is reported as an
+absence. There is no saturation step to threshold. Natural wood *is* found, by
+value.
 
 **Do NOT also launch `camera.launch.py`.** Changed 2026-07-31:
 `block_detector_node.py` now reads `/dev/video0` directly (`cv2.VideoCapture`)
@@ -819,6 +840,92 @@ on every early run. It writes a row with `kind: "place"` and
 
 `DESCENT_BIAS_Z` and the far-corner compliance term were both measured at
 level 0 and neither has been checked 30 mm higher.
+
+**Confirmed on hardware 2026-08-12**: both blocks placed, level 0 dead centre
+and level 1 square on top, **with zero nudges** — rows 217/218 of
+`calibration_history.jsonl`. Fully open loop.
+
+### Transit height — the one thing that went wrong, and it is fixed
+
+Carrying block 1 across, the **carried block struck block 2 and moved it**. The
+retreat after a grasp went to `grasp_z + APPROACH_HEIGHT = 0.1855`, which leaves
+the carried block's bottom face 10 mm above a block resting on the mat, and the
+94° sweep to the place zone passed directly over it. The sweep is an
+unconstrained OMPL plan, so nothing holds z between the endpoints.
+
+`APPROACH_HEIGHT` is sized for the **descent**, not for flying a payload over
+another block. Every cross-zone move now lifts straight up first
+(`traverse()` → `transit_flange_z()`), default **25 mm** under the load:
+
+```bash
+python3 stack_blocks.py --transit-clearance-mm 29   # the most MAX_HOVER_Z allows
+```
+
+The ceiling is tight and it is the same one that blocks level 2: **29.5 mm over a
+one-block pile, nothing at all over a two-block one**. The whole vertical budget,
+with `g` = grasp height above the block's own base and `c` = transit clearance:
+
+```
+g + c <= 44.5 mm          (0.205 - GRASP_OFFSET_Z - one block on the mat)
+```
+
+Today `g = 15`, `c = 25`. **Grip low** — every millimetre of grasp height is a
+millimetre of clearance given up. See `APRIL_TAGS_DEV.md`, "STEP 2 DESIGN".
+
+### Picking by COLOUR instead of by AprilTag (`--by-colour`, new 2026-08-12)
+
+**The ZONE tags are still required.** Colour replaces the per-*block* top tags,
+not the four tags on each mat — the whole geometry chain (homography, zone frame,
+parallax, the surveyed origin) still comes from those, and nothing about it
+changes.
+
+Two things have to line up:
+
+1. **On the Pi**: copy `zone_vision.py`, `detection_wire.py` and
+   `block_detector_node.py` across, then launch with `method:=colour`
+   (see Terminal 4 above). **No interface rebuild.** Both machines must be on
+   `detection_wire` schema 3.
+2. **On mars**: pass `--by-colour`, and give `--stack` colour names.
+
+```bash
+python3 stack_blocks.py --by-colour --survey-only     # what does it see and name?
+python3 stack_blocks.py --by-colour --dry-run --stack red
+python3 stack_blocks.py --by-colour --stack red                 # pick + place
+python3 stack_blocks.py --by-colour --stack red "the green one" # ... and stack
+```
+
+A colour names a *set*, not one block, so `--stack red red` is legal — the two
+red blocks are two different contours, and the second pick sees the first one
+gone. The tag path keeps its "same block twice" refusal, where the name really
+does mean one physical block.
+
+**Three reasons a contour is left unidentified**, each printed, because each wants
+a different fix: `unknown` (no hue prototype within range, or an achromatic blob),
+**low score** (a hue between two prototypes — usually a blob that is part mat or
+part shaded side wall), **low agreement** (the views disagreed — lighting, or one
+contour spanning two differently-coloured blocks, which must not be grasped).
+
+#### Read this before running a non-cube block
+
+- **The 4-fold symmetry gate is relaxed to a warning** in colour mode. This set is
+  mostly 2-fold and there are no side tags yet, so "near side faces the robot" is
+  not well defined — the block goes down on whichever of its two face pairs the
+  yaw fold lands on. That was the agreed trade for the demo.
+- **The wrist-yaw convention is UNVERIFIED for elongated blocks.**
+  `GRASP_YAW_FROM_MAJOR_DEG = 0.0` reproduces today's behaviour exactly, but
+  whether `block_yaw_deg` names the closing axis or the block's long axis has
+  never been distinguishable — a cube folds the 90° difference away. `[grip]` prints
+  the block's long-axis world angle against the commanded wrist yaw and says when
+  the two are distinguishable. **Watch a `--dry-run --confirm` park with an
+  elongated block and look at the fingers.** If they line up on the long side, set
+  that constant to 90. Do not run an elongated block unattended first.
+- **The jaws refuse anything whose short side is over `JAW_APERTURE_OPEN_M`
+  (40 mm, an ESTIMATE).** On this set that means every grasp is across a 1.4 in
+  (35.6 mm) face or smaller — 1.6 in is 40.6 mm and already over, and the pink
+  disc is ungraspable lying flat (55.9 mm every way through its centre).
+  `--ignore-grip-span` exists for the case where the *aperture figure* is what is
+  wrong, not the block. Caliper the open jaws and set
+  `JAW_GEOMETRY_MEASURED = True`.
 
 ### Level 2 is refused, and not for the reason `APRIL_TAGS_DEV.md` gives
 

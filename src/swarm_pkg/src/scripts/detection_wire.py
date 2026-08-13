@@ -54,11 +54,13 @@ LAYOUT
     [5] camera_zx             [11] fields per block tag
     [12 .. 12+n_tags-1]       zone tag ids
     then n_blocks x FIELDS_PER_BLOCK:
-        zx, zy, zyaw, x, y, yaw, width, length, shape_code, symmetry
+        zx, zy, zyaw, x, y, yaw, width, length, shape_code, symmetry,
+        colour_code, colour_score
     then n_block_tags x FIELDS_PER_BLOCK_TAG:
         tag_id, zx, zy, px, px_per_module, has_zone_xy
 
-`shape` travels as a CODE, not a string -- see SHAPE_CODES. That is the whole
+`shape` travels as a CODE, not a string -- see SHAPE_CODES. `colour` travels the
+same way, as an index into zone_vision.COLOUR_NAMES. That is the whole
 point of the exercise, so do not add a string field here later. A block tag's
 CLASS and FACE are likewise not sent: they are a pure function of the id
 (block_coordinates.describe), so sending them would be sending a string to
@@ -86,9 +88,16 @@ invites arithmetic downstream; a flag does not.
 # a v1 array read as v2 would take tag ids as counts and produce confident
 # nonsense. Both ends of this topic live in one repo; copy the file to the Pi
 # and restart block_detector_node.py, no rebuild.
-SCHEMA_VERSION = 2
+# 3: added colour_code and colour_score per block (2026-08-12), for the
+# AprilTag-free identity path. Same reasoning as schema 2 chose the wire over the
+# .srv in the first place: identity has to travel, and extending DetectBlock.srv
+# means a coordinated interface rebuild on the Pi AND on mars, while this file is
+# a copy-and-restart. A colour is one code and one confidence; a nested message
+# carrying a colour NAME is the shape block_detector_node.py's own comment
+# records rcl_send_response failing on.
+SCHEMA_VERSION = 3
 HEADER_LEN = 12
-FIELDS_PER_BLOCK = 10
+FIELDS_PER_BLOCK = 12
 FIELDS_PER_BLOCK_TAG = 6
 
 # Six faces on each of two blocks is 12, and a frame that somehow shows more
@@ -107,24 +116,46 @@ MAX_BLOCKS = 10
 SHAPE_CODES = {"unknown": 0, "square": 1, "rect": 2, "circle": 3}
 SHAPE_NAMES = {code: name for name, code in SHAPE_CODES.items()}
 
+# Colour codes are NOT defined here. zone_vision.COLOUR_NAMES is the one ordered
+# list and both ends import it, so there is nothing to keep in sync -- and this
+# file stays importable without OpenCV, which is why the lookup is lazy.
+def _colour_name(code):
+    try:
+        import zone_vision as zv
+    except Exception:                                       # noqa: BLE001
+        return "unknown"
+    return zv.colour_name(code)
+
+
+def _colour_code(name):
+    try:
+        import zone_vision as zv
+    except Exception:                                       # noqa: BLE001
+        return 0
+    return zv.colour_index(name)
+
 
 class WireBlock(object):
     """One decoded block. Field-for-field the useful part of BlockDetection."""
 
     __slots__ = ("zx", "zy", "zyaw", "x", "y", "yaw", "width", "length",
-                 "shape", "symmetry")
+                 "shape", "symmetry", "colour", "colour_score")
 
-    def __init__(self, zx, zy, zyaw, x, y, yaw, width, length, shape, symmetry):
+    def __init__(self, zx, zy, zyaw, x, y, yaw, width, length, shape, symmetry,
+                 colour="unknown", colour_score=0.0):
         self.zx, self.zy, self.zyaw = zx, zy, zyaw
         self.x, self.y, self.yaw = x, y, yaw
         self.width, self.length = width, length
         self.shape = shape
         self.symmetry = symmetry
+        self.colour = colour
+        self.colour_score = colour_score
 
     def __repr__(self):
-        return ("<block zone(%+.1f, %+.1f) mm %.1fx%.1f mm %s sym=%d>"
+        return ("<block zone(%+.1f, %+.1f) mm %.1fx%.1f mm %s %s sym=%d>"
                 % (self.zx * 1000, self.zy * 1000, self.width * 1000,
-                   self.length * 1000, self.shape, self.symmetry))
+                   self.length * 1000, self.colour, self.shape,
+                   self.symmetry))
 
 
 class WireBlockTag(object):
@@ -222,6 +253,8 @@ def encode(success, tag_ids, homography_rms, scale_px_per_m, camera_zx,
             float(block.width), float(block.length),
             float(SHAPE_CODES.get(shape, 0)),
             float(getattr(block, "symmetry", 0)),
+            float(_colour_code(getattr(block, "colour", "unknown"))),
+            float(getattr(block, "colour_score", 0.0)),
         ])
     for sighting in kept_tags:
         zone_xy = sighting.zone_xy
@@ -280,7 +313,9 @@ def decode(data):
             zx=f[0], zy=f[1], zyaw=f[2], x=f[3], y=f[4], yaw=f[5],
             width=f[6], length=f[7],
             shape=SHAPE_NAMES.get(int(round(f[8])), "unknown"),
-            symmetry=int(round(f[9]))))
+            symmetry=int(round(f[9])),
+            colour=_colour_name(int(round(f[10]))),
+            colour_score=f[11]))
 
     block_tags = []
     base += n_blocks * fields
@@ -358,9 +393,11 @@ def _selftest():
             self.__dict__.update(kw)
 
     blocks = [B(zx=0.012, zy=-0.005, zyaw=0.3, x=0.012, y=0.2236, yaw=0.3,
-                width=0.030, length=0.031, shape="square", symmetry=4),
+                width=0.030, length=0.031, shape="square", symmetry=4,
+                colour="orange", colour_score=0.86),
               B(zx=-0.020, zy=0.018, zyaw=-1.1, x=-0.02, y=0.2466, yaw=-1.1,
-                width=0.029, length=0.058, shape="rect", symmetry=2)]
+                width=0.029, length=0.058, shape="rect", symmetry=2,
+                colour="green", colour_score=0.72)]
     data, dropped = encode(True, [0, 1, 2, 3], 0.61, 2468.0, 0.0215, 0.0043,
                            blocks)
     got = decode(data)
@@ -374,6 +411,27 @@ def _selftest():
     assert abs(got.blocks[1].length - 0.058) < 1e-12
     print("  round trip           OK  (%d floats, ~%d bytes)"
           % (len(data), encoded_bytes(data)))
+
+    # SCHEMA 3. A colour that survived the round trip as a NAME proves the code
+    # table is shared, not just that a number came back.
+    assert got.blocks[0].colour == "orange", got.blocks[0].colour
+    assert got.blocks[1].colour == "green", got.blocks[1].colour
+    assert abs(got.blocks[0].colour_score - 0.86) < 1e-12
+    # A block whose colour this build has never heard of must decode to
+    # "unknown", not to whatever entry happens to sit at that index.
+    unnamed, _ = encode(True, [], 0.0, 0.0, 0.0, 0.0,
+                        [B(zx=0.0, zy=0.0, zyaw=0.0, x=0.0, y=0.0, yaw=0.0,
+                           width=0.03, length=0.03, shape="square", symmetry=4,
+                           colour="chartreuse", colour_score=0.99)])
+    assert decode(unnamed).blocks[0].colour == "unknown"
+    # And a block with no colour attribute at all -- the canny path -- encodes
+    # as index 0 rather than raising, so the tag flow is untouched by schema 3.
+    plain, _ = encode(True, [], 0.0, 0.0, 0.0, 0.0,
+                      [B(zx=0.0, zy=0.0, zyaw=0.0, x=0.0, y=0.0, yaw=0.0,
+                         width=0.03, length=0.03, shape="square", symmetry=4)])
+    assert decode(plain).blocks[0].colour == "unknown"
+    print("  colour on the wire   OK  (orange/green by name, unknown for both "
+          "an unnamed colour and a canny block)")
 
     empty, _ = encode(True, [], 0.0, 0.0, 0.0, 0.0, [])
     assert decode(empty).blocks == []
@@ -411,8 +469,19 @@ def _selftest():
                       block_tags=tags * 2)
     size = encoded_bytes(worst)
     assert size < 1400, size
-    print("  %d blocks + %d tags   OK  (~%d bytes, inside the ~1400 B limit)"
-          % (MAX_BLOCKS, len(tags) * 2, size))
+    print("  %d blocks + %d tags   OK  (~%d bytes, inside the ~1400 B limit, "
+          "%d B spare)" % (MAX_BLOCKS, len(tags) * 2, size, 1400 - size))
+    # SAY IT OUT LOUD. Schema 3's two extra fields per block cost 160 B at the
+    # cap, and the realistic worst case is now within a few bytes of the
+    # self-imposed 1400. The HARD limit is the 1500 B MTU (see the module
+    # docstring and cyclonedds fragmentation), so there is still real headroom --
+    # but THE NEXT FIELD ADDED HERE NEEDS A CAP REDUCTION FIRST, not another
+    # round of hoping. This assertion is what will fail when that happens.
+    if 1400 - size < 40:
+        print("  NOTE: only %d B of the self-imposed 1400 B budget is left "
+              "(hard MTU limit 1500, so ~%d B to the real cliff). Reduce "
+              "MAX_BLOCKS or MAX_BLOCK_TAGS before adding another field."
+              % (1400 - size, 1500 - size))
 
     for bad, why in ((data[:5], "truncated"),
                      ([99.0] + data[1:], "wrong schema version"),

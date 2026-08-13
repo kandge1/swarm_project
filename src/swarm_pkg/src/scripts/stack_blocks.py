@@ -141,6 +141,34 @@ command at the place park. That records the place-side open-loop error into
 `calibration_history.jsonl` with `kind: "place"`, which is the measurement (b)
 needs and which nothing in this project has ever taken.
 
+CONFIRMED ON HARDWARE 2026-08-12, rows 217 and 218 of
+`calibration_history.jsonl`: both blocks placed, `stacked: true` on each, and the
+operator reports level 0 dead centre in the place zone and level 1 square on top
+of it. **With zero nudges** -- `place_nudge_steps` and `pick_nudge_steps` are
+empty on both rows, so that was fully open loop. Both levels were commanded to
+the identical place XY (0.009491, 0.231756) to the last digit, which is the
+cancellation above doing exactly what it claims. Prediction (a) also held: the
+two picks came from zone (+23.6, -17.9) mm and (-22.7, +10.4) mm, 54 mm apart,
+with view spreads of 1.6 and 1.8 mm, and the stack still came out square.
+
+**5. THE TRANSIT HEIGHT IS NOT THE HOVER. Found by breaking it, same run.**
+
+The one thing that went wrong on 2026-08-12 was in the space between the two
+primitives rather than in either of them: carrying block 1 to the place zone, the
+block struck block 2 and moved it. The retreat after a grasp went to
+`hover_z_for(...)` = `grasp_z + APPROACH_HEIGHT` = 0.1855, which puts the carried
+block's bottom face at 0.1855 - 0.1345 - 0.015 = 0.0360 against a mat block's top
+face at 0.0260 -- **10 mm**. The recorded bearings say the sweep went straight
+over it: block 1 at -6.1 deg, block 2 at +6.7 deg, place zone at +87.7 deg.
+
+`APPROACH_HEIGHT` was never a transit clearance. It is sized for the DESCENT --
+long enough to arrive vertically, short enough to stay inside the reach envelope
+-- and a 30 mm block eats three quarters of it. `TRANSIT_CLEARANCE_M` and
+`traverse()` separate the two: 25 mm under the load, from a straight-up Cartesian
+lift, with the long sweep flown at both ends raised. The ceiling is not generous
+-- `MAX_HOVER_Z` allows 29.5 mm over a one-block pile and nothing at all over a
+two-block one, which is the same ceiling that makes level 2 illegal above.
+
 ------------------------------------------------------------------------------
 THE POSE MEMORY -- what it does and does not buy
 ------------------------------------------------------------------------------
@@ -175,6 +203,7 @@ import explore  # noqa: E402
 import explore_pick_place as epp  # noqa: E402
 import pick_place as pp  # noqa: E402
 import tag_pick_place as tpp  # noqa: E402
+import zone_vision as zv  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +268,31 @@ def resolve_block_class(text, classes=bc.BLOCK_CLASSES):
         "silently and confidently." % (text, len(hits), ", ".join(hits)))
 
 
+def resolve_colour(text, names=None):
+    """'the red one' -> 'red'. Raises ValueError, exactly like
+    resolve_block_class, so main's one try/except covers both paths.
+
+    Deliberately the SAME shape as resolve_block_class rather than a shared
+    generic: that function matches against a class name's underscore tokens
+    (`orange_cube` -> {"orange", "cube"}), and folding a flat colour list into
+    it would make "cube" a colour match away.
+    """
+    names = [n for n in (names or zv.COLOUR_NAMES) if n != "unknown"]
+    words = set(_tokens(text)) - _FILLER
+    if not words:
+        raise ValueError("no colour in %r" % (text,))
+    hits = [n for n in names if n in words]
+    if len(hits) == 1:
+        return hits[0]
+    if not hits:
+        raise ValueError(
+            "%r does not name a colour this build knows. Known colours: %s. "
+            "The words looked at were %s (the rest is filler)."
+            % (text, ", ".join(names), sorted(words)))
+    raise ValueError("%r names %d colours (%s) -- say which."
+                     % (text, len(hits), ", ".join(hits)))
+
+
 def require_cube(block_class, symmetry, allow):
     """True if this block may be placed by the radial-yaw rule. Prints why not.
 
@@ -294,6 +348,83 @@ PLACE_CLEARANCE_M = 0.008
 # 0.5 mm above MAX_HOVER_Z (0.205), so hover_z_for returns a "hover" BELOW the
 # target and the pre-place descent inverts.
 DEFAULT_MAX_LEVEL = 1
+
+# Vertical gap left between the LOWEST POINT OF THE LOAD and the top of the
+# tallest thing the arm flies over on a cross-zone traverse.
+#
+# MEASURED FAILURE, 2026-08-12 (the first successful two-block stack, rows 217
+# and 218 of calibration_history.jsonl). The carried orange block struck the
+# green one on the way to the place zone and moved it. The geometry is exact and
+# leaves nothing to interpret:
+#
+#   the retreat after grasp went to hover_z_for(...) = grasp_z + APPROACH_HEIGHT
+#                                                    = 0.1455 + 0.040 = 0.1855
+#   carried block's bottom face  = 0.1855 - GRASP_OFFSET_Z - h/2 = 0.0360
+#   a block resting on the mat   = MAT_SURFACE_Z + h             = 0.0260
+#                                                       clearance = 10.0 mm
+#
+# and the traverse then ran straight over it: from those two rows the orange
+# block sat at bearing -6.1 deg, the green at +6.7 deg, and the place zone at
+# +87.7 deg, so the 94 deg J1 sweep passes directly above the green block. 10 mm
+# is not enough, because the sweep is an OMPL free-space plan between two poses
+# with NO path constraint -- nothing holds z between the endpoints, and OMPL has
+# no response adapters here, so there is not even a time-parameterised profile to
+# reason about. The endpoint heights are the only lever available.
+#
+# THE HOVER WAS NEVER A TRANSIT HEIGHT. APPROACH_HEIGHT = 0.04 is sized for the
+# DESCENT onto a block (long enough to come down vertically, short enough to stay
+# inside the reach envelope); it says nothing about flying a payload over another
+# block, and 30 mm of block eats three quarters of it.
+TRANSIT_CLEARANCE_M = 0.025
+
+
+def transit_flange_z(x, y, obstacle_top_z, block_height=None,
+                     clearance_m=TRANSIT_CLEARANCE_M, yaw_deg=None,
+                     quiet=False):
+    """Flange z for a cross-zone traverse over something `obstacle_top_z` tall.
+
+    Assumes A BLOCK IS IN THE JAWS even when it is not, and deliberately: the
+    empty gripper's lowest point is the fingertips, which sit ~20 mm HIGHER than
+    a carried block's bottom face, so the loaded case is the conservative one and
+    using it for both means the return leg needs no separate number -- and no
+    dependence on the flange-to-fingertip distance, which is one of the jaw
+    numbers still unmeasured (tag_pick_place.JAW_GEOMETRY_MEASURED is False).
+
+    Note the identity, which is what makes this cheap to check:
+
+        transit over an n-block pile == release_flange_z(n) + clearance
+
+    because releasing onto level n and clearing level n's top face are the same
+    height computation, differing only by which gap you want at the end of it.
+
+    CLAMPED, not asserted. The reachable ceiling is real (MAX_HOVER_Z, and the
+    envelope at this radius), so an unreachable transit must degrade to the
+    highest legal traverse rather than fail the run -- but it says so, with the
+    clearance it actually achieved, because that number is the one that decides
+    whether a block gets knocked over.
+    """
+    if block_height is None:
+        block_height = pp.BLOCK_HEIGHT_M
+    if yaw_deg is None:
+        yaw_deg = radial_yaw_deg(x, y)
+    wanted = obstacle_top_z + clearance_m + block_height / 2.0 + pp.GRASP_OFFSET_Z
+    # hover_z_for does both clamps -- MAX_HOVER_Z and the reach envelope at the
+    # COMPENSATED flange radius -- so express the request as a target plus
+    # APPROACH_HEIGHT and let the one validated clamp do the work.
+    z = pp.hover_z_for(x, y, wanted - pp.APPROACH_HEIGHT, yaw_deg)
+    achieved = z - (obstacle_top_z + block_height / 2.0 + pp.GRASP_OFFSET_Z)
+    if not quiet:
+        print("[stack] transit flange z %.4f over an obstacle top of %.4f: "
+              "%.1f mm under the load (asked for %.1f)"
+              % (z, obstacle_top_z, achieved * 1000, clearance_m * 1000))
+        if achieved < clearance_m - 1e-4:
+            print("[stack] the transit height CLAMPED to what is reachable at "
+                  "radius %.4f. %.1f mm is what the arm will actually fly with."
+                  % (math.hypot(x, y), achieved * 1000))
+        if achieved < 0.010:
+            print("[stack] WARNING: that is no better than the 10 mm that "
+                  "knocked a block over on 2026-08-12. Move the mats inward.")
+    return z
 
 
 def stack_surface_z(level, block_height=None):
@@ -616,6 +747,68 @@ def go_to(io_client, memory, label, x, y, z, yaw_deg=0.0, holding=False,
     return ok is not False
 
 
+def traverse(io_client, memory, args, from_xy, to_xy, obstacle_top_z, label,
+             holding, to_yaw_deg=None):
+    """Fly from above `from_xy` to above `to_xy`, high enough to clear a block.
+
+    TWO MOVES, and the split is the whole point:
+
+      1. a STRAIGHT-UP Cartesian lift at from_xy. Vertical, so it cannot sweep
+         through anything, and it is the move that buys the clearance.
+      2. the long planned sweep, both endpoints now at the transit height.
+
+    Step 2 is still an unconstrained OMPL plan and its path between the endpoints
+    is not held at z by anything -- raising both ends does not make that
+    guarantee, it only makes the dip that would have to happen a much larger one.
+    The guarantee is available: J1 alone rotates the flange on a HORIZONTAL circle
+    at constant z AND constant radius, so a pure J1 joint goal is an exactly
+    level arc. That is the next step and is written up in APRIL_TAGS_DEV.md; it is
+    not done here because it puts a new motion primitive on the hardware, and the
+    height raise is what was actually knocked over.
+
+    The lift is BEST EFFORT. Failing it leaves the arm where it already was,
+    holding the block, which is the state we are in today -- worse than a lift,
+    no worse than not having tried. The sweep is not best effort.
+    """
+    z = transit_flange_z(from_xy[0], from_xy[1], obstacle_top_z,
+                         args.block_thickness, args.transit_clearance_mm / 1000.0)
+    print("\n=== Lift to transit height before crossing to the %s ===" % label)
+    if pp.cartesian_move_to(io_client, from_xy[0], from_xy[1], z,
+                            allow_fallback=True,
+                            holding_block=holding) is False:
+        print("[stack] could not lift to %.4f. Crossing at whatever height the "
+              "arm is already at -- WATCH THE BLOCKS." % z)
+
+    # Re-solved at the DESTINATION radius. The reach ceiling falls with radius,
+    # so a transit height that is legal over the pickup mat can be outside the
+    # envelope over the place mat, and arriving is the half that has to be
+    # reachable.
+    arrive_z = transit_flange_z(to_xy[0], to_xy[1], obstacle_top_z,
+                               args.block_thickness,
+                               args.transit_clearance_mm / 1000.0,
+                               yaw_deg=to_yaw_deg, quiet=True)
+    print("\n=== Cross to the %s at flange z %.4f ===" % (label, arrive_z))
+    return go_to(io_client, memory, "transit over the %s" % label,
+                 to_xy[0], to_xy[1], arrive_z,
+                 radial_yaw_deg(to_xy[0], to_xy[1]) if to_yaw_deg is None
+                 else to_yaw_deg,
+                 holding)
+
+
+def obstacle_top_z(candidates_left, stack_level, block_height=None):
+    """Top of the tallest thing a traverse has to clear, in world z.
+
+    The two candidates are the blocks still lying in the pickup zone (one block
+    tall, always, until the block database lands) and the stack already built in
+    the place zone (`stack_level` blocks tall). `max(1, ...)` because even an
+    empty place mat has the pickup zone's blocks to clear on the way back.
+    """
+    if block_height is None:
+        block_height = pp.BLOCK_HEIGHT_M
+    piles = [1 if candidates_left else 0, stack_level]
+    return stack_surface_z(max(1, max(piles)), block_height)
+
+
 # ---------------------------------------------------------------------------
 # The operator checkpoint, shared by the pick and the place
 # ---------------------------------------------------------------------------
@@ -774,19 +967,31 @@ def survey_pickup_blocks(io_client, detector, args):
     if not fused:
         print("[stack] every candidate was the zone's own tags.")
         return None
-    identity = tpp.identify_blocks(fused, block_tags)
+    if args.by_colour:
+        identity = tpp.identify_blocks_by_colour(fused)
+        why = ("no contour was named by colour. Is block_detector_node.py "
+               "running with method:=colour? It logs the colour of every "
+               "contour it finds.")
+        unnamed = ("%d contour(s) could not be named by colour and are not "
+                   "candidates -- see the [identify] lines above for which of "
+                   "the three reasons applied to each.")
+    else:
+        identity = tpp.identify_blocks(fused, block_tags)
+        why = ("no block top tag decoded. block_detector_node.py logs "
+               "px/module for every decode.")
+        unnamed = ("%d contour(s) carried no block tag and are not candidates. "
+                   "A block whose top tag did not decode looks exactly like "
+                   "the other one from above.")
     if not identity:
-        print("[stack] NOTHING was identified -- no block top tag decoded. "
-              "This script picks blocks BY NAME, so there is nothing it can "
-              "act on. block_detector_node.py logs px/module for every decode.")
+        print("[stack] NOTHING was identified -- %s" % why)
+        print("[stack] This script picks blocks BY NAME, so there is nothing "
+              "it can act on.")
         return None
     candidates = [(det, identity[i]) for i, det in enumerate(fused)
                   if i in identity]
     dropped = len(fused) - len(candidates)
     if dropped:
-        print("[stack] %d contour(s) carried no block tag and are not "
-              "candidates. A block whose top tag did not decode looks exactly "
-              "like the other one from above." % dropped)
+        print("[stack] " + unnamed % dropped)
     return candidates
 
 
@@ -803,11 +1008,18 @@ def have_every_block(candidates, wanted):
     print("[stack] identified: %s"
           % (", ".join("%s x%d" % (k, n) for k, n in sorted(tally.items()))
              or "nothing"))
-    missing = [k for k in wanted if k not in tally]
+    # COUNTS, not just presence: "red, red" needs TWO red contours, and in
+    # colour mode a name can legitimately repeat. Counting also covers the tag
+    # path unchanged, where every count is 1.
+    need = {}
+    for k in wanted:
+        need[k] = need.get(k, 0) + 1
+    missing = ["%s (need %d, found %d)" % (k, n, tally.get(k, 0))
+               for k, n in sorted(need.items()) if tally.get(k, 0) < n]
     if missing:
-        print("[stack] REFUSING: %s not found in the pickup zone. Check the "
-              "tag is stuck on, facing up and lit -- block_detector_node.py "
-              "logs px/module for every decode." % ", ".join(missing))
+        print("[stack] REFUSING: %s not found in the pickup zone. See the "
+              "[identify] lines above for what the detector did see."
+              % "; ".join(missing))
         return False
     return True
 
@@ -828,7 +1040,12 @@ def pick_block(io_client, detector, args, memory, block, want_class,
     on every single pick. run_stage1's single-block case is the exception, not
     this.
     """
-    block_yaw_world = block.zyaw + detector.zone_yaw
+    # GRASP_YAW_FROM_MAJOR_DEG is 0.0 today, so this is byte-for-byte the
+    # previous expression. It is written out because the offset is the one
+    # unverified thing standing between this file and a non-cube block -- see
+    # that constant.
+    block_yaw_world = (block.zyaw + detector.zone_yaw
+                       + math.radians(tpp.GRASP_YAW_FROM_MAJOR_DEG))
     grasp_yaw_deg = math.degrees(tpp.reduce_yaw(block_yaw_world,
                                                 block.symmetry))
     grasp_x, grasp_y = detector.zone_to_world(block.zx, block.zy)
@@ -841,6 +1058,18 @@ def pick_block(io_client, detector, args, memory, block, want_class,
              block.zx * 1000, block.zy * 1000, grasp_x, grasp_y,
              math.degrees(block_yaw_world), grasp_yaw_deg, block.symmetry,
              block.n_views, block.spread_m * 1000))
+
+    tpp.grasp_yaw_report(block, grasp_yaw_deg,
+                         math.degrees(detector.zone_yaw), want_class)
+
+    # CAN THE JAWS EVEN SPAN IT. Before the clearance check, because "too wide
+    # to grip" and "a neighbour is in the way" are different refusals and the
+    # first one does not depend on anything else in the zone.
+    if not tpp.grip_span_ok(block, label=want_class)[0] and not args.ignore_grip_span:
+        print("[stack] Nothing has moved. Turn the block onto a narrower face, "
+              "or pass --ignore-grip-span if the aperture figure is the thing "
+              "that is wrong.")
+        return None
 
     # The footprint check tag_pick_place added on 2026-08-11, repeated here
     # because a mis-sized footprint is the failure that displaces a centroid and
@@ -1226,6 +1455,29 @@ def build_parser():
                         help="block height, metres (default %(default)s). Sets "
                              "BOTH the release height and the per-level step, "
                              "so it is the one number a stack's Z depends on")
+    parser.add_argument("--by-colour", "--by-color", action="store_true",
+                        dest="by_colour",
+                        help="identify blocks by COLOUR instead of by AprilTag, "
+                             "so --stack takes colour names ('red', 'the green "
+                             "one'). Needs block_detector_node.py running with "
+                             "method:=colour. Relaxes the 4-fold symmetry gate "
+                             "to a warning, since this block set is mostly "
+                             "2-fold and there are no side tags yet")
+    parser.add_argument("--ignore-grip-span", action="store_true",
+                        help="descend even when the block's short side is wider "
+                             "than JAW_APERTURE_OPEN_M. That constant is an "
+                             "UNMEASURED estimate, so this exists for the case "
+                             "where the aperture figure is what is wrong -- not "
+                             "for the case where the block is genuinely too big")
+    parser.add_argument("--transit-clearance-mm", type=float,
+                        default=TRANSIT_CLEARANCE_M * 1000.0,
+                        help="gap left under the CARRIED BLOCK when crossing "
+                             "between zones, mm (default %(default)s). The "
+                             "hover left 10 mm and a carried block knocked "
+                             "another one over on 2026-08-12. Clamped by "
+                             "MAX_HOVER_Z and the reach envelope, so asking for "
+                             "more than ~29 mm over a one-block pile gets you "
+                             "29 and a printed warning")
     parser.add_argument("--grasp-z", type=float, default=tpp.GRASP_FLANGE_Z,
                         help="FLANGE z to descend to for a grasp, metres "
                              "(default %(default).4f). Level 0 only -- picking "
@@ -1346,6 +1598,131 @@ def _selftest():
     check("a thinner block would make level 2 legal",
           release_flange_z(2, 0.025) < pp.MAX_HOVER_Z,
           "%.4f" % release_flange_z(2, 0.025))
+
+    print("colour names (the AprilTag-free path)")
+    def colour_ok(text, want):
+        try:
+            return resolve_colour(text) == want
+        except ValueError:
+            return False
+
+    def colour_refuses(text):
+        try:
+            resolve_colour(text)
+        except ValueError:
+            return True
+        return False
+
+    check("'red' -> red", colour_ok("red", "red"))
+    check("'the red one' -> red", colour_ok("the red one", "red"))
+    check("'pick up the green block' -> green",
+          colour_ok("pick up the green block", "green"))
+    check("'BLUE' -> blue (case folded)", colour_ok("BLUE", "blue"))
+    check("'wood' -> wood", colour_ok("wood", "wood"))
+    # 'unknown' is a wire sentinel, not something an operator can ask for.
+    check("'unknown' is refused, it is a sentinel", colour_refuses("unknown"))
+    check("'the block' is refused", colour_refuses("the block"))
+    check("'chartreuse' is refused", colour_refuses("chartreuse"))
+    check("'' is refused", colour_refuses(""))
+    check("'red and blue' is refused as ambiguous",
+          colour_refuses("red and blue"))
+    # THE TRAP resolve_colour exists to avoid: the tag resolver matches a class
+    # name's underscore tokens, so 'cube' resolves there. It must NOT be a
+    # colour, or "the orange cube" would be ambiguous in colour mode.
+    check("'cube' is not a colour", colour_refuses("cube"))
+    check("every colour name resolves to itself",
+          all(colour_ok(n, n) for n in zv.COLOUR_NAMES if n != "unknown"))
+
+    print("grip span against the aperture")
+
+    class _B(object):
+        def __init__(self, w, l, sym=2):
+            self.width, self.length, self.symmetry = w, l, sym
+            self.zyaw = 0.0
+
+    aperture = tpp.JAW_APERTURE_OPEN_M
+    check("a 1.2 in cube (30.5 mm) fits the jaws",
+          tpp.grip_span_ok(_B(0.0305, 0.0305, 4))[0])
+    check("a 2.4 x 1.2 in brick fits ACROSS its short side",
+          tpp.grip_span_ok(_B(0.0305, 0.0610))[0])
+    check("a 0.6 in bar (15.2 mm) fits", tpp.grip_span_ok(_B(0.0152, 0.0610))[0])
+    check("a 1.4 in face (35.6 mm) fits, just",
+          tpp.grip_span_ok(_B(0.0356, 0.0356, 4))[0])
+    # THE ONES THIS SET CANNOT GRASP. 1.6 in = 40.6 mm is already over.
+    check("a 1.6 in face (40.6 mm) is REFUSED",
+          not tpp.grip_span_ok(_B(0.0406, 0.0406, 4))[0])
+    check("the pink disc lying flat (55.9 mm every way) is REFUSED",
+          not tpp.grip_span_ok(_B(0.0559, 0.0559, 0))[0])
+    check("the aperture is the thing being tested, not a coincidence",
+          abs(aperture - 0.040) < 1e-9, "%.4f" % aperture)
+    check("and it is still flagged as UNMEASURED",
+          tpp.JAW_GEOMETRY_MEASURED is False)
+
+    print("the wrist-yaw convention (unverified, so pinned)")
+    # GRASP_YAW_FROM_MAJOR_DEG must stay 0 until a hardware observation moves it.
+    # A change here rotates EVERY grasp, so it should not happen by accident.
+    check("GRASP_YAW_FROM_MAJOR_DEG is still 0 (today's validated behaviour)",
+          tpp.GRASP_YAW_FROM_MAJOR_DEG == 0.0,
+          "%.1f" % tpp.GRASP_YAW_FROM_MAJOR_DEG)
+    # ... and that a cube cannot tell the two conventions apart, which is why it
+    # has never been caught.
+    for yaw in (0.0, 17.0, 44.0, 61.0):
+        a = tpp.reduce_yaw(math.radians(yaw), 4)
+        b = tpp.reduce_yaw(math.radians(yaw + 90.0), 4)
+        check("a cube at %+.0f deg grasps identically either convention" % yaw,
+              abs(a - b) < 1e-9, "%.4f vs %.4f" % (a, b))
+    # On a 2-fold block they differ, which is the whole risk.
+    a = tpp.reduce_yaw(math.radians(20.0), 2)
+    b = tpp.reduce_yaw(math.radians(110.0), 2)
+    check("a 2-fold block DOES distinguish them (the risk)",
+          abs(a - b) > math.radians(80), "%.1f vs %.1f deg"
+          % (math.degrees(a), math.degrees(b)))
+
+    print("transit height (the 2026-08-12 collision)")
+    # RECONSTRUCTS THE FAILURE from the two constants it came out of, so that
+    # anyone raising APPROACH_HEIGHT or GRASP_OFFSET_Z sees this number move.
+    old_hover = tpp.GRASP_FLANGE_Z + pp.APPROACH_HEIGHT
+    one_block_top = stack_surface_z(1)
+    old_gap = old_hover - pp.GRASP_OFFSET_Z - pp.BLOCK_HEIGHT_M / 2.0 - one_block_top
+    check("the old retreat hover left ~10 mm under the carried block",
+          0.009 < old_gap < 0.011, "%.1f mm" % (old_gap * 1000))
+    # THE IDENTITY the docstring claims. If this breaks, one of the two height
+    # derivations has drifted from the other.
+    check("transit over an n-block pile == release_flange_z(n) + clearance",
+          abs((one_block_top + TRANSIT_CLEARANCE_M + pp.BLOCK_HEIGHT_M / 2.0
+               + pp.GRASP_OFFSET_Z)
+              - (release_flange_z(1) + TRANSIT_CLEARANCE_M)) < 1e-12)
+    # At the place zone's radius, unclamped: 0.026 + 0.025 + 0.015 + 0.1345.
+    t = transit_flange_z(0.0095, 0.2318, one_block_top, quiet=True)
+    check("the default transit is reachable at the place radius (no clamp)",
+          abs(t - (release_flange_z(1) + TRANSIT_CLEARANCE_M)) < 1e-9,
+          "%.4f vs %.4f" % (t, release_flange_z(1) + TRANSIT_CLEARANCE_M))
+    new_gap = t - pp.GRASP_OFFSET_Z - pp.BLOCK_HEIGHT_M / 2.0 - one_block_top
+    check("and it is a real improvement on the 10 mm that failed",
+          new_gap > old_gap + 0.010, "%.1f mm vs %.1f mm"
+          % (new_gap * 1000, old_gap * 1000))
+    check("transit stays at or below MAX_HOVER_Z", t <= pp.MAX_HOVER_Z + 1e-12,
+          "%.4f" % t)
+    # An absurd request must CLAMP rather than sail past the measured ceiling.
+    greedy = transit_flange_z(0.0095, 0.2318, one_block_top,
+                              clearance_m=0.200, quiet=True)
+    check("an unreachable clearance clamps to the ceiling",
+          greedy <= pp.MAX_HOVER_Z + 1e-12, "%.4f" % greedy)
+    check("clamped is still >= the default transit", greedy >= t - 1e-12)
+    # Flying over a TWO-block pile is not available, which is the same ceiling
+    # that makes level 2 illegal -- one fact, two symptoms.
+    two = transit_flange_z(0.0095, 0.2318, stack_surface_z(2), quiet=True)
+    two_gap = two - pp.GRASP_OFFSET_Z - pp.BLOCK_HEIGHT_M / 2.0 - stack_surface_z(2)
+    check("a two-block pile cannot be flown over with clearance to spare",
+          two_gap < TRANSIT_CLEARANCE_M, "%.1f mm" % (two_gap * 1000))
+
+    print("obstacle height bookkeeping")
+    check("blocks left on the pickup mat mean a one-block obstacle",
+          abs(obstacle_top_z(["a"], 0) - stack_surface_z(1)) < 1e-12)
+    check("an empty pickup mat still clears one block on the way back",
+          abs(obstacle_top_z([], 0) - stack_surface_z(1)) < 1e-12)
+    check("a two-high stack outranks the loose blocks",
+          abs(obstacle_top_z(["a"], 2) - stack_surface_z(2)) < 1e-12)
 
     print("place yaw")
     check("place zone on -Y folds to yaw 0",
@@ -1658,12 +2035,18 @@ def main():
 
     # Resolve every name BEFORE the arm moves. A typo in the last block of the
     # stack should not be discovered after the first one is already placed.
+    resolve = resolve_colour if args.by_colour else resolve_block_class
     try:
-        wanted = [resolve_block_class(name) for name in args.stack]
+        wanted = [resolve(name) for name in args.stack]
     except ValueError as exc:
         print("[stack] %s" % exc)
         return 2
-    if len(set(wanted)) != len(wanted):
+    # TAG PATH ONLY. A tag class names ONE physical block, so asking for it
+    # twice would send the second pick at a block already in the stack. A COLOUR
+    # names a set, and "stack the two red ones" is an ordinary request -- the
+    # block is removed from `candidates` after each pick, so the second red is a
+    # different contour.
+    if not args.by_colour and len(set(wanted)) != len(wanted):
         print("[stack] --stack names the same block twice (%s). There is one of "
               "each on the bench, and the second pick would be sent at a block "
               "that is already in the stack." % ", ".join(wanted))
@@ -1829,8 +2212,22 @@ def main():
             block = tpp.select_block(fused, identity, want_class)
             if block is None:
                 return 1
-            if not require_cube(want_class, block.symmetry,
-                                args.allow_any_symmetry):
+            # THE SYMMETRY GATE IS A PLACE-SIDE RULE and colour mode cannot
+            # satisfy it. "Near side faces the robot" needs a 4-fold footprint;
+            # this block set is mostly 2-fold, and there are no SIDE tags to
+            # resolve which face pair is which. Per the 2026-08-12 decision the
+            # demo places at the radial yaw regardless, so the gate is relaxed
+            # to a WARNING here rather than being deleted -- the tag path keeps
+            # its refusal, and the reason it exists is still printed.
+            if args.by_colour:
+                if block.symmetry != 4:
+                    print("[stack] NOTE: %s has symmetry %d, not 4, so 'near "
+                          "side faces the robot' is not well defined for it -- "
+                          "it will be laid down on whichever of its two face "
+                          "pairs the yaw fold lands on. Placing anyway "
+                          "(colour mode)." % (want_class, block.symmetry))
+            elif not require_cube(want_class, block.symmetry,
+                                  args.allow_any_symmetry):
                 return 1
 
             # Every OTHER block still in the zone is a potential obstacle. Note
@@ -1838,10 +2235,35 @@ def main():
             # makes room for the green one, which is why "pick the most isolated
             # first" is a real strategy and not just an optimisation.
             others = [det for det, _klass in candidates if det is not block]
+
+            # RETURN LEG, level 1 onward. The jaws are empty, but the arm is
+            # coming back over the stack it just built and over the block it is
+            # about to pick, and the release retreat leaves it at the place hover
+            # -- which for level 1 is the clamped 0.2050 and for level 0 is
+            # 0.1855. Same unconstrained sweep, same reason to be high.
+            if level > 0:
+                traverse(io_client, memory, args, stack_xy,
+                         (pickup.origin[0], pickup.origin[1]),
+                         obstacle_top_z(candidates, level, args.block_thickness),
+                         "pickup zone", holding=False)
+
             pick_pose = pick_block(io_client, detector, args, memory, block,
                                    want_class, others)
             if pick_pose is None:
                 return 1
+
+            # OUTBOUND LEG, holding the block. THE MOVE THAT KNOCKED A BLOCK
+            # OVER ON 2026-08-12. Not fatal on failure: crossing lower is
+            # exactly the behaviour that shipped before this existed, so a
+            # failed lift must never turn a working run into a stopped one.
+            # `others` and not `candidates` -- the block now in the jaws is no
+            # longer an obstacle, and at the last level that empties the pickup
+            # mat entirely.
+            traverse(io_client, memory, args, (pick_pose["x"], pick_pose["y"]),
+                     stack_xy,
+                     obstacle_top_z(others, level, args.block_thickness),
+                     "place zone", holding=not args.dry_run,
+                     to_yaw_deg=radial_yaw_deg(stack_xy[0], stack_xy[1]))
 
             placed = place_block(io_client, args, memory, stack_xy[0],
                                  stack_xy[1], level, pick_pose)

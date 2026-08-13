@@ -259,8 +259,28 @@ MAX_BLOCK_AREA_FRAC = 0.60
 # slivers this filter exists for -- while leaving headroom for that inflation.
 #
 # Tighten this once the size over-read is fixed, not before.
-MAX_BLOCK_LENGTH_M = 0.060      # m
-MAX_BLOCK_ASPECT = 4.0          # length / width
+#
+# RAISED 0.060 -> 0.075 on 2026-08-12 for the geometric block set. The reason is
+# arithmetic, not preference: the set's longest dimension is 2.4 in = 61.0 mm, so
+# a 0.060 cap REJECTS every 2.4 in block on every frame -- the 61 mm bar, the
+# green brick, the blue slab, both long prisms, the sheared slab. Found by
+# test_colour_segmentation, which detected nothing at all for a rendered 61 mm
+# block until this moved.
+#
+# 0.075 is 61.0 mm plus 23%, sized against the SAME over-read this constant has
+# always been sized against (see above), and still well under the 121-134 mm grid
+# slivers the filter exists to reject. The 55.9 mm pink disc also fits.
+#
+# THIS IS THE CEILING ON THE BLOCK SET, so it moves when the set does -- and it
+# is checked against a stated longest dimension in the selftest rather than left
+# as a number someone has to remember the provenance of.
+MAX_BLOCK_LENGTH_M = 0.075      # m
+
+# Raised 4.0 -> 4.5 at the same time and for the same kind of reason: the purple
+# 2.4 x 0.6 x 0.6 in bar is 61.0 x 15.2 mm, an aspect of exactly 4.01, so a 4.0
+# cap rejects it by 0.3%. 4.5 clears it with margin and still rejects the grid
+# slivers, which run 8:1 and worse.
+MAX_BLOCK_ASPECT = 4.5          # length / width
 
 # A detected object's CENTRE must land this far inside the zone edge. Only the
 # centre is tested, so a block whose corner overhangs the boundary is still
@@ -336,14 +356,141 @@ def wrap_angle(a):
     return math.atan2(math.sin(a), math.cos(a))
 
 
+# ---------------------------------------------------------------------------
+# Colour
+# ---------------------------------------------------------------------------
+# THE ONE ORDERED LIST OF COLOUR NAMES. The wire carries an INDEX into this
+# tuple, not a string, and both the Pi node and the mars client import it from
+# here -- so there is no table to keep in sync and nothing to mismatch.
+#
+# WHY AN INDEX AND NOT A STRING. block_detector_node.py's own comment records
+# `rcl_send_response` failing on this machine with "string data is not
+# null-terminated" when a nested message carrying a string was populated. That
+# diagnosis is at best incomplete -- BlockDetection already carries
+# `string shape` across this exact wire and works -- but the failure mode it
+# describes takes the whole detection service down, whereas an index that ever
+# went wrong would show up as a wrong colour NAME: visible, harmless, fixable.
+# The cheaper failure wins. Index 0 is deliberately "unknown" so a
+# default-constructed message reads as "no answer", never as a real colour.
+#
+# APPEND ONLY. An index is a wire value; inserting in the middle renames every
+# colour above it, silently, on any machine that did not rebuild.
+COLOUR_NAMES = (
+    "unknown",
+    "red", "orange", "yellow", "green", "blue", "purple", "pink",
+    "white", "wood",
+)
+
+# HSV prototypes: (hue 0-179 as OpenCV counts it, min saturation, min value).
+#
+# HARVESTED from the contributed object_detection.py's range table, which was
+# well aimed at this block set, and then RE-POINTED. That file decided a colour
+# by argmax over per-colour pixel counts inside overlapping HSV boxes, which
+# decides by BOX WIDTH rather than by colour distance: its `Wood` box (H 5-30)
+# contains `Orange` (8-20) and half of `Yellow` (20-36), its `Pink` (160-179)
+# overlaps both `Purple` (130-165) and the upper half of `Red`, and exact ties
+# fall to dict iteration order. A wider box wins more pixels of a hue-spread
+# blob no matter where the blob's colour actually sits.
+#
+# So: NEAREST PROTOTYPE on the blob's MEDIAN hue, with a circular metric. Median
+# because a specular highlight or a shaded facet is an outlier, not a vote.
+# Circular because red wraps 0/179 and any linear distance gets red wrong.
+# Order-independent, and it yields a real distance to threshold on.
+COLOUR_HUES = {
+    "red":    (0, 90, 55),
+    "orange": (14, 90, 60),
+    "yellow": (28, 75, 75),
+    "green":  (60, 45, 35),
+    "blue":   (112, 55, 35),
+    "purple": (140, 40, 35),
+    "pink":   (168, 30, 70),
+}
+
+# Achromatic classes, decided by saturation/value BEFORE hue is consulted at
+# all: the hue of a near-grey pixel is numerically defined and physically
+# meaningless, which is how a white block gets called "pink".
+COLOUR_WHITE_MAX_SAT = 60       # below this saturation nothing has a hue
+COLOUR_WHITE_MIN_VAL = 140      # ... and above this value it is white
+COLOUR_WOOD_MAX_SAT = 110       # tan/beech: a real but weak hue in the orange
+COLOUR_WOOD_HUE_RANGE = (5, 32) # band. Checked before the chromatic prototypes.
+
+# Hue distance beyond which no prototype is claimed, in OpenCV hue units (so
+# ~2 deg each). 18 is a quarter of the gap between adjacent prototypes here.
+COLOUR_MAX_HUE_DIST = 18
+
+
+def _hue_distance(a, b):
+    """Circular distance between two OpenCV hues (0-179 wraps)."""
+    d = abs(float(a) - float(b)) % 180.0
+    return min(d, 180.0 - d)
+
+
+def classify_colour(hsv, mask):
+    """(name, score) for the pixels of `hsv` selected by `mask`.
+
+    score is 1.0 at the prototype hue and falls linearly to 0.0 at
+    COLOUR_MAX_HUE_DIST, so it is a DISTANCE turned into a confidence and not a
+    pixel fraction -- a fully-agreeing blob of a colour we have no prototype for
+    scores 0 and is called "unknown", which is the honest answer.
+
+    Achromatic first, chromatic second. See COLOUR_WHITE_MAX_SAT.
+    """
+    if hsv is None or mask is None:
+        return "unknown", 0.0
+    selected = hsv[mask > 0]
+    if selected.size == 0:
+        return "unknown", 0.0
+    h = float(np.median(selected[:, 0]))
+    s = float(np.median(selected[:, 1]))
+    v = float(np.median(selected[:, 2]))
+
+    if s < COLOUR_WHITE_MAX_SAT and v >= COLOUR_WHITE_MIN_VAL:
+        return "white", 1.0
+    if (s < COLOUR_WOOD_MAX_SAT
+            and COLOUR_WOOD_HUE_RANGE[0] <= h <= COLOUR_WOOD_HUE_RANGE[1]):
+        return "wood", 1.0
+
+    best, best_d = "unknown", None
+    for name, (hue, s_min, v_min) in COLOUR_HUES.items():
+        if s < s_min or v < v_min:
+            continue
+        d = _hue_distance(h, hue)
+        if best_d is None or d < best_d:
+            best, best_d = name, d
+    if best_d is None or best_d > COLOUR_MAX_HUE_DIST:
+        return "unknown", 0.0
+    return best, max(0.0, 1.0 - best_d / float(COLOUR_MAX_HUE_DIST))
+
+
+def colour_index(name):
+    """Wire index for a colour name. Unknown names map to 0, never to a guess."""
+    try:
+        return COLOUR_NAMES.index(name)
+    except ValueError:
+        return 0
+
+
+def colour_name(index):
+    """Inverse of colour_index. Out-of-range means the other end has a newer
+    COLOUR_NAMES than this one -- say so rather than indexing off the end."""
+    index = int(index)
+    if 0 <= index < len(COLOUR_NAMES):
+        return COLOUR_NAMES[index]
+    print("[colour] wire index %d is outside COLOUR_NAMES (%d entries) -- the "
+          "two machines are not running the same zone_vision.py. Rebuild and "
+          "re-source both." % (index, len(COLOUR_NAMES)))
+    return "unknown"
+
+
 class Detection:
     """One object found in the zone. Mirrors swarm_interfaces/BlockDetection."""
 
     def __init__(self, zx, zy, zyaw, width, length, shape, symmetry,
-                 fill_ratio, area_px, box_px):
+                 fill_ratio, area_px, box_px, colour="unknown",
+                 colour_score=0.0):
         self.zx = zx
         self.zy = zy
-        self.zyaw = zyaw
+        self.zyaw = zyaw            # MAJOR (long) axis direction, rad
         self.width = width          # SHORT footprint dimension, m
         self.length = length        # LONG footprint dimension, m
         self.shape = shape
@@ -351,16 +498,18 @@ class Detection:
         self.fill_ratio = fill_ratio
         self.area_px = area_px
         self.box_px = box_px        # 4x2 pixel corners, for the debug overlay
+        self.colour = colour        # a COLOUR_NAMES entry
+        self.colour_score = colour_score
 
     def world_pose(self, zone):
         x, y = zone.zone_to_world(self.zx, self.zy)
         return x, y, zone.zone_yaw_to_world(self.zyaw)
 
     def __repr__(self):
-        return ("Detection(zone=(%.4f, %.4f) yaw=%.1fdeg %s %.1fx%.1fmm "
+        return ("Detection(zone=(%.4f, %.4f) yaw=%.1fdeg %s %s %.1fx%.1fmm "
                 "sym=%d fill=%.2f)"
-                % (self.zx, self.zy, math.degrees(self.zyaw), self.shape,
-                   self.width * 1000.0, self.length * 1000.0,
+                % (self.zx, self.zy, math.degrees(self.zyaw), self.colour,
+                   self.shape, self.width * 1000.0, self.length * 1000.0,
                    self.symmetry, self.fill_ratio))
 
 
@@ -782,6 +931,45 @@ def flatten_tags(gray, H_zone_to_px, zone, tag_corners_px, fill_value):
 # ---------------------------------------------------------------------------
 # Block segmentation
 # ---------------------------------------------------------------------------
+# Saturation above which a pixel is a painted block rather than the mat.
+#
+# THE WHOLE POINT OF THE COLOUR METHOD. The mat is white paper: near-zero
+# saturation at any brightness. The blocks are saturated paint. So one threshold
+# on S separates them, and it separates them as WHOLE REGIONS -- which is the
+# thing Canny cannot do. Canny finds an outline, needs a dilate and a close to
+# join it up, and every dilation iteration is added directly to the reported
+# block size (see _segment). Region segmentation has no such term.
+#
+# It also does not care about the top-face-vs-side-wall problem in the way an
+# edge finder does: a side wall of the same block is the same colour, so it joins
+# the region instead of contributing a separate edge to be closed across.
+COLOUR_SAT_MIN = 70
+
+# ... and the escape hatch for blocks that have no saturation: white and natural
+# wood. A white block on a white mat is genuinely not separable this way and is
+# NOT rescued here -- see the note in find_blocks. Wood is, by value: beech is
+# distinctly darker than printer paper.
+COLOUR_WOOD_VAL_MAX = 205
+
+
+def _segment_colour(bgr, search_mask):
+    """Binary image of SATURATED (or wood-dark) regions inside search_mask."""
+    blurred = cv2.GaussianBlur(bgr, (5, 5), 0)
+    hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+    sat = cv2.inRange(hsv, (0, COLOUR_SAT_MIN, 40), (179, 255, 255))
+    # Weakly-saturated but dark: natural wood on white paper.
+    wood = cv2.inRange(hsv, (COLOUR_WOOD_HUE_RANGE[0], 20, 40),
+                       (COLOUR_WOOD_HUE_RANGE[1], 255, COLOUR_WOOD_VAL_MAX))
+    binary = cv2.bitwise_or(sat, wood)
+    # OPEN then CLOSE, and in that order. Open first kills the speckle the
+    # printed grid lines and the mat's texture leave behind, so the close that
+    # follows has nothing spurious to bridge TO. Doing it the other way round
+    # welds a block to a nearby speck and reports one larger block.
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    return cv2.bitwise_and(binary, binary, mask=search_mask)
+
+
 def _segment(gray, search_mask, method):
     """Binary image of candidate objects inside search_mask."""
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -856,8 +1044,27 @@ def _classify(width, length, fill_ratio):
 
 
 def find_blocks(gray, H_zone_to_px, H_px_to_zone, zone, search_mask, accept_mask,
-                method="canny"):
-    binary = _segment(gray, search_mask, method)
+                method="canny", bgr=None):
+    """Detections inside the zone. `bgr` is required for method="colour".
+
+    A WHITE BLOCK ON A WHITE MAT IS NOT FOUND by the colour method, and is not
+    rescued here. There is no saturation step to threshold and no reliable value
+    step either; the honest fix is a coloured mat or a different segmentation,
+    not a threshold nudged until one frame works. It is reported as an absence,
+    which is the safe direction -- nothing is descended on.
+    """
+    if method == "colour":
+        if bgr is None or bgr.ndim != 3:
+            print("[colour] method='colour' needs a 3-channel frame and got "
+                  "%s -- falling back to canny for this frame."
+                  % ("grayscale" if bgr is None else str(bgr.shape)))
+            method = "canny"
+    if method == "colour":
+        binary = _segment_colour(bgr, search_mask)
+        hsv = cv2.cvtColor(cv2.GaussianBlur(bgr, (5, 5), 0), cv2.COLOR_BGR2HSV)
+    else:
+        binary = _segment(gray, search_mask, method)
+        hsv = None
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     zone_area = zone.zone_size ** 2
@@ -900,6 +1107,22 @@ def find_blocks(gray, H_zone_to_px, H_px_to_zone, zone, search_mask, accept_mask
             length, width = side_b, side_a
             major = box_zone[2] - box_zone[1]
 
+        # zyaw IS THE MAJOR AXIS, and this branch is what makes it so: side_a and
+        # side_b are the ZONE-space lengths of the two box edges below, so the
+        # test picks the LONGER edge's direction. VERIFIED 2026-08-12 through the
+        # full render -> warp -> findContours -> minAreaRect path at four
+        # orientations: at a rendered 0 deg the edges measure 26.6 and 51.7 mm and
+        # the 51.7 mm one is chosen, at 30 deg they measure 52.4 and 27.1 and the
+        # 52.4 mm one is chosen. test_rectangle in zone_vision_selftest.py asserts
+        # exactly this and is the reason to trust it.
+        #
+        # DO NOT "SIMPLIFY" THIS TO min()/max() ON rect[1]. cv2's rect[1] pair is
+        # NOT in the same order as the box edges -- at a rendered 0 deg here
+        # rect[1] is (211.1, 107.4) px while box[1]-box[0] is the SHORT side --
+        # and normalising against rect[1] instead of against the edges themselves
+        # inverts the axis at some orientations and not others. Tried on
+        # 2026-08-12; test_rectangle failed at all four angles, which is the only
+        # reason it is written down here instead of shipped.
         # SHAPE, not just area -- see MAX_BLOCK_LENGTH_M. A printed grid line
         # closed into a contour by the morphological close in _segment() can
         # easily clear the area filter above while being nothing like a block.
@@ -912,11 +1135,28 @@ def find_blocks(gray, H_zone_to_px, H_px_to_zone, zone, search_mask, accept_mask
         fill_ratio = area_px / px_area_of_box if px_area_of_box > 0 else 0.0
 
         shape, symmetry = _classify(width, length, fill_ratio)
+
+        # Colour from THIS CONTOUR'S OWN PIXELS, not the bounding box: the box of
+        # a rotated block is up to 41% mat, which drags the median saturation
+        # down and is exactly how a coloured block reads "white".
+        colour, colour_score = "unknown", 0.0
+        if hsv is not None:
+            blob = np.zeros(binary.shape[:2], dtype=np.uint8)
+            cv2.drawContours(blob, [contour], -1, 255, thickness=-1)
+            # Erode before sampling. The contour's own boundary pixels are a
+            # blend of block and mat, and on a 60 px blob the rim is a
+            # meaningful share of the pixels.
+            blob = cv2.erode(blob, np.ones((3, 3), np.uint8), iterations=1)
+            if cv2.countNonZero(blob) == 0:      # a blob thinner than the erode
+                cv2.drawContours(blob, [contour], -1, 255, thickness=-1)
+            colour, colour_score = classify_colour(hsv, blob)
+
         detections.append(Detection(
             zx=float(centre_zone[0]), zy=float(centre_zone[1]),
             zyaw=wrap_angle(math.atan2(major[1], major[0])),
             width=width, length=length, shape=shape, symmetry=symmetry,
-            fill_ratio=fill_ratio, area_px=area_px, box_px=box_px))
+            fill_ratio=fill_ratio, area_px=area_px, box_px=box_px,
+            colour=colour, colour_score=colour_score))
 
     detections.sort(key=lambda d: d.width * d.length, reverse=True)
     return detections
@@ -986,8 +1226,14 @@ def analyze(image, zone, method="canny", max_rms_px=MAX_HOMOGRAPHY_RMS_PX):
     fill_value = float(np.median(interior)) if interior.size else 0.0
     result.flat_gray = flatten_tags(gray, H, zone, tag_corners, fill_value)
 
+    # THE COLOUR FRAME IS THE ORIGINAL, NOT flat_gray. flatten_tags paints the
+    # tag quads out at the mat's median GREY so they stop being step edges for
+    # Canny; there is no colour equivalent and none is needed, because a printed
+    # black-on-white tag has no saturation and the colour segmentation drops it
+    # for free. Passing both means each method gets the frame it wants.
     result.blocks = find_blocks(result.flat_gray, H, result.H_px_to_zone, zone,
-                                search_mask, accept_mask, method=method)
+                                search_mask, accept_mask, method=method,
+                                bgr=(image if image.ndim == 3 else None))
 
     result.success = True
     # An empty zone is a SUCCESS with zero blocks, not a failure. Stage 2 asks
@@ -1040,7 +1286,8 @@ class FusedDetection:
     """A block's pose agreed across several stills, with its spread."""
 
     def __init__(self, zx, zy, zyaw, width, length, shape, symmetry,
-                 n_views, spread_m, spread_yaw_rad, views):
+                 n_views, spread_m, spread_yaw_rad, views,
+                 colour="unknown", colour_score=0.0, colour_agree=1.0):
         self.zx = zx
         self.zy = zy
         self.zyaw = zyaw
@@ -1048,6 +1295,13 @@ class FusedDetection:
         self.length = length
         self.shape = shape
         self.symmetry = symmetry
+        self.colour = colour
+        self.colour_score = colour_score
+        # Fraction of contributing views that agreed on the colour. 1.0 across
+        # several views is the strongest evidence this pipeline produces about a
+        # block's identity -- much stronger than the footprint, which is the part
+        # that has been wrong four times this week.
+        self.colour_agree = colour_agree
         self.n_views = n_views
         self.spread_m = spread_m            # max deviation from the fused centre
         self.spread_yaw_rad = spread_yaw_rad
@@ -1062,11 +1316,12 @@ class FusedDetection:
         return x, y, zone.zone_yaw_to_world(self.zyaw)
 
     def __repr__(self):
-        return ("FusedDetection(zone=(%.4f, %.4f) yaw=%.1fdeg %s %.1fx%.1fmm "
-                "views=%d spread=%.1fmm/%.1fdeg)"
-                % (self.zx, self.zy, math.degrees(self.zyaw), self.shape,
-                   self.width * 1000.0, self.length * 1000.0, self.n_views,
-                   self.spread_m * 1000.0, math.degrees(self.spread_yaw_rad)))
+        return ("FusedDetection(zone=(%.4f, %.4f) yaw=%.1fdeg %s %s "
+                "%.1fx%.1fmm views=%d spread=%.1fmm/%.1fdeg)"
+                % (self.zx, self.zy, math.degrees(self.zyaw), self.colour,
+                   self.shape, self.width * 1000.0, self.length * 1000.0,
+                   self.n_views, self.spread_m * 1000.0,
+                   math.degrees(self.spread_yaw_rad)))
 
 
 class FusedResult:
@@ -1190,10 +1445,23 @@ def fuse_detections(per_view_blocks, match_radius_m=MATCH_RADIUS_M):
             zyaw = 0.0
             spread_yaw = 0.0
 
+        # COLOUR BY MAJORITY, with the agreement recorded rather than discarded.
+        # An "unknown" view is a view that saw the block and could not name it,
+        # so it votes like any other -- suppressing it would let one confident
+        # view of a shaded facet name a block on its own.
+        colours = [getattr(d, "colour", "unknown") for d in cluster]
+        colour = max(set(colours), key=colours.count)
+        colour_agree = colours.count(colour) / float(len(colours))
+        matching = [getattr(d, "colour_score", 0.0)
+                    for d in cluster if getattr(d, "colour", None) == colour]
+        colour_score = (sum(matching) / len(matching)) if matching else 0.0
+
         spread = max(math.hypot(d.zx - zx, d.zy - zy) for d in cluster)
         fused.append(FusedDetection(zx, zy, zyaw, width, length, shape,
                                     symmetry, len(cluster), spread,
-                                    spread_yaw, list(cluster)))
+                                    spread_yaw, list(cluster),
+                                    colour=colour, colour_score=colour_score,
+                                    colour_agree=colour_agree))
     fused.sort(key=lambda f: -f.n_views)
     return fused
 

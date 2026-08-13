@@ -753,6 +753,10 @@ class Detector:
                   "unavailable, positions are unaffected" % (wire.TOPIC, exc))
             self.wire = None
         self.last_block_tags = []
+        # The wire's own block list from the last still, kept for the COLOUR
+        # join in _response_to_detections. Same frame, same order as the service
+        # response, so the join is by index -- and checked there.
+        self.last_wire_blocks = []
 
     def wait_for_service(self, timeout=15.0):
         if self.client.wait_for_service(timeout_sec=timeout):
@@ -817,6 +821,11 @@ class Detector:
                      math.degrees(block.yaw), block.width * 1000,
                      block.length * 1000, block.shape, block.symmetry))
         self.last_block_tags = self._collect_block_tags()
+        self.last_wire_blocks = self._collect_wire_blocks()
+        for index, b in enumerate(self.last_wire_blocks):
+            if getattr(b, "colour", "unknown") != "unknown":
+                print("[detect]   [%d] colour %s (%.2f)"
+                      % (index, b.colour, b.colour_score))
         for tag in self.last_block_tags:
             where = ("zone (%+.1f, %+.1f) mm" % (tag.zone_xy[0] * 1000,
                                                  tag.zone_xy[1] * 1000)
@@ -829,6 +838,19 @@ class Detector:
             print("[detect]   no block tags in this still -- nothing here "
                   "identifies which block is which")
         return response if response.success else None
+
+    def _collect_wire_blocks(self):
+        """The wire's blocks from the still just taken. Best effort, like tags.
+
+        Does NOT spin: _collect_block_tags has already waited for this same
+        message and left it in self.wire.latest, so spinning again here would
+        risk picking up the NEXT free-running publication -- a message from a
+        frame the arm has since moved away from, which is precisely the stale
+        pairing the index join refuses.
+        """
+        if self.wire is None or self.wire.latest is None:
+            return []
+        return list(self.wire.latest.blocks)
 
     def _collect_block_tags(self):
         """Block tags from the still just taken, off the wire topic.
@@ -865,17 +887,43 @@ class Detector:
         return c * dx + s * dy, -s * dx + c * dy
 
 
-def _response_to_detections(response):
+def _response_to_detections(response, wire_blocks=()):
     """The service's BlockDetection[] as zone_vision.Detection objects.
 
     fuse_detections only reads zone-local fields, so the world-frame ones are
     left out on purpose -- they are derived from the caller's zone survey and
     would add the survey's error to a comparison between views that all share it.
+
+    COLOUR IS JOINED BY INDEX, from the wire. DetectBlock.srv carries no colour
+    -- see detection_wire.py schema 3 for why it stays off the interface -- but
+    both lists are built from the same `result.blocks` in the same order in the
+    same callback, so index IS the join key and it is exact.
+
+    The join is CHECKED, not assumed. If the two lists differ in length the wire
+    message came from a different frame (the node free-runs, and a stale message
+    is exactly what Detector.detect clears `latest` to prevent) -- and pairing a
+    colour with the wrong contour is worse than having no colour, because it puts
+    a confident wrong name on a real position. So: drop the colours, say so, and
+    let the caller refuse for want of an identity.
     """
-    return [zv.Detection(zx=b.zx, zy=b.zy, zyaw=b.zyaw, width=b.width,
-                         length=b.length, shape=b.shape, symmetry=b.symmetry,
-                         fill_ratio=b.fill_ratio, area_px=b.area_px, box_px=None)
-            for b in response.blocks]
+    wire_blocks = list(wire_blocks or ())
+    if wire_blocks and len(wire_blocks) != len(response.blocks):
+        print("[detect] the wire reported %d block(s) and the service %d -- "
+              "not the same frame, so colour is DROPPED for this still rather "
+              "than joined to the wrong contour."
+              % (len(wire_blocks), len(response.blocks)))
+        wire_blocks = []
+    out = []
+    for index, b in enumerate(response.blocks):
+        colour, score = "unknown", 0.0
+        if index < len(wire_blocks):
+            colour = getattr(wire_blocks[index], "colour", "unknown")
+            score = float(getattr(wire_blocks[index], "colour_score", 0.0))
+        out.append(zv.Detection(
+            zx=b.zx, zy=b.zy, zyaw=b.zyaw, width=b.width, length=b.length,
+            shape=b.shape, symmetry=b.symmetry, fill_ratio=b.fill_ratio,
+            area_px=b.area_px, box_px=None, colour=colour, colour_score=score))
+    return out
 
 
 def promote_tagged_tops_to_square(detections, block_tags):
@@ -1153,7 +1201,7 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
 
         used += 1
         ids.update(response.tag_ids)
-        view = _response_to_detections(response)
+        view = _response_to_detections(response, detector.last_wire_blocks)
         # Before fusing, not after: each still has its own lens height and its
         # own nadir, so the correction is per-still. Fusing first would average
         # views taken at different heights and then apply one wrong factor.
@@ -1411,6 +1459,89 @@ def drop_zone_furniture(fused, zone_size, tag_size):
               % (f.width * 1000, f.length * 1000, f.zx * 1000, f.zy * 1000,
                  limit * 1000))
     return kept
+
+
+# Below this fused colour score a contour is left UNIDENTIFIED rather than
+# named. 0.45 is a hue within ~10 units (~20 deg) of a prototype, which on the
+# painted wooden set is comfortable; the point of the gate is to catch a shaded
+# facet or a half-mat blob landing between two prototypes, where the nearest one
+# wins by default and means nothing.
+COLOUR_MIN_SCORE = 0.45
+
+# ... and below this fraction of AGREEING views. Two views calling a block two
+# different colours is not a weak measurement, it is a contradiction -- the same
+# argument select_block makes about disagreeing positions. 0.6 lets 2-of-3
+# through and stops 1-of-2.
+COLOUR_MIN_AGREE = 0.6
+
+
+def identify_blocks_by_colour(fused, min_score=COLOUR_MIN_SCORE,
+                              min_agree=COLOUR_MIN_AGREE):
+    """-> {index into fused: colour name}. The AprilTag-free identity path.
+
+    Same contract as identify_blocks -- an index-keyed dict that select_block
+    consumes unchanged -- so the two are interchangeable and the caller picks
+    which one supplies identity. That is the whole reason select_block takes an
+    `identity` dict rather than reading tags itself.
+
+    THREE REASONS A CONTOUR GOES UNNAMED, each printed, because they want
+    different fixes:
+
+      - `unknown`: no prototype was within COLOUR_MAX_HUE_DIST. A colour we have
+        no entry for, or an achromatic blob (a white block on a white mat is not
+        separable at all -- see zone_vision.find_blocks).
+      - low score: a hue sitting between two prototypes. Usually a blob that is
+        part mat or part shaded side wall.
+      - low agreement: the views disagreed. Lighting, or a merged contour whose
+        two blocks are different colours -- which is worth knowing, because that
+        contour must not be grasped at all.
+
+    DUPLICATES ARE ALLOWED AND REPORTED, unlike the tag path, where two contours
+    claiming one class is a conflict. Two red blocks on the mat is an ordinary
+    scene; the caller decides between them on position and agreement, and
+    select_block already ranks by agreement.
+    """
+    identity = {}
+    for index, f in enumerate(fused):
+        colour = getattr(f, "colour", "unknown")
+        score = float(getattr(f, "colour_score", 0.0))
+        agree = float(getattr(f, "colour_agree", 1.0))
+        where = ("contour %d at zone (%+.1f, %+.1f) mm"
+                 % (index, f.zx * 1000, f.zy * 1000))
+        if colour == "unknown":
+            print("[identify] %s has no colour this build recognises -- left "
+                  "unidentified" % where)
+            continue
+        if score < min_score:
+            print("[identify] %s looks %s but only scores %.2f (need %.2f) -- "
+                  "left unidentified. A hue between two prototypes is usually a "
+                  "blob that is part mat or part shaded side wall."
+                  % (where, colour, score, min_score))
+            continue
+        if agree < min_agree:
+            print("[identify] %s: only %.0f%% of its %d view(s) agreed it is %s "
+                  "(need %.0f%%) -- left unidentified. Views that disagree on "
+                  "colour can also mean ONE contour over TWO blocks."
+                  % (where, agree * 100, f.n_views, colour, min_agree * 100))
+            continue
+        identity[index] = colour
+        print("[identify] %s is %s (score %.2f, %.0f%% of %d view(s) agree)"
+              % (where, colour, score, agree * 100, f.n_views))
+
+    named = {}
+    for index, colour in identity.items():
+        named.setdefault(colour, []).append(index)
+    for colour, indices in sorted(named.items()):
+        if len(indices) > 1:
+            print("[identify] NOTE: %d contours are %s (%s). Not a conflict -- "
+                  "select_block will rank them by view agreement."
+                  % (len(indices), colour,
+                     ", ".join(str(i) for i in indices)))
+    if not identity:
+        print("[identify] nothing was named by colour. Is the detector running "
+              "with method:=colour? block_detector_node.py logs the colour of "
+              "every contour it finds.")
+    return identity
 
 
 def identify_blocks(fused, block_tags):
@@ -1696,6 +1827,88 @@ def grasp_clearance(target, others, jaw_axis_deg):
             if worst is None or gap < worst:
                 worst, blocker = gap, index
     return worst >= 0.0, worst, blocker
+
+
+# Offset from the block's MAJOR (long) axis to the wrist yaw commanded for the
+# grasp, degrees.
+#
+# THIS IS AN UNVERIFIED HARDWARE CONVENTION AND IT HAS NEVER MATTERED UNTIL NOW.
+#
+# What is verified: zone_vision's zyaw is the footprint's MAJOR axis (see the
+# note in find_blocks, and test_rectangle asserts it), and the jaws must close
+# across the SHORT side, because that is the only side narrower than the aperture
+# on most of this block set. So the closing axis has to end up perpendicular to
+# the major axis.
+#
+# What is NOT verified: whether pick_place's `block_yaw_deg` names the CLOSING
+# AXIS or the BLOCK'S MAJOR AXIS. The two differ by exactly 90 deg, and for a
+# 30 mm CUBE -- every block this project has grasped, on every run, ever --
+# reduce_yaw(.., 4) folds 90 deg away, so both conventions produce the identical
+# wrist angle and no run has ever been able to distinguish them.
+#
+# DEFAULT 0, WHICH IS TODAY'S BEHAVIOUR EXACTLY. Changing it would rotate every
+# validated grasp, so it does not change until something has watched an
+# ELONGATED block at the park and said which way the fingers point. That is a
+# five-second observation with --dry-run and --confirm; grasp_yaw_report() below
+# prints the two numbers to compare against.
+#
+# AND NOTE WHAT DOES *NOT* CATCH THIS: grip_span_ok checks the block's geometry,
+# not the wrist. It refuses a block whose short side is wider than the aperture,
+# which is a different question -- with the offset wrong, a 61 x 30.5 mm block
+# passes the span check and the jaws still close on the long axis. Only the
+# operator at the park catches it. Do not run an elongated block unattended
+# until this constant is settled.
+GRASP_YAW_FROM_MAJOR_DEG = 0.0
+
+
+def grasp_yaw_report(block, grasp_yaw_deg, zone_yaw_deg, label="block"):
+    """Print what the wrist is about to do against what the block needs.
+
+    Exists so the GRASP_YAW_FROM_MAJOR_DEG question is answerable by looking,
+    rather than by reasoning about a convention nothing has written down.
+    """
+    major_world = math.degrees(block.zyaw) + zone_yaw_deg
+    print("[grip] %s: %.1f mm short side x %.1f mm long side. Its LONG axis "
+          "lies at %+.1f deg in the world; the wrist is commanded to %+.1f deg."
+          % (label, block.width * 1000, block.length * 1000,
+             major_world, grasp_yaw_deg))
+    if block.width < block.length * 0.9:
+        print("[grip]   ELONGATED, so the two conventions are distinguishable "
+              "here: the fingers must end up spanning the %.1f mm side. LOOK AT "
+              "THE JAWS at the park -- if they are lined up to close on the "
+              "%.1f mm side instead, set GRASP_YAW_FROM_MAJOR_DEG to 90."
+              % (block.width * 1000, block.length * 1000))
+
+
+def grip_span_ok(block, aperture_m=None, label="block"):
+    """Can the jaws open wide enough for this block's SHORT side? -> (ok, span_m)
+
+    The jaws close across the short side (see jaw_footprint_rects), so `width` is
+    the span they have to open to. This is a check on the BLOCK, not on the
+    wrist -- see GRASP_YAW_FROM_MAJOR_DEG for why that distinction matters and
+    what this does not protect against.
+
+    JAW_APERTURE_OPEN_M IS A GUESS (JAW_GEOMETRY_MEASURED is False). So this is
+    a REFUSAL WITH THE NUMBERS PRINTED, not a silent filter: the operator can see
+    both figures and decide, and one caliper reading turns the guess into a fact.
+    """
+    if aperture_m is None:
+        aperture_m = JAW_APERTURE_OPEN_M
+    span = float(block.width)
+    ok = span <= aperture_m
+    if not ok:
+        print("[grip] REFUSING the %s: the jaws must close across its SHORT "
+              "side, %.1f mm, and the open aperture is %.1f mm. Its long side "
+              "is %.1f mm."
+              % (label, span * 1000, aperture_m * 1000, block.length * 1000))
+        print("[grip]   Turn it onto a narrower face. On this block set every "
+              "graspable dimension is 1.4 in (35.6 mm) or less -- 1.6 in is "
+              "40.6 mm and already over.")
+        if not JAW_GEOMETRY_MEASURED:
+            print("[grip]   NOTE: JAW_APERTURE_OPEN_M is an UNMEASURED estimate. "
+                  "Caliper the open jaws at GRIPPER_OPEN and set "
+                  "JAW_GEOMETRY_MEASURED = True before trusting this refusal.")
+    return ok, span
 
 
 def candidate_jaw_axes_deg(base_deg, symmetry):

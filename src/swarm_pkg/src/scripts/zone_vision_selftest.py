@@ -98,6 +98,51 @@ def render_zone(zone, blocks=(), skip_tags=()):
     return img
 
 
+def render_zone_colour(zone, blocks=(), skip_tags=(), mat_bgr=(242, 242, 242)):
+    """Colour version of render_zone. blocks: [(zx, zy, yaw, w, l, bgr)].
+
+    A WHITE mat, not the grey one, because that is the physical case the colour
+    method is built around: the mat has no saturation and the blocks do (see
+    zone_vision.COLOUR_SAT_MIN). Rendering onto grey would let a saturation
+    threshold pass for the wrong reason.
+
+    The tags are drawn from the grayscale renderer and copied into all three
+    channels, so they stay achromatic -- which is exactly why the colour
+    segmentation drops them without needing flatten_tags.
+    """
+    grey = render_zone(zone, blocks=(), skip_tags=skip_tags)
+    img = np.full((CANVAS, CANVAS, 3), mat_bgr, np.uint8)
+    tags = grey != MAT_GREY
+    img[tags] = np.stack([grey[tags]] * 3, axis=-1)
+
+    half = zone.zone_size / 2.0
+    del half
+    for zx, zy, yaw, width, length, bgr in blocks:
+        c, s = math.cos(yaw), math.sin(yaw)
+        corners = []
+        for dx, dy in ((-1, -1), (+1, -1), (+1, +1), (-1, +1)):
+            ox, oy = dx * length / 2.0, dy * width / 2.0
+            corners.append(_zone_to_render_px(zx + c * ox - s * oy,
+                                              zy + s * ox + c * oy))
+        cv2.fillConvexPoly(img, np.array(corners, np.int32),
+                           tuple(int(v) for v in bgr))
+    return img
+
+
+# BGR values for the painted wooden set, taken as saturated mid-tones rather
+# than measured -- these test the CODE's hue arithmetic, not the paint. The real
+# thresholds get settled against a frames corpus (APRIL_TAGS_DEV.md, open #1).
+COLOUR_SWATCHES = {
+    "red":    (40, 40, 210),
+    "orange": (40, 130, 235),
+    "yellow": (50, 210, 225),
+    "green":  (60, 170, 70),
+    "blue":   (200, 90, 40),
+    "purple": (150, 50, 120),
+    "pink":   (170, 105, 235),
+}
+
+
 def perspective_warp(img, rng, strength=0.06):
     """Imitate viewing the mat from an off-axis camera pose."""
     h, w = img.shape[:2]
@@ -612,9 +657,240 @@ def main():
 
     # Method-independent: this is fusion arithmetic, not segmentation.
     test_shape_symmetry_consistency(failures)
+    test_block_set_fits_the_filters(failures)
+    test_colour_names_are_stable(failures)
+    test_colour_classifier(failures)
+    test_colour_segmentation(failures)
+    test_colour_fusion(failures)
 
     print("\n%d failure(s)" % len(failures))
     return 1 if failures else 0
+
+
+# The longest dimension in the geometric block set: 2.4 in. Stated here so
+# MAX_BLOCK_LENGTH_M is checked against a physical fact rather than remembered.
+BLOCK_SET_LONGEST_M = 2.4 * 0.0254          # 60.96 mm
+BLOCK_SET_WIDEST_ASPECT = 2.4 / 0.6         # the purple bar, 61.0 x 15.2 mm
+
+
+def test_block_set_fits_the_filters(failures):
+    """The size filters must not reject the blocks we intend to pick.
+
+    THE BUG THIS PINS: MAX_BLOCK_LENGTH_M was 0.060 and the set's longest block
+    is 0.0610, so every 2.4 in block was rejected on every frame -- silently, as
+    an empty zone. Found 2026-08-12 by rendering one. MAX_BLOCK_ASPECT was 4.0
+    against the purple bar's 4.01, rejecting it by 0.3%.
+    """
+    print("\n--- the block set fits the size filters ---")
+    failures.check(zv.MAX_BLOCK_LENGTH_M > BLOCK_SET_LONGEST_M,
+                   "MAX_BLOCK_LENGTH_M (%.1f mm) admits the longest block "
+                   "(%.1f mm)" % (zv.MAX_BLOCK_LENGTH_M * 1000,
+                                  BLOCK_SET_LONGEST_M * 1000))
+    # ... and with room for the over-read this detector is known to have.
+    failures.check(zv.MAX_BLOCK_LENGTH_M > BLOCK_SET_LONGEST_M * 1.15,
+                   "and with >15% headroom for the size over-read",
+                   "%.1f mm vs %.1f mm needed"
+                   % (zv.MAX_BLOCK_LENGTH_M * 1000,
+                      BLOCK_SET_LONGEST_M * 1.15 * 1000))
+    failures.check(zv.MAX_BLOCK_ASPECT > BLOCK_SET_WIDEST_ASPECT,
+                   "MAX_BLOCK_ASPECT (%.1f) admits the purple bar (%.2f)"
+                   % (zv.MAX_BLOCK_ASPECT, BLOCK_SET_WIDEST_ASPECT))
+    # It must still reject what it exists to reject: the printed grid slivers ran
+    # 121-134 mm long.
+    failures.check(zv.MAX_BLOCK_LENGTH_M < 0.121,
+                   "and still rejects the 121 mm grid slivers")
+
+
+def test_colour_names_are_stable(failures):
+    """COLOUR_NAMES is a WIRE FORMAT. Index 0 must be "unknown" and the order
+    must not have been rearranged, because detection_wire sends the index and
+    both machines look it up in their own copy of this tuple. A reorder renames
+    every colour above the change, silently, on whichever machine is behind."""
+    print("\n--- colour names (a wire format) ---")
+    failures.check(zv.COLOUR_NAMES[0] == "unknown",
+                   "index 0 is 'unknown' so a default message means 'no answer'",
+                   "index 0 is %r" % (zv.COLOUR_NAMES[0],))
+    failures.check(len(set(zv.COLOUR_NAMES)) == len(zv.COLOUR_NAMES),
+                   "no duplicate colour names")
+    # PINNED ORDER. Update this list ONLY by appending, and only together with
+    # both machines. If this fails, someone inserted or reordered.
+    expected = ("unknown", "red", "orange", "yellow", "green", "blue",
+                "purple", "pink", "white", "wood")
+    failures.check(zv.COLOUR_NAMES[:len(expected)] == expected,
+                   "the first %d wire indices are unchanged" % len(expected),
+                   "got %r" % (zv.COLOUR_NAMES[:len(expected)],))
+    for index, name in enumerate(zv.COLOUR_NAMES):
+        failures.check(zv.colour_index(name) == index,
+                       "%r round-trips to index %d" % (name, index))
+        failures.check(zv.colour_name(index) == name,
+                       "index %d round-trips to %r" % (index, name))
+    failures.check(zv.colour_index("chartreuse") == 0,
+                   "an unknown name maps to 0, not to a guess")
+    failures.check(zv.colour_name(len(zv.COLOUR_NAMES) + 5) == "unknown",
+                   "an out-of-range index says 'unknown' rather than indexing "
+                   "off the end")
+    # Every chromatic prototype must be a NAME, or classify_colour can return a
+    # colour the wire cannot carry.
+    for name in zv.COLOUR_HUES:
+        failures.check(name in zv.COLOUR_NAMES,
+                       "prototype %r is in COLOUR_NAMES" % name)
+
+
+def test_colour_classifier(failures):
+    """classify_colour on flat patches, plus the two traps it exists to avoid."""
+    print("\n--- colour classifier ---")
+    mask = np.full((20, 20), 255, np.uint8)
+    for name, bgr in sorted(COLOUR_SWATCHES.items()):
+        patch = np.full((20, 20, 3), bgr, np.uint8)
+        hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+        got, score = zv.classify_colour(hsv, mask)
+        failures.check(got == name, "a %s patch classifies as %s" % (name, name),
+                       "got %r (score %.2f)" % (got, score))
+        failures.check(score > 0.5, "%s scores above 0.5" % name,
+                       "%.2f" % score)
+
+    # RED WRAPS. A red slightly on the 179 side must not become pink or unknown;
+    # this is the case a linear hue distance gets wrong, and the reason
+    # _hue_distance is circular.
+    for hue in (0, 2, 178, 179):
+        patch = np.full((20, 20, 3), (0, 0, 0), np.uint8)
+        patch[:, :] = cv2.cvtColor(
+            np.full((1, 1, 3), (hue, 200, 200), np.uint8),
+            cv2.COLOR_HSV2BGR)[0, 0]
+        hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+        got, _ = zv.classify_colour(hsv, mask)
+        failures.check(got == "red", "hue %d is red across the 0/179 wrap" % hue,
+                       "got %r" % got)
+
+    # ACHROMATIC FIRST. A near-grey pixel has a numerically defined and
+    # physically meaningless hue; deciding on it is how a white block becomes
+    # "pink".
+    white = np.full((20, 20, 3), (235, 235, 235), np.uint8)
+    got, _ = zv.classify_colour(cv2.cvtColor(white, cv2.COLOR_BGR2HSV), mask)
+    failures.check(got == "white", "a white patch is white, not a hue",
+                   "got %r" % got)
+    failures.check(zv.classify_colour(None, mask)[0] == "unknown",
+                   "no image is 'unknown', not a crash")
+    failures.check(zv.classify_colour(
+        cv2.cvtColor(white, cv2.COLOR_BGR2HSV),
+        np.zeros((20, 20), np.uint8))[0] == "unknown",
+        "an empty mask is 'unknown', not a crash")
+
+
+def test_colour_segmentation(failures):
+    """End to end: three coloured blocks on a white mat, found and named."""
+    print("\n--- colour segmentation ---")
+    rng = np.random.default_rng(7)
+    zone = zv.zone_for("pickup")
+    size = 0.0305                                   # 1.2 in, the set's unit
+    # TWO blocks, not three. The usable half-extent is 23.1 mm, so the usable box
+    # is 46.2 mm across -- and two 30.5 mm blocks already need ~40 mm of centre
+    # spacing to segment as two contours. A third would overlap one of them and
+    # the test would be measuring the merge, not the colour.
+    placed = [(-0.019, -0.008, 0.0, size, size, COLOUR_SWATCHES["orange"]),
+              (+0.019, +0.008, 0.4, size, size, COLOUR_SWATCHES["green"])]
+    img = perspective_warp(render_zone_colour(zone, placed), rng, strength=0.03)
+    res = zv.analyze(img, zone, method="colour")
+    if not failures.check(res.success, "colour analyze succeeded", res.message):
+        return
+    found = {b.colour: b for b in res.blocks}
+    for want in ("orange", "green"):
+        failures.check(want in found, "the %s block was found and named" % want,
+                       "found %s" % sorted(b.colour for b in res.blocks))
+
+    # The elongated case, ALONE in the zone: a 61 mm block leaves no room for a
+    # neighbour in a 4 in zone anyway, which is itself worth knowing.
+    long_scene = [(0.0, 0.0, 0.0, size, 0.0610, COLOUR_SWATCHES["blue"])]
+    res_l = zv.analyze(perspective_warp(render_zone_colour(zone, long_scene),
+                                        rng, strength=0.02),
+                       zone, method="colour")
+    found_l = {b.colour: b for b in res_l.blocks}
+    failures.check("blue" in found_l, "the 61 mm blue block was found and named",
+                   "found %s" % sorted(b.colour for b in res_l.blocks))
+    if "blue" in found_l:
+        b = found_l["blue"]
+        # The elongated one: width must be the SHORT side, which is what the
+        # aperture check and the jaw axis both depend on.
+        failures.check(b.width < b.length, "the 61 mm block's width is its short "
+                       "side", "%.1f x %.1f mm" % (b.width * 1000,
+                                                   b.length * 1000))
+        failures.check(abs(b.length - 0.0610) < 0.006,
+                       "its long side measures ~61 mm",
+                       "%.1f mm" % (b.length * 1000))
+    # THE ONE THE COLOUR METHOD CANNOT DO, asserted so it stays a known absence
+    # rather than turning into a surprise: a white block on a white mat has no
+    # saturation step to threshold.
+    white_scene = [(0.0, 0.0, 0.0, size, size, (242, 242, 242))]
+    res_w = zv.analyze(perspective_warp(render_zone_colour(zone, white_scene),
+                                        rng, strength=0.03),
+                       zone, method="colour")
+    failures.check(res_w.success and not res_w.blocks,
+                   "a white block on a white mat is an ABSENCE, not a bad "
+                   "position", "found %d block(s)" % len(res_w.blocks))
+    # And method="colour" handed a grayscale frame must degrade, not crash.
+    grey = render_zone(zone, [(0.0, 0.0, 0.0, size, size)])
+    res_g = zv.analyze(grey, zone, method="colour")
+    failures.check(res_g.success,
+                   "method='colour' on a grayscale frame falls back to canny",
+                   res_g.message)
+
+
+def test_colour_fusion(failures):
+    """Colour survives fusion by majority, with the agreement recorded."""
+    print("\n--- colour fusion ---")
+
+    def det(zx, zy, colour, score):
+        return zv.Detection(zx=zx, zy=zy, zyaw=0.1, width=0.030, length=0.031,
+                            shape="square", symmetry=4, fill_ratio=0.95,
+                            area_px=900.0, box_px=None, colour=colour,
+                            colour_score=score)
+
+    # Three views, two agree.
+    fused = zv.fuse_detections([[det(0.01, 0.0, "orange", 0.9)],
+                                [det(0.0102, 0.0001, "orange", 0.8)],
+                                [det(0.0099, -0.0002, "red", 0.6)]])
+    failures.check(len(fused) == 1, "the three views fused to one block",
+                   "%d blocks" % len(fused))
+    if fused:
+        f = fused[0]
+        failures.check(f.colour == "orange", "majority colour wins",
+                       "got %r" % f.colour)
+        failures.check(abs(f.colour_agree - 2.0 / 3.0) < 1e-9,
+                       "agreement is 2 of 3", "%.3f" % f.colour_agree)
+        # The score averages only the AGREEING views -- folding the outvoted
+        # view's score in would let a confident wrong view raise the confidence
+        # of the answer that beat it.
+        failures.check(abs(f.colour_score - 0.85) < 1e-9,
+                       "the score averages the agreeing views only",
+                       "%.3f" % f.colour_score)
+
+    # A split vote must still be resolvable but must NOT read as agreement.
+    split = zv.fuse_detections([[det(0.01, 0.0, "orange", 0.9)],
+                                [det(0.0101, 0.0, "red", 0.9)]])
+    failures.check(split and abs(split[0].colour_agree - 0.5) < 1e-9,
+                   "a 1-1 split records 50% agreement, not 100%",
+                   "%.3f" % (split[0].colour_agree if split else -1))
+
+    # And the gate that consumes it. Imported here so the selftest does not need
+    # rclpy at module import time on a machine without ROS.
+    try:
+        import tag_pick_place as tpp
+    except Exception as exc:                                # noqa: BLE001
+        print("  (skipping the identity gate: %s)" % exc)
+        return
+    named = tpp.identify_blocks_by_colour(fused)
+    failures.check(named == {0: "orange"}, "2-of-3 agreement is accepted",
+                   "got %r" % (named,))
+    failures.check(tpp.identify_blocks_by_colour(split) == {},
+                   "a 1-1 split is left UNIDENTIFIED rather than guessed")
+    weak = zv.fuse_detections([[det(0.01, 0.0, "orange", 0.10)],
+                               [det(0.0101, 0.0, "orange", 0.10)]])
+    failures.check(tpp.identify_blocks_by_colour(weak) == {},
+                   "unanimous but low-scoring is left UNIDENTIFIED")
+    none = zv.fuse_detections([[det(0.01, 0.0, "unknown", 0.0)],
+                               [det(0.0101, 0.0, "unknown", 0.0)]])
+    failures.check(tpp.identify_blocks_by_colour(none) == {},
+                   "'unknown' is never promoted to a name")
 
 
 if __name__ == "__main__":

@@ -2264,3 +2264,588 @@ H's residual was already zero and its required offset is identical on either sig
 convention. Only a pose with a **non-zero** residual tests a sign. The same shape
 of mistake produced "the tool frame is ruled out", asserted from one pose read by
 eye and wrong — one pose cannot separate two frames that coincide there.
+
+
+# 2026-08-12 — THE FIRST TWO-BLOCK STACK, AND WHAT IT COST
+
+`stack_blocks.py` surveyed both zones, picked the orange cube, placed it at the
+centre of the place zone, went back, picked the green cube and set it on top.
+Level 0 landed dead centre; level 1 landed square on level 0. **Zero nudges on
+either block** — `pick_nudge_steps` and `place_nudge_steps` are empty on both
+rows, so the whole thing was open loop.
+
+Rows **217 and 218** of `calibration_history.jsonl`, `kind: "place"`,
+`grasped: true / released: true / stacked: true` on each.
+
+## The numbers
+
+| | level 0 (orange) | level 1 (green) |
+|---|---|---|
+| pick world | (0.18948, −0.02007) | (0.21859, +0.02563) |
+| pick bearing / radius | −6.05° / 190.5 mm | +6.69° / 220.1 mm |
+| pick in zone | (+23.6, −17.9) mm | (−22.7, +10.4) mm |
+| views fused / spread | **2** / 1.63 mm | **2** / 1.84 mm |
+| grasp yaw commanded | −6.21° | +29.33° |
+| flange FK z at grasp | 0.14503 (**−0.47 mm**) | 0.14438 (**−1.12 mm**) |
+| release flange z | 0.1455 | 0.1755 (+30.0 mm) |
+| place XY commanded | (0.009491, 0.231756) | **identical, to the last digit** |
+
+Three things worth keeping out of that table:
+
+1. **The common-mode cancellation argument held.** Both levels were commanded to
+   the same place XY because the place target is the surveyed origin, computed
+   once. The two blocks were grasped 54.2 mm apart in the zone, at bearings 12.7°
+   apart and radii 30 mm apart, so their grasp residuals were genuinely
+   independent — and the stack still came out square. That is the prediction in
+   `stack_blocks.py` design decision 4, tested rather than argued.
+2. **Two views, not five.** `MULTIVIEW_YAW_OFFSETS_DEG` takes five stills;
+   `fuse_detections` got two usable detections out of them on both blocks. It
+   worked anyway, but the per-run vision noise budget assumes 3–5 views, and at
+   n=2 there is no median to take and no outlier to reject. Same disease as
+   below.
+3. **The descent lands 0.5–1.1 mm short in z, and not by the same amount twice.**
+   0.65 mm of difference between two grasps 30 mm apart in radius. Absorbed by the
+   gripper's compliance today. It is the only hint on the ledger about level-0 vs
+   level-1 droop, which is still unmeasured.
+
+## What went wrong: the transit height, and it is a separate concept
+
+Carrying block 1 to the place zone, **the carried block struck block 2 and moved
+it**. Not a planning failure, not a clearance-check failure — the clearance check
+is about the open jaws at the grasp and it passed correctly. Pure arithmetic:
+
+```
+retreat after grasp   = hover_z_for(...) = grasp_z + APPROACH_HEIGHT
+                      = 0.1455 + 0.040          = 0.1855
+carried block bottom  = 0.1855 - GRASP_OFFSET_Z - h/2   = 0.0360
+a block on the mat    = MAT_SURFACE_Z + h               = 0.0260
+                                             clearance  =  10.0 mm
+```
+
+and the recorded bearings put the sweep directly over it: block 1 at −6.1°,
+block 2 at **+6.7°**, place zone at +87.7°, so 94° of J1 rotation passes over
+block 2 at 10 mm. The sweep is an unconstrained OMPL free-space plan — nothing
+holds z between the endpoints, and with no response adapters there is not even a
+time profile to reason about. The endpoint heights are the only lever.
+
+**`APPROACH_HEIGHT` was never a transit clearance.** It is sized for the *descent*
+— long enough to arrive vertically, short enough to stay inside the reach
+envelope. A 30 mm block eats three quarters of it. Two different jobs sharing one
+constant, which is the shape of most of the bugs in this file.
+
+### Fixed
+
+`stack_blocks.py`: `TRANSIT_CLEARANCE_M = 0.025`, `transit_flange_z()`,
+`traverse()`, `obstacle_top_z()`, `--transit-clearance-mm`. Every cross-zone move
+now goes: **straight-up Cartesian lift** (vertical, so it cannot sweep through
+anything) → **long planned sweep with both endpoints raised** → the existing
+approach. The return leg is raised too: the jaws come back over the stack they
+just built, and the release retreat leaves the arm at the place hover.
+
+The clearance is computed from the load, not the flange:
+`obstacle_top + clearance + h/2 + GRASP_OFFSET_Z`, which is the identity
+**`transit over an n-block pile == release_flange_z(n) + clearance`** — asserted
+in the selftest, so the two height derivations cannot drift apart silently. The
+empty-gripper case deliberately reuses the loaded formula: the fingertips sit
+~20 mm *higher* than a carried block's bottom face, so loaded is the conservative
+one and the return leg needs no second number — and no dependence on
+flange-to-fingertip, which is still unmeasured.
+
+Default gives **25.0 mm**, up from 10.0. Clamped, not asserted: a failed lift
+degrades to today's behaviour loudly rather than stopping a working run.
+
+### The ceiling is tight, and it is the same ceiling as level 2
+
+`MAX_HOVER_Z = 0.205` allows **29.5 mm** of transit clearance over a one-block
+pile and **nothing at all** over a two-block one. So a three-high stack is
+blocked twice over — the place hover inverts (design decision 3) *and* the arm
+cannot fly the third block in. One measured ceiling, two symptoms. Raising it
+means re-running `reach_probe.py`, not editing the constant.
+
+### OPEN — the level arc, which would remove the failure mode rather than derate it
+
+Raising both endpoints does not *guarantee* a level path, it only makes the dip
+that would have to happen a much larger one. The guarantee is available and
+cheap: **J1 alone rotates the flange on a horizontal circle at constant z and
+constant radius**, so a pure J1 joint goal is an exactly level arc. Take the joint
+state at the lifted pick pose, change only J1 to the destination bearing, send it
+as a joint goal via `pp.make_joint_goal_constraints` — the machinery
+`PoseMemory.replay` already uses — then fix the radius with a second move. Two
+moves, both with a geometric guarantee, and a single-waypoint goal each, which is
+what this JTC bridge actually executes.
+
+Not done today because it puts a new motion primitive on the hardware, and the
+height raise addresses what was actually knocked over.
+
+## Open, in priority order — reordered 2026-08-12, and the reason matters
+
+The 2026-08-11 list is a **calibration** list. Calibration is no longer the
+bottleneck: the grasp is at 0.33 mm mean / 0.58 mm RMS and a fully open-loop
+two-block stack just succeeded with no operator correction. **Perception is the
+bottleneck**, and the next step (a wider block set, identified by colour and
+shape, with no AprilTags) is entirely perception. So:
+
+1. **The footprint classifier.** Fourth distinct failure traced to it this week.
+   One 30 mm cube read 26×26 / 27×34 / 34×37 / 35×37 / 27×27 mm across five
+   stills of one run and fused to 23.9×30.0. It has already produced: the
+   `circle`/diagonal-grasp bug, the 34×44 centroid displacement, 216
+   `unknown sym=1` detections in a session, and the fusion inconsistency fixed
+   today. Every fix so far has been downstream of it. **Prerequisite: a frames
+   corpus on disk** (`--debug-image`, then replay offline). None exists.
+   Without this, nothing built on colour blobs can be trusted, because the
+   AprilTag rescue path is what has been quietly covering for it.
+2. **Measure the four jaw numbers** — aperture at `GRIPPER_OPEN`, finger
+   thickness, finger width, fingertip depth below the block top face — then set
+   `JAW_GEOMETRY_MEASURED = True`. Now blocking rather than merely untidy: the
+   aperture decides *which blocks in the new set can be grasped at all* (see
+   below), and it is a two-minute caliper job.
+3. **Two views is not five, and the log already names the mechanism.** On the
+   successful run, 4 of the 5 stills printed
+   `only 2 tag(s); 3 needed to VOTE on a block position` and were dropped by
+   `MULTIVIEW_MIN_TAGS = 3`. Separately, 3 of the 5 failed IK at
+   `DETECT_HOVER_Z = 0.255` (flange radii 0.2046–0.2060 with the `look_at_quat`
+   tilt) and fell back to 0.240, below the 220 mm focus floor — so those stills
+   were soft as well as tag-poor. Note the two are independent: the height
+   fallback still produced a homography; it was the **tag count** that
+   disqualified the views.
+
+   Why only two of four zone tags are visible per still is NOT in the log — the
+   candidates are framing (the lens measured 14.2 mm off the zone centre) and
+   gripper occlusion, and they need looking at, not guessing. Same instrument as
+   (1): run a survey with `--debug-image` and look at the frames. Fixing this is
+   the cheapest available reduction in fusion noise, because it is the difference
+   between fusing 2 views and fusing 5, and at n=2 there is no median to take and
+   no outlier to reject.
+
+   Also: put a floor under `views` before a grasp. Today a `views=1` detection
+   with `spread=0.0` is printed with a warning and is otherwise trusted.
+4. **The level arc** (above). Cheap, and it converts a derated failure mode into
+   an eliminated one.
+5. **Pickup mat tag 1** — reprint or clean it; and two tag squares currently
+   carry the place ids 4–7 6.4 mm apart, so check for a stray mat. Unchanged
+   from 2026-08-11, still a five-minute job, still capping a zone's trust radius
+   at 72 mm instead of 144 when it bites.
+6. **`J1_RESIDUAL_BIAS_DEG` 1.10 → 0.85.** Over-corrects by +0.25°, confirmed at
+   two radii, worth ~0.9 mm tangential. One constant, already measured.
+7. **Q2, the in-zone sweep.** Top-face parallax is 6.5 mm at the zone edge,
+   corrected in code, never tested off-centre since the correction landed. Was #1
+   on the 2026-08-11 list. Demoted because both blocks today sat 22–29 mm off
+   centre and were grasped without a nudge — which is weak evidence the
+   correction works, not proof, but it is no longer the thing most likely to
+   break the next run.
+8. **The survey's tangential error**, ~2.3 mm beyond isotropic taping error and
+   pose-organised (radial sd 1.08/1.13 mm vs tangential 3.56/2.60 in two bearing
+   groups; not yaw, dYaw sd 0.47°). Does not limit the grasp today. Will limit
+   any autonomous no-nudge run — and today's run *was* one, so this is rising.
+9. **The radial axis is not fitted.** Caliper-grade radial reads ~0 at all three
+   reaches, so it may need nothing; not established.
+10. **Harvest camera-vs-FK pairs.** Still the cheapest unused calibration data in
+    the project. Carried over from 2026-08-06, twice.
+11. **The robot was physically replaced 2026-08-11.** A contingency, not a task:
+    if a nudge ever under-delivers unexpectedly, re-measure the dead band first.
+
+
+# 2026-08-12 — STEP 2 DESIGN: THE WIDER BLOCK SET WITHOUT APRILTAGS
+
+Decisions and arithmetic settled before any of step 2 is built. `object_detection.py`
+(contributed) is assessed at the end.
+
+## The one inequality that governs the whole block set
+
+`MAX_HOVER_Z = 0.205` is a measured ceiling (`reach_probe.py`, 2026-07-27: 0.215
+is outside the workspace at *any* orientation). Everything vertical resolves
+against it. Write `g` for the **grasp height above the block's own base** — the
+height of the point in the block that the pads clamp — and `c` for the transit
+clearance:
+
+```
+transit flange z  =  obstacle_top + c + g + GRASP_OFFSET_Z  <=  MAX_HOVER_Z
+                  =  0.026        + c + g + 0.1345          <=  0.205
+
+                             g + c  <=  44.5 mm
+```
+
+That is the budget, for a traverse over one 30 mm block. Today: `g = 15`,
+`c = 25`, total 40. Before today's fix: `g = 15`, `c = 10`, total 25 — 19.5 mm of
+the budget simply unspent.
+
+Three consequences, and they decide the block set:
+
+1. **Grip LOW. Every millimetre of grasp height is a millimetre of transit
+   clearance given up.** This is the direct answer to "grasp at a fixed depth
+   below the top face": *no* — grasp at a fixed height above the **base**, as low
+   as the pads allow.
+2. **A block gripped near its top cannot be transported at all.** The 61 mm
+   pyramid gripped 15 mm below its apex has `g = 46`, so its transit flange z is
+   `0.026 + 0.025 + 0.046 + 0.1345 = 0.2315` — 26.5 mm above the ceiling. The
+   load hangs below the pads, and the ceiling is on the flange. Gripped 15 mm off
+   its base instead, the same block transits at 0.2005.
+3. The pre-grasp hover has its own, looser limit: `g <= 34.5 mm` before
+   `hover_z_for` starts clamping the 40 mm approach. **Transit binds first**, at
+   19.5 mm for `c = 25`. Nothing above `g = 34.5` has a vertical approach either.
+
+For the current cube, "fixed depth below the top", "mid-height" and "as low as
+the pads allow" all evaluate to 15 mm. That coincidence is why the question has
+had no visible answer so far.
+
+### What the rule cannot be until one number is measured
+
+`g` is bounded below by the pads hitting the mat and above by the pads leaving the
+side face, both set by the **vertical extent of the finger pad**, which is
+unmeasured (`JAW_GEOMETRY_MEASURED = False`). The rule is:
+
+```
+g = clamp( G_MIN, G_MIN, H - PAD_HALF_HEIGHT )      # prefer the floor
+```
+
+with a refusal when `G_MIN > H - PAD_HALF_HEIGHT`, i.e. the block is shorter than
+the pads can grip.
+
+There is a hint in the constants worth chasing with the caliper. `GRASP_OFFSET_Z`
+is 0.1345 flange-to-pad-centre, while `gripper_offset_probe.py` put the
+fingertips 0.114 below the flange — so the tips sit **20.5 mm above the pad
+centre**, which for a 30 mm cube gripped at its middle puts them 5.5 mm above the
+block's top face. Those two numbers cannot both mean what their comments say. The
+reading that makes them consistent is that the pad band is tall (~30 mm) and
+today's cube is gripped across essentially its whole face — which would predict
+that the **0.6 in (15.2 mm) slabs in this set are ungrippable**, and that is a
+prediction a caliper settles in two minutes.
+
+## Rest poses, not grasp heights
+
+Yes to "valid poses per block" — but the table stores **rest poses** and *derives*
+the grasp geometry. 18 blocks x up to 3 poses is ~40 hand-entered grasp heights,
+i.e. ~40 chances to typo a number that drives the jaws at the mat.
+
+Store per block: colour, shape family, the three dimensions.
+Derive per rest pose: footprint W x D, standing height H, top-face outline and its
+symmetry, the candidate jaw axes, `g`, the pre-grasp hover, the transit height.
+
+Pose counts fall out of the dimensions: a cuboid with three distinct dimensions
+has **3** rest-pose classes, with two equal **2**, a cube **1**. So yes — the
+2.4 x 1.2 x 1.2 green brick has two: lying (footprint 61 x 30.5, H 30.5) and
+standing on end (footprint 30.5 x 30.5, H 61). The 2.4 x 1.2 x 0.6 blue slab has
+three.
+
+### The aperture prunes the set harder than the vision does
+
+`JAW_APERTURE_OPEN_M = 0.040` — **also unmeasured**. Against it, every dimension
+in the set, in mm:
+
+| in | 0.6 | 0.8 | 1.0 | 1.2 | 1.4 | 1.6 | 1.7 | 2.2 | 2.4 |
+|---|---|---|---|---|---|---|---|---|---|
+| mm | 15.2 | 20.3 | 25.4 | 30.5 | 35.6 | 40.6 | 43.2 | 55.9 | 61.0 |
+| grasp? | yes | yes | yes | yes | tight | **no** | **no** | **no** | **no** |
+
+So **every grasp in this set is across a 1.4 in dimension or smaller**, and the
+grasp axis is forced for most blocks rather than chosen. Consequences worth having
+before building anything:
+
+- **The pink disc (2.2 in dia x 0.8 in) is ungraspable in its stable pose.** Lying
+  flat, every horizontal chord through its centre is 55.9 mm. Its one graspable
+  dimension, 20.3 mm, is vertical when it is lying down, and a disc on edge is not
+  a stable rest pose.
+- **The white sphere** is 30.5 mm and fits, but a sphere gives two tangent-point
+  contacts and will squirt out of a parallel-jaw squeeze.
+- **The cone, both pyramids and the frustum** taper, so the pads land on a slope
+  and the clamp drives the block *up and out*. Grip as low as possible or not at
+  all.
+- **The red rhombic prism (1.6 in) and the green cylinder (1.7 in)** need the
+  aperture measured before they are in or out.
+
+**Measuring the jaw aperture is now the highest-value two minutes available**, and
+that is why it moved to #2 on the open list. It decides the scope of the block set
+before a line of the classifier is written.
+
+## Telling a top face from a slanted side
+
+The honest first answer: **from directly overhead you do not have to.** For a
+right prism at zero offset from the lens nadir, no side wall is visible at all and
+the silhouette *is* the top face. The problem is entirely one of the block being
+off-axis.
+
+### The size of it, derived
+
+Lens height `h` above the mat, block height `H`, block centre offset `r` from the
+nadir, footprint half-width `a`. The silhouette in the mat plane is the union of
+the base outline, spanning `[r-a, r+a]`, and the top outline magnified about the
+nadir by `m = h/(h-H)`, spanning `[(r-a)m, (r+a)m]`.
+
+- For `r < a` — the block straddles the nadir — the magnified top contains the
+  base, the union is the top face alone, and `correct_top_face_parallax` is
+  **exact**.
+- For `r > a` the union's near edge is the *base* at `r-a` and its far edge is the
+  *magnified top* at `(r+a)m`. Scaling the whole contour by `1/m` restores the far
+  edge exactly and pulls the near edge inward to `(r-a)/m`, leaving
+
+```
+        footprint error  =  (r - a) * H / h            radial, biased LARGE
+        centroid error   =  half of that, inward
+```
+
+At `h = 0.240`, `H = 30`, `a = 15`: **+4.4 mm at r = 50 mm, +10.6 mm at
+r = 100 mm, zero at r <= 15 mm.** That is the right size and the right shape to
+account for the same 30.5 mm cube reading 34.7 x 37.4 and 35.2 x 37.6 in two
+stills of one run.
+
+`correct_top_face_parallax`'s docstring says "everything the contour finder
+measures — position AND footprint — is magnified about the nadir", and applies one
+`factor` to `zx`, `zy`, `width` and `length`. **That is true only of a contour
+lying wholly in the top-face plane.** For an off-nadir prism the contour is the
+union of two planes and is not a uniform magnification of anything. Not a wrong
+correction — a correction whose assumption expires with offset.
+
+**It does not explain everything, and saying so is the point.** The same run also
+produced 26.0 x 26.2 and a fused 23.9 x 30.0, i.e. readings 4–7 mm *small*, and
+this mechanism has one sign. So there are two mechanisms with opposite signs
+(under-covering segmentation is the obvious second candidate: a shaded edge
+clipped by the threshold), and averaging them is why the fused number lands
+near-ish while the spread is 9 mm.
+
+**The test that separates them needs no hardware.** From a frames corpus, plot
+footprint error against the block's offset from the image centre, per axis. The
+parallax residual must lie on `(r - a)·H/h` and must be **radial**; anything that
+does not is the other bug. This is the single strongest reason the corpus is #1 on
+the open list.
+
+### So, in order of what to actually do
+
+1. **Centre the block, then measure it.** A third survey pass that centres the
+   *individual block* — we already have coarse (find the zone) and fine (centre
+   the zone) — drives `r` below `a`, where the correction is exact and no side
+   wall is visible. `tag_pick_place.py:2353` already notes "converging the camera
+   over the block also kills the parallax". Geometric, not algorithmic, and it
+   fixes the per-still lens bias at the same time.
+2. **Use multiview disagreement as a height sensor instead of discarding it as
+   noise.** The shift of a feature between two views is `r*H/(h-H)`, so
+   `H = shift*h/(r + shift)`. At `h = 230` and `r = 50–100`, one measurable
+   millimetre of shift is 2–5 mm of height. That distinguishes a 15.2 mm slab from
+   a 30.5 mm cube from a 61 mm brick — which is the depth information this rig was
+   assumed not to have. `spread_m` is currently reported as a quality metric and
+   thrown away.
+3. **Intersection versus union.** Project each view's contour into the mat plane:
+   the part that agrees across views is the base outline, the part that moves is
+   side wall. For collision purposes the **base outline** is the number that
+   matters, and it is the one that is currently not measured.
+4. **Shading, as a supporting cue only.** A matte top face normal to a ceiling
+   light is brighter than any slanted face, so a brightness split *within* one
+   colour blob separates top from side. Cheap, and it is also why colour goes
+   `unknown`: `detect_colour`-style ratios computed over top ∪ shaded side pull
+   saturation and value out of every threshold box.
+5. **Tapered blocks: stop asking.** For a cone, pyramid or frustum the top face is
+   either a point or irrelevant — the grasp is on the sides and the collision
+   envelope is the base outline. Concentric nested contours in one blob (a smaller
+   top face inside a larger base) is itself the *signature* of a tapered block,
+   and the area ratio gives the taper.
+
+## `object_detection.py` — what to take and what cannot transfer
+
+Genuinely useful, and the colour table is better targeted at this block set than
+anything we have: red / orange / yellow / green / blue / purple / pink / white /
+wood is exactly the set in the photo. Take:
+
+- **The HSV range table as a starting point**, including the two-interval red that
+  wraps both ends of hue — correct and easy to get wrong.
+- **The idea of a confidence and an explicit `Unknown`** rather than forcing a
+  label. `best_ratio < 0.12 -> Unknown` is the right instinct.
+- **Averaging N readings with a reset when the classification changes** — the same
+  discipline `fuse_detections` applies spatially.
+- **The idea of subtracting a known background**, re-pointed: not a captured
+  frame, but the *known mat colour* inside the known zone quad. That gives
+  foreground segmentation independent of the block's own colour, which is what
+  makes a wooden block on a wooden bench findable.
+
+Cannot transfer as written:
+
+- **Background subtraction against a static captured background is the core of the
+  script and it is incompatible with a wrist camera.** `capture_background()`
+  averages 30 frames of an empty scene; our camera moves to a new pose for every
+  still, so the background is different every frame. This is not a porting detail
+  — it is the whole segmentation stage. (It would work well for a *fixed*
+  overhead camera, which is a real option worth considering separately.)
+- **`pixels_per_inch` from a reference object assumes a fixed camera distance.** We
+  already solve a homography onto the mat plane from the zone tags, which handles
+  tilt and varying height and needs no reference object in frame. Strictly better;
+  do not adopt the weaker instrument.
+- **Argmax of per-box pixel counts over overlapping HSV boxes decides by box
+  width, not by colour distance.** `Wood` (H 5–30, S 20–220) overlaps `Orange`
+  (8–20) and half of `Yellow`; `Pink` (160–179) overlaps both `Purple` (130–165)
+  and `Red`'s second interval (170–179); `Cyan` (80–100) overlaps `Green`
+  (36–90). A wider box wins more pixels of a hue-spread blob regardless of where
+  the blob's colour actually sits, and exact ties fall to dict order. Replace with
+  **nearest prototype on the blob's median HSV using a circular hue metric** —
+  simpler, order-independent, and it gives a real distance to threshold on.
+- **It is a script, not a module.** Camera open, background capture and the main
+  `while True` are at module level from line 769, so `import object_detection`
+  opens the camera and blocks. Measurement state is module globals. Needs
+  splitting into functions before any of it can be called.
+- **`break` after the first contour** — it classifies one object per frame. We
+  need all of them.
+- **`classify_shape` counts `approxPolyDP` vertices** at `eps = 0.035 * perimeter`.
+  On blobs this small the vertex count is unstable, and — the deeper problem — it
+  classifies the **silhouette**, which off-nadir is top ∪ side. It would inherit
+  the exact disease documented above.
+
+**Verdict: harvest the colour table, the confidence/`Unknown` discipline and the
+averaging; write the segmentation against the mat homography we already have.** A
+fixed overhead camera would make the contributed approach work nearly as written,
+and that is a real architectural option — it is just a different robot.
+
+
+# 2026-08-12 EVENING — THE COLOUR PATH, BUILT FOR A DEMO
+
+Scope was cut deliberately, on instruction: **all blocks rest on their least-tall
+face, all are grasped at the cube's grasp height, locate the centre and pick.** No
+per-block grasp heights, no rest-pose table, no shape classification for the
+grasp. What follows is what that took and the four real defects it uncovered.
+
+## The shape of it
+
+Colour is a **segmentation method**, not a new pipeline. `method="colour"` in
+`zone_vision`, and every other stage — tag homography, zone frame, parallax
+correction, multiview fusion, `select_block`, the whole pick — is reused
+untouched. The switch is one flag on `stack_blocks.py`.
+
+**Segmentation is by SATURATION, and that is the real upgrade.** The mat is white
+paper (near-zero S at any brightness), the blocks are painted (saturated). One
+threshold, and it yields **whole regions** rather than an outline. Canny finds an
+edge, needs a dilate and a close to join it up, and every dilation iteration is
+added directly to the reported block size — `_segment`'s own comment puts two
+iterations at ~1 mm of systematic oversize. Region segmentation has no such term.
+It should be *more* accurate than the tag-era path, not less.
+
+## Colour crosses on the WIRE, not the interface
+
+`detection_wire.py` schema 2 already exists precisely because "identity has to
+travel and the service response cannot carry it", and its docstring says
+extending `DetectBlock.srv` "means a nested message and a rebuild on the Pi,
+which is the exact path this file exists to avoid". So schema **3** adds
+`colour_code` and `colour_score` per block: copy the file to the Pi and restart
+the node. **No interface rebuild, on either machine.**
+
+A code, not a string, and the reason is asymmetric cost:
+`block_detector_node.py` records `rcl_send_response` failing here with "string
+data is not null-terminated" on a nested message carrying a string. That
+diagnosis is incomplete — `shape` is a string on this same wire and works — but
+that failure takes the whole detection service down, whereas a bad index shows up
+as a wrong colour *name*. **The cheaper failure wins.** `zone_vision.COLOUR_NAMES`
+is the one ordered list; both ends import it, so there is no table to sync, and it
+is **append-only** because an index is a wire value.
+
+The join back onto the service response is **by index**, which is exact: both
+lists are built from the same `result.blocks` in the same callback. It is
+*checked* — a length mismatch means a stale free-running message, and pairing a
+colour with the wrong contour is worse than having no colour, so the colours are
+dropped and said so.
+
+## Classification: harvested, then re-pointed
+
+Taken from the contributed `object_detection.py`: the HSV table (well aimed at
+this set), the explicit `Unknown`, the averaging discipline.
+
+**Replaced: the decision rule.** That file took argmax over per-colour pixel
+counts inside *overlapping* HSV boxes, which decides by **box width** rather than
+by colour distance — `Wood` (H 5–30) contains `Orange` (8–20) and half of
+`Yellow`, `Pink` (160–179) overlaps `Purple` and the upper half of `Red`, and
+exact ties fall to dict order. A wider box wins more pixels of a hue-spread blob
+regardless of where the blob's colour actually sits.
+
+Now: **nearest prototype on the blob's median hue, circular metric.** Median
+because a highlight or a shaded facet is an outlier, not a vote. Circular because
+red wraps 0/179 and any linear distance gets red wrong. Achromatic classes
+(white, wood) are decided on saturation/value **before** hue is consulted at all —
+the hue of a near-grey pixel is numerically defined and physically meaningless,
+which is how a white block becomes "pink".
+
+Sampled from the **contour's own eroded pixels**, not its bounding box: the box of
+a rotated block is up to 41 % mat, which drags the median saturation down and is
+exactly how a coloured block reads "white".
+
+## Four defects found on the way
+
+### 1. `MAX_BLOCK_LENGTH_M = 0.060` rejected every 2.4 in block, silently
+
+The set's longest dimension is **61.0 mm**. The filter rejected it on every
+frame, as an *empty zone* — the green brick, the blue slab, the 61 mm bar, both
+long prisms, the sheared slab. And `MAX_BLOCK_ASPECT = 4.0` rejected the purple
+2.4 × 0.6 in bar at aspect **4.01**, by 0.3 %.
+
+Found by rendering a 61 mm block into the new selftest, which detected nothing at
+all. Raised to **0.075** (61.0 mm + 23 %, sized against the same over-read the
+constant has always been sized against) and **4.5**. Now pinned against a stated
+`BLOCK_SET_LONGEST_M` rather than left as a number whose provenance has to be
+remembered.
+
+### 2. A near-miss, recorded because it nearly shipped
+
+I convinced myself from a synthetic `cv2.minAreaRect` probe that `zone_vision`'s
+`zyaw` computed the **minor** axis while the field documented the major, and
+rewrote the derivation to "fix" it. **`test_rectangle` failed at all four
+orientations and it was wrong.** `side_a`/`side_b` in that branch are the
+zone-space lengths of the two *box edges*, not `rect[1]` — my probe fed it
+`rect[1]`, where the ordering is different. The original code is correct: `zyaw`
+is the major axis, verified through the full render → warp → `findContours` →
+`minAreaRect` path (at rendered 0° the edges measure 26.6 and 51.7 mm and the
+51.7 one is chosen; at 30°, 52.4 and 27.1 and the 52.4 one is chosen).
+
+Reverted, and the arithmetic plus the trap is now written into `find_blocks` so
+the next person to "simplify" it to `min()`/`max()` on `rect[1]` reads why not.
+**Lesson 6 again, from the other side**: a term that reproduces one case exactly
+can still be inverted, and one synthetic case is not the pipeline.
+
+### 3. The wrist-yaw convention is unverified and has never mattered
+
+Verified: `zyaw` is the major axis, and the jaws must close across the **short**
+side (it is the only side narrower than the aperture on most of this set).
+
+**Not verified: whether `pick_place`'s `block_yaw_deg` names the CLOSING AXIS or
+the BLOCK'S MAJOR AXIS.** They differ by exactly 90°, and for a 30 mm **cube** —
+every block this project has ever grasped, on every run — `reduce_yaw(·, 4)` folds
+90° away, so both conventions produce the identical wrist angle. **No run has ever
+been able to distinguish them.** The first elongated block makes it decisive.
+
+`GRASP_YAW_FROM_MAJOR_DEG = 0.0` — today's behaviour, byte for byte — with
+`grasp_yaw_report()` printing the block's long-axis world angle against the
+commanded wrist yaw, and saying so explicitly when the block is elongated enough
+for the two to be distinguishable. **A five-second look at a `--dry-run --confirm`
+park settles it.** The selftest pins the constant at 0 and asserts both halves:
+that a cube cannot tell the conventions apart, and that a 2-fold block can.
+
+**And note what does NOT catch this.** `grip_span_ok` checks the *block's*
+geometry against the aperture, not the wrist — with the offset wrong, a
+61 × 30.5 mm block passes the span check and the jaws still close on the long
+axis. Only the operator at the park catches it. **Do not run an elongated block
+unattended until this constant is settled.**
+
+### 4. The wire budget is now 4 bytes from its own limit
+
+Schema 3's two extra fields cost 160 B at `MAX_BLOCKS`, and the realistic worst
+case (10 blocks + 6 block tags) is **~1396 B against the self-imposed 1400**. The
+hard limit is the 1500 B MTU, so there is ~104 B of real headroom — but the next
+field added here needs a cap reduction first. The selftest prints the remaining
+margin and warns below 40 B, so this cannot be walked past quietly.
+
+## What the colour method cannot do, asserted rather than discovered
+
+**A white block on a white mat is not found.** No saturation step to threshold and
+no reliable value step either. It is reported as an *absence* — which is the safe
+direction, nothing is descended on — and the selftest asserts it so it stays a
+known limitation instead of becoming a surprise. The honest fixes are a coloured
+mat or a different segmentation, not a threshold nudged until one frame works.
+Natural wood *is* rescued, by value: beech is distinctly darker than printer
+paper.
+
+## Still open after tonight
+
+- **The four jaw numbers.** The aperture decides which blocks are in scope at all
+  (1.6 in = 40.6 mm is already over a 40 mm guess), and the refusal that enforces
+  it is currently enforcing an *estimate*. Still the highest-value two minutes in
+  the project.
+- **`GRASP_YAW_FROM_MAJOR_DEG`**, above. One observation.
+- **Real HSV thresholds.** `COLOUR_HUES` and `COLOUR_SAT_MIN` are reasoned, not
+  measured; the selftest swatches test the *arithmetic*, not the paint. They get
+  settled against a frames corpus — which is still open #1 and now has a second
+  customer.
+- **Rest poses and per-block grasp heights**, deliberately cut tonight. The
+  arithmetic is in the STEP 2 DESIGN section above and unchanged: `g + c <=
+  44.5 mm`, grip low.

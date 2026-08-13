@@ -80,6 +80,10 @@ TAG_PX_PER_MODULE_GOOD = 4.0
 
 _WINDOW_NAME = "detect_block -- what the detector sees"
 
+# The segmentation methods zone_vision actually dispatches on. Anything else
+# silently becomes canny, so the node refuses it at startup instead.
+_KNOWN_METHODS = ("canny", "otsu", "colour")
+
 
 class _WireView(object):
     """A zone_vision block plus its world pose, in the shape detection_wire
@@ -89,7 +93,7 @@ class _WireView(object):
     to import something."""
 
     __slots__ = ("zx", "zy", "zyaw", "x", "y", "yaw", "width", "length",
-                 "shape", "symmetry")
+                 "shape", "symmetry", "colour", "colour_score")
 
     def __init__(self, block, world_x, world_y, world_yaw):
         self.zx, self.zy, self.zyaw = block.zx, block.zy, block.zyaw
@@ -97,6 +101,8 @@ class _WireView(object):
         self.width, self.length = block.width, block.length
         self.shape = block.shape
         self.symmetry = int(block.symmetry)
+        self.colour = getattr(block, "colour", "unknown")
+        self.colour_score = float(getattr(block, "colour_score", 0.0))
 
 
 class BlockDetector(Node):
@@ -106,6 +112,10 @@ class BlockDetector(Node):
         self.declare_parameter("video_device", "/dev/video0")
         self.declare_parameter("frame_width", 640)
         self.declare_parameter("frame_height", 480)
+        # "canny" | "otsu" | "colour". VALIDATED at startup rather than per
+        # request: a typo ("color", "colours") would otherwise fall through
+        # zone_vision's method dispatch to the canny branch and run a whole
+        # session with no colours reported and nothing saying why.
         self.declare_parameter("method", "canny")
         self.declare_parameter("tag_size", zv.DEFAULT_TAG_SIZE)
         self.declare_parameter("default_zone_size", zv.DEFAULT_ZONE_SIZE)
@@ -236,6 +246,19 @@ class BlockDetector(Node):
             % (self.get_parameter("tag_size").value,
                self.get_parameter("default_zone_size").value,
                self.get_parameter("method").value))
+        method = str(self.get_parameter("method").value)
+        if method not in _KNOWN_METHODS:
+            self.get_logger().error(
+                "method:=%r is not one of %s. zone_vision's dispatch would fall "
+                "through to canny and report no colours at all, so this is "
+                "refused rather than run." % (method, ", ".join(_KNOWN_METHODS)))
+            raise SystemExit(2)
+        if method == "colour":
+            self.get_logger().info(
+                "method=colour: segmenting by SATURATION (mat is white, blocks "
+                "are painted), colour named by nearest hue prototype. Colour "
+                "travels on the %s topic, not in the service response -- see "
+                "detection_wire.py schema %d." % (wire.TOPIC, wire.SCHEMA_VERSION))
 
     # -- camera ------------------------------------------------------------
     def _capture_loop(self):
@@ -401,6 +424,11 @@ class BlockDetector(Node):
             entry.width, entry.length = block.width, block.length
             entry.shape = block.shape
             entry.symmetry = int(block.symmetry)
+            # NO COLOUR HERE. It travels on the detection_wire topic instead --
+            # see that file's "WHY BLOCK TAGS ARE ON THE WIRE AT ALL". Extending
+            # DetectBlock.srv means a coordinated interface rebuild on both
+            # machines; the wire is a copy-the-file-and-restart change, and it is
+            # already the channel identity travels on.
             entry.fill_ratio = float(block.fill_ratio)
             entry.area_px = float(block.area_px)
             response.blocks.append(entry)
@@ -436,10 +464,13 @@ class BlockDetector(Node):
             self.get_logger().warn(summary)
         for index, block in enumerate(result.blocks):
             self.get_logger().info(
-                "  [%d] zone (%+.1f, %+.1f) mm yaw %+.1f deg  %.1fx%.1f mm %s sym=%d"
+                "  [%d] zone (%+.1f, %+.1f) mm yaw %+.1f deg  %.1fx%.1f mm "
+                "%s sym=%d  colour %s (%.2f)"
                 % (index, block.zx * 1000, block.zy * 1000,
                    block.zyaw * 57.2958, block.width * 1000,
-                   block.length * 1000, block.shape, block.symmetry))
+                   block.length * 1000, block.shape, block.symmetry,
+                   getattr(block, "colour", "unknown"),
+                   getattr(block, "colour_score", 0.0)))
         self._log_block_tags(block_tags, result)
         return response
 
