@@ -3012,3 +3012,125 @@ single `--block-thickness` of 0.030 is correct for both to within 0.5 mm. That i
 the only reason a stack of two *different* blocks works at all before the
 rest-pose table exists. Green underneath because its 61 x 30.5 mm footprint is the
 larger base, and both short sides (30.5, and 30.5 or 35.6) clear the aperture.
+
+## Runs 3-5 — two bugs of mine, and the pickup tag is still the wall
+
+Attempt 1 was Ctrl-C'd. Attempt 2 died on `/detect_block never appeared in 15s`
+(the node was mid-restart). Attempt 3 ran the full sweep, and then:
+
+### 1. `--pickup-at` crashed the exact case it was written for
+
+```
+AttributeError: 'NoneType' object has no attribute 'origin'
+    pickup_origin, pickup_yaw = tuple(pickup.origin), pickup.yaw
+```
+
+I put the origin unpack **before** the `if pickup is None` guard, so when the
+survey failed the traceback replaced the one message that says what to do next.
+The guards now come first. Ordering bug, mine, in code added the same day to
+handle this failure.
+
+### 2. `--confirm` did not exist
+
+Both of the last two commands died on `unrecognized arguments: --confirm` — the
+two that were supposed to be the demo. `tag_pick_place` has `--confirm`; this file
+only ever had the `--yes` that turns it **off**, so confirm was already the
+default and the flag was never added. My run instructions said to pass it.
+
+Now accepted as an explicit no-op (`--confirm`, default on; `--yes` still turns it
+off, last one wins). **A documented flag the parser rejects is a defect in the
+parser, not in the operator.**
+
+`_selftest` now walks the module docstring, extracts every
+`python3 stack_blocks.py ...` line and asserts the parser accepts it. That is the
+general form of this bug and it is now impossible to ship again.
+
+### 3. The pickup zone survey failed again, same cause
+
+```
+[survey] pickup J1 -12.5 REJECTED: image centre is 94 mm from the zone centre;
+         3 tags are trusted only to 72 mm out
+[survey] pickup run J1 +0.0..+7.5 (4 views) REJECTED: the camera moved only
+         19 mm across the mat -- too little to solve the zone yaw (need 25 mm)
+[survey] pickup zone: 11 sighting(s), none of them usable.
+```
+
+Seven sightings lost to the 3-tag trust radius, and the one usable run of four
+views panned only 19 mm against the 25 mm the yaw solve needs. **Still open item
+#5. Still a physical fix: clean or reprint the missing pickup zone tag.** With all
+four tags the radius is 144 mm and every one of those seven sightings is inside
+it.
+
+The place zone survey did work, but its residual went **1.6 mm -> 4.6 mm over 11
+views** — worth watching, and possibly the same tag population changing which
+views contribute.
+
+### 4. NEW: the colour method invents blocks on an empty mat
+
+The place mat was empty. Five consecutive fine-pass stills reported:
+
+```
+7.9 x 9.4   8.6 x 11.3   7.4 x 9.5   3.1 x 7.0   2.9 x 9.6  mm
+```
+
+each named `purple` with scores 0.67-0.90, plus a `28.3 x 44.7 mm` blob named
+`wood (1.00)`. Two separate holes:
+
+**There was a ceiling on block size and no floor.** `MIN_BLOCK_AREA_FRAC` is 0.18%
+of the zone = 18.6 mm², and a 3 x 7 mm sliver is ~20 mm² — it squeaks through.
+`MIN_BLOCK_LENGTH_M = 0.015` added, on the long footprint side. The physical fact
+that makes it safe: **the smallest footprint long side in the whole set is
+30.5 mm** — even the 0.6 in bar presents 61 mm long — so 15 mm is half the true
+minimum and still leaves room for the size under-read (a 30 mm block has measured
+23.0). Every one of those five slivers is now rejected outright, asserted by
+number in the selftest.
+
+**And the operator supplied the piece I was missing: the mat is taped down with
+blue tape.** That reframed it — a coloured object *is* in the scene. Checking the
+positions settled it though: all five blobs sat **7-12 mm from a corner tag's
+centre**, and a 25.4 mm tag spans +-12.7 mm, so they were **on the tags**, not on
+the tape. A tag is nothing but maximum-contrast black/white edges, and this lens
+fringes them — chromatic aberration puts a saturated purple-blue edge on one side
+of every such transition. **The tag has no colour; its edges do.**
+
+Which makes my reason for skipping `flatten_tags` on the colour path wrong: "a
+printed black-on-white tag has no saturation, so the colour segmentation drops it
+for free". True of the tag, false of its edges. The colour frame now gets the same
+treatment as the grayscale one, filled with the mat's own median **BGR** instead
+of its median grey — same function, same grown quad, and the same reason it paints
+rather than punching holes (a hole bites a chunk out of a block that legitimately
+overlaps a corner).
+
+**Two fixes, and they are separable — worth being exact about which does what:**
+
+- `MIN_BLOCK_LENGTH_M` kills the **observed** blobs. All five were under 12 mm.
+  Symptom filter, and sufficient for them.
+- Painting the tags out removes the **cause**, for every tag that decoded.
+
+The regression test does *not* prove the second from the first, and says so. A
+fringe wide enough to clear the 15 mm floor is wide enough to cover a tag's outer
+border and stop it decoding — tried, and the frame then fails at the homography
+instead. That is a reassuring structural argument on its own: **any fringe large
+enough to be mistaken for a block is large enough to make its own zone survey fail
+loudly rather than be grasped.** Written into the test rather than dressed up as a
+proof, after I built a version that passed with the fix deleted — which is the only
+way to find out whether a regression test tests anything.
+
+**As for the tape: it is very probably already excluded.** The zone quad is defined
+by the four tag *centres*, so its boundary runs through them and the mat physically
+extends beyond — tape at the mat's edge is outside `search_mask`. And tape that did
+intrude would be long: over `MAX_BLOCK_LENGTH_M` (75 mm) and rejected. No inset was
+added, because insetting `search_mask` clips blocks that overhang the boundary and
+that is the exact failure `build_masks` has two masks to avoid: a clipped block
+comes back with the wrong size, wrong centre and wrong yaw, which is worse than a
+rejected one.
+
+**`wood` is the loosest class in the table and a shadow falls into it.** Any
+saturation up to 110, any value up to 205, hue 5-32 — which is exactly where a
+neutral grey's numerically-meaningless hue tends to land. Beech has a real if weak
+hue; a grey shadow has essentially none. `COLOUR_WOOD_MIN_SAT = 35` added to both
+the segmentation mask and the classifier, with the selftest asserting a near-grey
+is not wood while real beech still is.
+
+Both thresholds are still unmeasured. The HSV is now logged per contour, so they
+get set from a reading of the actual block.

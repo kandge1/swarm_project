@@ -927,6 +927,12 @@ frame has an origin *and* a rotation, and guessing the rotation swings every blo
 position about your origin. Unlike `--place-at` this feeds a **grasp**, so tape the
 number, do not estimate it, and keep `--confirm` on.
 
+#### `--confirm` is the default
+
+It is accepted as a flag (so the spelling works) but changes nothing — the park
+check is on unless you pass **`--yes`**, which turns it off and gives up the only
+physical confirmation that a block is in the jaws.
+
 #### Reading the colour log
 
 `block_detector_node.py` logs the median H/S/V of each contour's own pixels, on

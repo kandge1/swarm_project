@@ -5,6 +5,13 @@
     python3 stack_blocks.py --stack "orange block" "the green one"
     python3 stack_blocks.py --dry-run                # every pose, nothing grasped
 
+AprilTag-free, identified by COLOUR (needs block_detector_node method:=colour):
+
+    python3 stack_blocks.py --by-colour --survey-only
+    python3 stack_blocks.py --by-colour --dry-run --confirm
+    python3 stack_blocks.py --by-colour --confirm    # green, then blue on it
+    python3 stack_blocks.py --by-colour --confirm --pickup-at 0.209 0.003 --zone-yaw -93
+
 One process, one survey of each zone, two picks, two places. The second block
 lands on top of the first.
 
@@ -188,6 +195,7 @@ The speedup that actually matters in this file is decision 1 above.
 
 import argparse
 import json
+import shlex
 import math
 import os
 import sys
@@ -1538,6 +1546,19 @@ def build_parser():
     parser.add_argument("--dry-run", action="store_true",
                         help="every pose computed and parked at, nothing "
                              "grasped and nothing released")
+    # --confirm IS THE DEFAULT and this flag does nothing but accept the spelling.
+    #
+    # It exists because the run instructions said to pass --confirm, tag_pick_place
+    # has it, and stack_blocks only ever had the --yes that turns it OFF -- so
+    # `--by-colour --confirm` died on `unrecognized arguments: --confirm` twice in
+    # a row on 2026-08-12, at the two commands that were supposed to be the actual
+    # demo. A flag that a reasonable person will type, that names the behaviour
+    # they already have, should be accepted rather than rejected.
+    parser.add_argument("--confirm", dest="confirm", action="store_true",
+                        default=True,
+                        help="stop at the park for an operator check. This is "
+                             "ALREADY the default; the flag exists so the "
+                             "spelling works. --yes is what turns it off")
     parser.add_argument("--yes", dest="confirm", action="store_false",
                         default=True,
                         help="no operator checkpoints. Gives up the place-side "
@@ -1633,6 +1654,31 @@ def _selftest():
     check("a thinner block would make level 2 legal",
           release_flange_z(2, 0.025) < pp.MAX_HOVER_Z,
           "%.4f" % release_flange_z(2, 0.025))
+
+    print("every documented command line parses")
+    # THE BUG THIS PINS: the run instructions and this docstring both said
+    # --confirm, tag_pick_place has --confirm, and stack_blocks had only the
+    # --yes that turns it off. Two consecutive hardware commands on 2026-08-12
+    # died on `unrecognized arguments: --confirm` -- the two that were the demo.
+    # A documented flag that the parser rejects is a defect in the parser.
+    parser = build_parser()
+    for line in __doc__.splitlines():
+        line = line.strip()
+        if not line.startswith("python3 stack_blocks.py"):
+            continue
+        argv = shlex.split(line.split("#")[0])[2:]      # drop 'python3', the file
+        try:
+            parser.parse_args(argv)
+            ok, why = True, ""
+        except SystemExit:
+            ok, why = False, "the parser REJECTED it"
+        check("docstring example parses: %s" % (" ".join(argv) or "(no flags)"),
+              ok, why)
+    check("--confirm is accepted and defaults ON",
+          parser.parse_args([]).confirm is True
+          and parser.parse_args(["--confirm"]).confirm is True)
+    check("--yes still turns it off",
+          parser.parse_args(["--yes"]).confirm is False)
 
     print("colour names (the AprilTag-free path)")
     def colour_ok(text, want):
@@ -2205,19 +2251,22 @@ def main():
         else:
             place = epp.survey_zone("place", seen["place"],
                                     detector.zone_size, fit_step, yaw_fixed)
-        if args.pickup_at is not None:
-            pickup_origin, pickup_yaw = tuple(args.pickup_at), yaw_fixed
-        else:
-            pickup_origin, pickup_yaw = tuple(pickup.origin), pickup.yaw
         epp.record_survey("pickup", pickup, args.truth_pickup, args.note)
         epp.record_survey("place", place, args.truth_place, args.note)
 
+        # THE None GUARDS COME FIRST, before anything reads .origin. Written the
+        # other way round on 2026-08-12 and it crashed on hardware with
+        # `AttributeError: 'NoneType' object has no attribute 'origin'` -- turning
+        # the one refusal message that explains what to do next into a traceback,
+        # in exactly the case it was written for.
         if pickup is None and args.pickup_at is None:
             print("\n[stack] no pickup zone, so there is nothing to pick.")
             print("[stack] If the survey rejected every sighting for being too "
                   "far off centre, that is the 3-tag trust radius (72 mm "
-                  "instead of 144) -- clean or reprint the missing zone tag. "
-                  "--pickup-at with --zone-yaw is the override.")
+                  "instead of 144) -- clean or reprint the missing zone tag.")
+            print("[stack] The override is --pickup-at X Y --zone-yaw DEG, "
+                  "e.g. --pickup-at 0.209 0.003 --zone-yaw -93. Tape the XY; it "
+                  "feeds a grasp.")
             return 1
         if place is None and args.place_at is None:
             print("\n[stack] pickup found but no place zone. Refusing to pick "
@@ -2225,6 +2274,10 @@ def main():
                   "held in the jaws.")
             return 1
 
+        if args.pickup_at is not None:
+            pickup_origin, pickup_yaw = tuple(args.pickup_at), yaw_fixed
+        else:
+            pickup_origin, pickup_yaw = tuple(pickup.origin), pickup.yaw
         place_origin = (tuple(args.place_at) if args.place_at is not None
                         else tuple(place.origin))
         print("\n[stack] pick from (%.4f, %.4f) yaw %+.1f  ->  stack at "

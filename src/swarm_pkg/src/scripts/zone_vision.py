@@ -276,6 +276,22 @@ MAX_BLOCK_AREA_FRAC = 0.60
 # as a number someone has to remember the provenance of.
 MAX_BLOCK_LENGTH_M = 0.075      # m
 
+# ... and the lower bound, which did not exist until 2026-08-12.
+#
+# MEASURED NEED. With method=colour on an EMPTY place mat, five consecutive
+# stills reported blobs of 7.9 x 9.4, 8.6 x 11.3, 7.4 x 9.5, 3.1 x 7.0 and
+# 2.9 x 9.6 mm, each confidently named a colour. MIN_BLOCK_AREA_FRAC (0.18% of
+# the zone = 18.6 mm^2) does not stop them: a 3 x 7 mm sliver is ~20 mm^2 and
+# squeaks through. There was a ceiling on block size and no floor.
+#
+# THE PHYSICAL FACT: the smallest footprint LONG side in the whole geometric set
+# is 30.5 mm (1.2 in) -- even the purple 2.4 x 0.6 x 0.6 in bar presents 61 mm
+# long, and the thinnest slab is still 30.5 x 30.5 in plan. So 15 mm is HALF the
+# true minimum, which leaves room for the size under-read this detector is known
+# to have (a 30 mm block has measured 23.0 x 23.5) while rejecting every one of
+# those slivers outright.
+MIN_BLOCK_LENGTH_M = 0.015      # m, on the LONG footprint side
+
 # Raised 4.0 -> 4.5 at the same time and for the same kind of reason: the purple
 # 2.4 x 0.6 x 0.6 in bar is 61.0 x 15.2 mm, an aspect of exactly 4.01, so a 4.0
 # cap rejects it by 0.3%. 4.5 clears it with margin and still rejects the grid
@@ -472,6 +488,18 @@ COLOUR_WHITE_MIN_VAL = 140      # ... and above this value it is white
 COLOUR_WOOD_MAX_SAT = 110       # tan/beech: a real but weak hue in the orange
 COLOUR_WOOD_HUE_RANGE = (5, 32) # band. Checked before the chromatic prototypes.
 
+# Wood needs a hue, not merely a weak one. Added 2026-08-12: `wood` is the
+# loosest class in the table -- any saturation up to 110, any value up to 205,
+# and hue 5-32 is where a NEUTRAL grey's numerically-meaningless hue tends to
+# land -- so a shadow on white paper falls straight into it, and a 28 x 45 mm
+# blob on an empty place mat was named `wood (1.00)`. Beech has a real if weak
+# hue; a grey shadow has essentially none.
+#
+# UNMEASURED, like every threshold here. The HSV is now logged per contour by
+# block_detector_node, so set this from a reading of the actual wooden block
+# rather than by nudging it.
+COLOUR_WOOD_MIN_SAT = 35
+
 # Hue distance beyond which no prototype is claimed, in OpenCV hue units (~2 deg
 # each). A GIVE-UP RADIUS, not a band half-width: which prototype wins is decided
 # by nearest-neighbour, so adjacent prototypes may sit closer together than this
@@ -560,7 +588,7 @@ def classify_colour(hsv, mask):
 
     if s < COLOUR_WHITE_MAX_SAT and v >= COLOUR_WHITE_MIN_VAL:
         return "white", 1.0, hsv_median
-    if (s < COLOUR_WOOD_MAX_SAT
+    if (COLOUR_WOOD_MIN_SAT <= s < COLOUR_WOOD_MAX_SAT
             and COLOUR_WOOD_HUE_RANGE[0] <= h <= COLOUR_WOOD_HUE_RANGE[1]):
         return "wood", 1.0, hsv_median
 
@@ -656,6 +684,7 @@ class ZoneResult:
         self.mask = None            # search mask, for the overlay
         self.accept_mask = None     # centre-acceptance mask, for the overlay
         self.flat_gray = None       # grayscale with the tags painted out
+        self.flat_bgr = None        # ... and the colour frame, same treatment
 
     @property
     def tags_seen(self):
@@ -1035,9 +1064,14 @@ def flatten_tags(gray, H_zone_to_px, zone, tag_corners_px, fill_value):
     edge belonging to a neighbouring block intact.
 
     fill_value should be the mat's own median brightness, so the painted quad
-    does not itself become a step edge.
+    does not itself become a step edge. For a 3-channel image pass a (B, G, R)
+    tuple -- the mat's own median COLOUR -- and this works unchanged.
     """
     flat = gray.copy()
+    if not isinstance(fill_value, (tuple, list, np.ndarray)):
+        fill_value = float(fill_value)
+    else:
+        fill_value = tuple(float(v) for v in fill_value)
     targets = zone.tag_corner_targets()
     grow = 1.0 + 2.0 * TAG_EXCLUSION_MARGIN / zone.tag_size
     for tag_id in tag_corners_px:
@@ -1048,7 +1082,7 @@ def flatten_tags(gray, H_zone_to_px, zone, tag_corners_px, fill_value):
         centre = quad.mean(axis=0)
         grown = centre + (quad - centre) * grow
         cv2.fillConvexPoly(flat, zone_to_px(H_zone_to_px, grown).astype(np.int32),
-                           float(fill_value))
+                           fill_value)
     return flat
 
 
@@ -1082,7 +1116,7 @@ def _segment_colour(bgr, search_mask):
     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
     sat = cv2.inRange(hsv, (0, COLOUR_SAT_MIN, 40), (179, 255, 255))
     # Weakly-saturated but dark: natural wood on white paper.
-    wood = cv2.inRange(hsv, (COLOUR_WOOD_HUE_RANGE[0], 20, 40),
+    wood = cv2.inRange(hsv, (COLOUR_WOOD_HUE_RANGE[0], COLOUR_WOOD_MIN_SAT, 40),
                        (COLOUR_WOOD_HUE_RANGE[1], 255, COLOUR_WOOD_VAL_MAX))
     binary = cv2.bitwise_or(sat, wood)
     # OPEN then CLOSE, and in that order. Open first kills the speckle the
@@ -1250,7 +1284,8 @@ def find_blocks(gray, H_zone_to_px, H_px_to_zone, zone, search_mask, accept_mask
         # SHAPE, not just area -- see MAX_BLOCK_LENGTH_M. A printed grid line
         # closed into a contour by the morphological close in _segment() can
         # easily clear the area filter above while being nothing like a block.
-        if length > MAX_BLOCK_LENGTH_M or (width > 0 and length / width > MAX_BLOCK_ASPECT):
+        if (length > MAX_BLOCK_LENGTH_M or length < MIN_BLOCK_LENGTH_M
+                or (width > 0 and length / width > MAX_BLOCK_ASPECT)):
             continue
 
         # Contour area in metric terms, via the same box the sides came from --
@@ -1351,14 +1386,33 @@ def analyze(image, zone, method="canny", max_rms_px=MAX_HOMOGRAPHY_RMS_PX):
     fill_value = float(np.median(interior)) if interior.size else 0.0
     result.flat_gray = flatten_tags(gray, H, zone, tag_corners, fill_value)
 
-    # THE COLOUR FRAME IS THE ORIGINAL, NOT flat_gray. flatten_tags paints the
-    # tag quads out at the mat's median GREY so they stop being step edges for
-    # Canny; there is no colour equivalent and none is needed, because a printed
-    # black-on-white tag has no saturation and the colour segmentation drops it
-    # for free. Passing both means each method gets the frame it wants.
+    # THE TAGS ARE PAINTED OUT OF THE COLOUR FRAME TOO, and the claim that they
+    # did not need to be was WRONG ON REAL OPTICS.
+    #
+    # This code originally passed the untouched colour image, reasoning that a
+    # printed black-on-white tag has no saturation so the colour segmentation
+    # would drop it for free. MEASURED 2026-08-12: five consecutive fine-pass
+    # stills of an EMPTY place mat each reported a 3-11 mm blob confidently named
+    # `purple`, and every one sat 7-12 mm from a corner tag's CENTRE -- i.e.
+    # INSIDE the tag, which spans +-12.7 mm. A tag is nothing but maximum-contrast
+    # black/white edges, and this lens fringes them: chromatic aberration puts a
+    # saturated purple-blue edge on one side of every such transition and a
+    # yellow-green one on the other. The tag has no colour; its EDGES do.
+    #
+    # So the colour path gets the same treatment as Canny, filled with the mat's
+    # own median BGR instead of its median grey. Same function, same grown quad,
+    # same reason it paints rather than punching holes (see flatten_tags: a hole
+    # bites a chunk out of a block that legitimately overlaps a corner).
+    colour_frame = None
+    if image.ndim == 3:
+        inside_bgr = image[search_mask > 0]
+        mat_bgr = (tuple(np.median(inside_bgr, axis=0)) if inside_bgr.size
+                   else (0.0, 0.0, 0.0))
+        colour_frame = flatten_tags(image, H, zone, tag_corners, mat_bgr)
+    result.flat_bgr = colour_frame
     result.blocks = find_blocks(result.flat_gray, H, result.H_px_to_zone, zone,
                                 search_mask, accept_mask, method=method,
-                                bgr=(image if image.ndim == 3 else None))
+                                bgr=colour_frame)
 
     result.success = True
     # An empty zone is a SUCCESS with zero blocks, not a failure. Stage 2 asks

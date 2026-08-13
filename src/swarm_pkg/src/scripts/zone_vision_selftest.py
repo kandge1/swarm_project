@@ -665,6 +665,7 @@ def main():
     test_colour_names_are_stable(failures)
     test_colour_classifier(failures)
     test_colour_segmentation(failures)
+    test_colour_ignores_tag_fringes(failures)
     test_colour_fusion(failures)
 
     print("\n%d failure(s)" % len(failures))
@@ -703,6 +704,38 @@ def test_block_set_fits_the_filters(failures):
     # 121-134 mm long.
     failures.check(zv.MAX_BLOCK_LENGTH_M < 0.121,
                    "and still rejects the 121 mm grid slivers")
+
+    # THE FLOOR, added after five stills of an EMPTY place mat each reported a
+    # 3-11 mm blob and named it a colour. The smallest footprint LONG side in the
+    # set is 30.5 mm, so the floor must sit below that and above the slivers.
+    failures.check(zv.MIN_BLOCK_LENGTH_M < 0.0305,
+                   "MIN_BLOCK_LENGTH_M (%.1f mm) admits the smallest real "
+                   "footprint (30.5 mm)" % (zv.MIN_BLOCK_LENGTH_M * 1000))
+    for sliver_mm in (9.4, 11.3, 9.5, 7.0, 9.6):
+        failures.check(sliver_mm / 1000.0 < zv.MIN_BLOCK_LENGTH_M,
+                       "the %.1f mm empty-mat sliver is below the floor"
+                       % sliver_mm)
+    # End to end: a blob that small must produce NO detection at all.
+    rng = np.random.default_rng(3)
+    zone = zv.zone_for("pickup")
+    tiny = [(0.0, 0.0, 0.0, 0.004, 0.009, COLOUR_SWATCHES["purple"])]
+    res = zv.analyze(perspective_warp(render_zone_colour(zone, tiny), rng,
+                                      strength=0.02), zone, method="colour")
+    failures.check(res.success and not res.blocks,
+                   "a 4 x 9 mm sliver yields no detection", 
+                   "found %d: %s" % (len(res.blocks), res.blocks))
+
+    # And wood must need a real hue: a neutral grey shadow is not a block.
+    mask = np.full((8, 8), 255, np.uint8)
+    grey, _score, _m = zv.classify_colour(
+        np.full((8, 8, 3), (20, 12, 170), np.uint8), mask)
+    failures.check(grey != "wood",
+                   "a near-neutral grey in wood's hue band is NOT wood",
+                   "got %r" % grey)
+    beech, _score, _m = zv.classify_colour(
+        np.full((8, 8, 3), (18, 70, 170), np.uint8), mask)
+    failures.check(beech == "wood", "but real beech still is",
+                   "got %r" % beech)
 
 
 def test_colour_names_are_stable(failures):
@@ -930,6 +963,97 @@ def test_colour_segmentation(failures):
     failures.check(res_g.success,
                    "method='colour' on a grayscale frame falls back to canny",
                    res_g.message)
+
+
+def test_colour_ignores_tag_fringes(failures):
+    """A tag's chromatic-aberration fringe must not become a block.
+
+    THE HARDWARE OBSERVATION, 2026-08-12. Five consecutive fine-pass stills of an
+    EMPTY place mat each reported a 3-11 mm blob named `purple`, and every one sat
+    7-12 mm from a corner tag's CENTRE -- inside the tag, which spans +-12.7 mm. A
+    tag is nothing but maximum-contrast edges and this lens fringes them: the tag
+    has no colour, its EDGES do.
+
+    BE PRECISE ABOUT WHICH FIX HANDLES WHICH PART, because the two are separable
+    and I conflated them at first:
+
+      - The OBSERVED blobs are killed by MIN_BLOCK_LENGTH_M (15 mm). All five were
+        under 12 mm long. That is a symptom filter and it is sufficient for them.
+      - Painting the tags out of the COLOUR frame removes the cause, for every tag
+        that decoded. It is the right thing to do and costs nothing.
+
+    What this test does NOT do is prove the second from the first. A fringe wide
+    enough to clear MIN_BLOCK_LENGTH_M is wide enough to cover a 25.4 mm tag's
+    outer border and stop it decoding -- tried, and the frame then fails at the
+    homography instead. Which is a reassuring structural argument in its own
+    right: any fringe large enough to be mistaken for a block is large enough to
+    make its own zone survey fail loudly rather than be grasped.
+
+    So the assertions here are the ones that are actually true and checkable, and
+    the honest boundary is written down rather than dressed up.
+    """
+    print("\n--- colour vs AprilTag fringes ---")
+    rng = np.random.default_rng(21)
+    zone = zv.zone_for("pickup")
+    img = render_zone_colour(zone, [])
+
+    # A saturated ring on each tag's outer border -- thin enough that the tag
+    # still decodes, which is the only regime in which the question arises.
+    fringed = img.copy()
+    tag_px = int(round(zone.tag_size * RENDER_SCALE))
+    half = zone.zone_size / 2.0
+    for sx, sy in zv.ZONE_CORNER_SIGNS:
+        cx, cy = _zone_to_render_px(sx * half, sy * half)
+        r = tag_px / 2.0 + 2
+        cv2.rectangle(fringed,
+                      (int(round(cx - r)), int(round(cy - r))),
+                      (int(round(cx + r)), int(round(cy + r))),
+                      (200, 40, 140), 3)        # saturated purple-blue
+    failures.check(not np.array_equal(fringed, img),
+                   "the synthetic fringe changed the frame")
+
+    res = zv.analyze(perspective_warp(fringed, rng, strength=0.02), zone,
+                     method="colour")
+    if failures.check(res.success, "a fringed frame still solves the homography "
+                      "(the regime where fringes matter)", res.message):
+        failures.check(not res.blocks,
+                       "an EMPTY zone with fringed tags reports zero blocks",
+                       "found %d: %s" % (len(res.blocks), res.blocks))
+        # THE FIX ITSELF, asserted directly rather than inferred from a verdict.
+        failures.check(res.flat_bgr is not None,
+                       "the colour frame exists and got the tag treatment")
+        if res.flat_bgr is not None:
+            failures.check(not np.array_equal(res.flat_bgr, res.mask),
+                           "flat_bgr is a frame, not a mask")
+            # The painted quads must actually differ from the input there.
+            changed = int(np.any(res.flat_bgr != perspective_warp(
+                fringed, np.random.default_rng(21), strength=0.02),
+                axis=2).sum())
+            failures.check(changed > 500,
+                           "painting the tags changed a meaningful area of the "
+                           "colour frame", "%d px" % changed)
+
+    # The observed sizes, pinned against the floor that actually rejects them.
+    for mm in (9.4, 11.3, 9.5, 7.0, 9.6):
+        failures.check(mm / 1000.0 < zv.MIN_BLOCK_LENGTH_M,
+                       "the observed %.1f mm fringe blob is under "
+                       "MIN_BLOCK_LENGTH_M" % mm)
+
+    # And the fix must not cost a real block that OVERLAPS a corner tag -- which
+    # is why flatten_tags paints rather than punching holes.
+    size = 0.0305
+    at_corner = [(0.020, 0.020, 0.0, size, size, COLOUR_SWATCHES["green"])]
+    res2 = zv.analyze(perspective_warp(render_zone_colour(zone, at_corner), rng,
+                                       strength=0.02), zone, method="colour")
+    found = [b for b in res2.blocks if b.colour == "green"]
+    if failures.check(bool(found), "a block near a corner tag is still found",
+                      "found %s" % [b.colour for b in res2.blocks]):
+        b = found[0]
+        failures.check(abs(b.width - size) < 0.008
+                       and abs(b.length - size) < 0.008,
+                       "and it is not truncated by the painted quad",
+                       "%.1f x %.1f mm, expected %.1f"
+                       % (b.width * 1000, b.length * 1000, size * 1000))
 
 
 def test_colour_fusion(failures):
