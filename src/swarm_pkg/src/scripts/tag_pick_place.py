@@ -1043,7 +1043,8 @@ def survey_start_flange(detector, z, base_yaw_deg=0.0):
 
 
 def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
-                     holding_block=False, debug_prefix=None):
+                     holding_block=False, debug_prefix=None,
+                     recentre_lens=True):
     """Several stills at different wrist yaws, fused into one answer.
 
     Returns (fused_blocks, views_used, tag_ids_union, block_tags) --
@@ -1183,7 +1184,36 @@ def detect_multiview(io_client, detector, zone, x, y, z, base_yaw_deg,
         # Learn the framing correction once, from the first still that saw
         # enough tags to be believed. Capped: a large reading means something
         # other than framing is wrong, and chasing it would walk the arm.
-        if not bias_known:
+        # THE RE-CENTRING MAY COST MORE THAN IT BUYS, and 2026-08-13 is the
+        # first run where the arithmetic was done. It is learned from ONE still
+        # at ONE wrist yaw and applied as a fixed world translation to the rest --
+        # but the lens residual has a component that ROTATES with the wrist
+        # (~11 mm amplitude, fitted over five stills to 0.6/1.4 mm rms), so a
+        # constant cannot remove it and is wrong by up to ~22 mm at the other
+        # yaws. Meanwhile it pushes the framing flange 13-15 mm further out:
+        #
+        #   offset  model r   flown r   IK at DETECT_HOVER_Z
+        #     +90    0.1822   0.1828    yes
+        #     +60    0.1886   0.2031    NO -> fell back to z 0.240
+        #    +120    0.1886   0.2016    NO
+        #     +30    0.2052   0.2199    NO
+        #    +150    0.2050   0.2176    NO
+        #
+        # Four of five stills lost DETECT_HOVER_Z because of the correction, drop
+        # to 0.240, soften, and then fail MULTIVIEW_MIN_TAGS -- which is why only
+        # 10 of 20 stills across these logs ever reached the vote.
+        #
+        # recentre_lens=False turns it off so the two can be COMPARED on hardware
+        # in one run. Default unchanged, because this is a hypothesis with good
+        # arithmetic behind it and no measurement yet.
+        if not recentre_lens:
+            if not bias_known:
+                print("[multiview]   --no-lens-recentre: NOT correcting the "
+                      "framing. Every still flies its modelled flange, which is "
+                      "13-15 mm nearer the base and inside DETECT_HOVER_Z's "
+                      "reach. Compare the usable-view count against a normal run.")
+                bias_known = True
+        elif not bias_known:
             measured = math.hypot(response.camera_zx, response.camera_zy)
             if measured <= MAX_LENS_BIAS_M:
                 lens_bias = detector.zone_delta_to_world(-response.camera_zx,
@@ -1657,12 +1687,17 @@ def print_block_report(block, block_yaw_world, grasp_x, grasp_y, grasp_z,
     # middle of a calibration changes which rows survive and makes the day's
     # data un-poolable with the morning's. Print it, let the operator throw the
     # row out, and decide the gate afterwards from the numbers.
-    worst = max(abs(block.width - BLOCK_NOMINAL_M),
-                abs(block.length - BLOCK_NOMINAL_M))
+    #
+    # PER SIDE, short against short: on a non-square block one nominal cannot
+    # serve both axes, and comparing the 61 mm side of the green brick against
+    # 30 mm reports a 30 mm "error" on a measurement that is right to 1 mm.
+    short_nom, long_nom = nominal_footprint(block_class)
+    worst = max(abs(min(block.width, block.length) - short_nom),
+                abs(max(block.width, block.length) - long_nom))
     if worst > BLOCK_SIZE_WARN_M:
-        print("[confirm]   *** FOOTPRINT IS %.1f mm OFF NOMINAL %.0f mm -- the "
-              "vision lost the block's edges."
-              % (worst * 1000, BLOCK_NOMINAL_M * 1000))
+        print("[confirm]   *** FOOTPRINT IS %.1f mm OFF NOMINAL %.0f x %.0f mm "
+              "-- the vision lost the block's edges."
+              % (worst * 1000, short_nom * 1000, long_nom * 1000))
         print("[confirm]   *** An unevenly eroded blob moves its own centroid, "
               "so treat this run's offset as a DETECTION FAILURE, not data.")
     print("[confirm]   zone-local  (%+.1f, %+.1f) mm      <- raw, straight from "
@@ -1740,11 +1775,30 @@ NEIGHBOUR_SAFETY_M = 0.002
 # nominal. So the usable window between "one block, badly measured" and "two
 # blocks, merged" is 44-60 mm, and 50 mm splits it with 6 mm either side.
 #
+# EXPRESSED AS A MARGIN OVER NOMINAL, not as an absolute length, so that the
+# same tuning serves a block set with more than one shape. 30 mm nominal + 20 mm
+# reproduces the 50 mm above exactly; the 61 mm green brick gets 81 mm. It is the
+# margin that was tuned on this bench, and it is the margin that transfers -- an
+# absolute 50 mm does not, and refused the green brick on every run of
+# 2026-08-13.
+#
+# BOTH AXES ARE TESTED, and for the cube that changes nothing (if min >= T then
+# max >= T, so the long test already dominates). It matters for an ELONGATED
+# block: two green bricks touching along their long sides read 61 x 61, whose
+# LONGEST side is 61 mm and passes an 81 mm long-side test. It is the SHORT side,
+# 61 against a nominal 30.5, that gives it away. On a cube those two merge
+# geometries are the same rectangle; on a brick they are not.
+#
+# WHAT NO FOOTPRINT TEST CAN DO. Two touching 30.5 mm cubes and one 61 x 30.5 mm
+# brick are the SAME RECTANGLE. There is no threshold that separates them,
+# which is precisely why the guard must be told which block it is looking at
+# rather than inferring it from size. That is nominal_footprint's job.
+#
 # This is the FALLBACK signal. The definitive one is two different blocks' TOP
 # tags matching the same contour, which identify_blocks already detects; see
 # LAST_IDENTITY_CONFLICTS. Prefer that whenever tags are on the blocks, and rely
 # on this only for the untagged/colour path.
-MERGED_FOOTPRINT_M = 0.050
+MERGED_MARGIN_M = 0.020
 
 # Contours that two different block classes both claimed, by index into the
 # fused list. Written by identify_blocks, read by merged_contour_reason.
@@ -1832,40 +1886,58 @@ def grasp_clearance(target, others, jaw_axis_deg):
 # Offset from the block's MAJOR (long) axis to the wrist yaw commanded for the
 # grasp, degrees.
 #
-# THIS IS AN UNVERIFIED HARDWARE CONVENTION AND IT HAS NEVER MATTERED UNTIL NOW.
+# MEASURED 2026-08-13. It is 90, and here is the observation that settled it.
 #
-# What is verified: zone_vision's zyaw is the footprint's MAJOR axis (see the
-# note in find_blocks, and test_rectangle asserts it), and the jaws must close
+# What was always verified: zone_vision's zyaw is the footprint's MAJOR axis (see
+# the note in find_blocks, and test_rectangle asserts it), and the jaws must close
 # across the SHORT side, because that is the only side narrower than the aperture
 # on most of this block set. So the closing axis has to end up perpendicular to
 # the major axis.
 #
-# What is NOT verified: whether pick_place's `block_yaw_deg` names the CLOSING
-# AXIS or the BLOCK'S MAJOR AXIS. The two differ by exactly 90 deg, and for a
-# 30 mm CUBE -- every block this project has grasped, on every run, ever --
-# reduce_yaw(.., 4) folds 90 deg away, so both conventions produce the identical
-# wrist angle and no run has ever been able to distinguish them.
+# What was NOT verified until today: whether pick_place's `block_yaw_deg` names
+# the CLOSING AXIS or the BLOCK'S MAJOR AXIS. The two differ by exactly 90 deg,
+# and for a 30 mm CUBE -- every block this project had grasped, on every run,
+# ever -- reduce_yaw(.., 4) folds 90 deg away, so both conventions produced the
+# identical wrist angle and no run could distinguish them.
 #
-# DEFAULT 0, WHICH IS TODAY'S BEHAVIOUR EXACTLY. Changing it would rotate every
-# validated grasp, so it does not change until something has watched an
-# ELONGATED block at the park and said which way the fingers point. That is a
-# five-second observation with --dry-run and --confirm; grasp_yaw_report() below
-# prints the two numbers to compare against.
+# THE GREEN BRICK DISTINGUISHED THEM. First colour stack, 2026-08-13:
+#
+#   [stack] green: 30.5 x 60.2 mm rect ... yaw +0.2 -> grasp yaw +0.2 (symmetry 2)
+#   [grip]  Its LONG axis lies at +0.2 deg in the world; the wrist is commanded
+#           to +0.2 deg.
+#   [confirm] ENTER = go  'dx dy' = nudge ... > 0 0 -90
+#
+# The operator turned the wrist 90 deg to grasp it, which is the whole question
+# answered: `block_yaw_deg` is the BLOCK'S MAJOR AXIS, so the closing axis needs
+# +90 on top of it. Elongated and symmetry 2, so nothing folded the answer away.
+#
+# 90 AND NOT -90, and they are the same thing here: the closing axis is a LINE,
+# period 180 deg, so +90 and -90 name one axis. reduce_yaw then folds by the
+# block's own symmetry. The operator typed -90 because that was the shorter turn
+# from where the wrist already was.
+#
+# WHAT THIS CHANGES AND WHAT IT DOES NOT. On a symmetry-4 block -- every tagged
+# cube, every validated calibration row -- reduce_yaw(.., 4) has period 90, so
+# adding 90 lands on the identical wrist angle and NO existing result moves. It
+# only changes blocks that are not 4-fold, which before today could not be
+# grasped at all without an operator turning the wrist by hand.
 #
 # AND NOTE WHAT DOES *NOT* CATCH THIS: grip_span_ok checks the block's geometry,
 # not the wrist. It refuses a block whose short side is wider than the aperture,
 # which is a different question -- with the offset wrong, a 61 x 30.5 mm block
 # passes the span check and the jaws still close on the long axis. Only the
-# operator at the park catches it. Do not run an elongated block unattended
-# until this constant is settled.
-GRASP_YAW_FROM_MAJOR_DEG = 0.0
+# operator at the park caught it, which is what happened.
+GRASP_YAW_FROM_MAJOR_DEG = 90.0
 
 
 def grasp_yaw_report(block, grasp_yaw_deg, zone_yaw_deg, label="block"):
     """Print what the wrist is about to do against what the block needs.
 
-    Exists so the GRASP_YAW_FROM_MAJOR_DEG question is answerable by looking,
-    rather than by reasoning about a convention nothing has written down.
+    Exists so the GRASP_YAW_FROM_MAJOR_DEG question was answerable by looking,
+    rather than by reasoning about a convention nothing had written down. It was
+    answered on 2026-08-13, so this now CHECKS the answer instead of asking it:
+    the two angles have to come out perpendicular, and that is arithmetic anyone
+    can read off the line above.
     """
     major_world = math.degrees(block.zyaw) + zone_yaw_deg
     print("[grip] %s: %.1f mm short side x %.1f mm long side. Its LONG axis "
@@ -1873,11 +1945,23 @@ def grasp_yaw_report(block, grasp_yaw_deg, zone_yaw_deg, label="block"):
           % (label, block.width * 1000, block.length * 1000,
              major_world, grasp_yaw_deg))
     if block.width < block.length * 0.9:
-        print("[grip]   ELONGATED, so the two conventions are distinguishable "
-              "here: the fingers must end up spanning the %.1f mm side. LOOK AT "
-              "THE JAWS at the park -- if they are lined up to close on the "
-              "%.1f mm side instead, set GRASP_YAW_FROM_MAJOR_DEG to 90."
-              % (block.width * 1000, block.length * 1000))
+        # How far off perpendicular, as an angle between two LINES -- so the
+        # answer lives in [0, 90] and 90 is correct.
+        gap = abs((grasp_yaw_deg - major_world + 90.0) % 180.0 - 90.0)
+        if gap > 80.0:
+            print("[grip]   ELONGATED and the wrist is %.0f deg off the long "
+                  "axis, so the fingers span the %.1f mm side. That is what "
+                  "GRASP_YAW_FROM_MAJOR_DEG = %.0f is for."
+                  % (gap, block.width * 1000, GRASP_YAW_FROM_MAJOR_DEG))
+        else:
+            print("[grip]   *** ELONGATED and the wrist is only %.0f deg off the "
+                  "long axis -- the fingers would close on the %.1f mm side, "
+                  "which is %.1f mm wider than they open."
+                  % (gap, block.length * 1000,
+                     (block.length - JAW_APERTURE_OPEN_M) * 1000))
+            print("[grip]   *** GRASP_YAW_FROM_MAJOR_DEG is %.0f. It was measured "
+                  "as 90 on 2026-08-13; if it has been changed back, that is why."
+                  % GRASP_YAW_FROM_MAJOR_DEG)
 
 
 def grip_span_ok(block, aperture_m=None, label="block"):
@@ -1978,10 +2062,31 @@ def choose_jaw_axis(target, others, base_deg, symmetry, label="block"):
     best = max(results, key=lambda r: r[2] if r[2] is not None else -1e9)
     print("[clearance] %s: NO jaw axis has room. Best was %+.1f deg, still "
           "%.1f mm into a neighbour." % (label, best[0], abs(best[2]) * 1000))
+    # WHICH WAY TO MOVE IT, because "move the blocks apart" is not enough
+    # information and following it in the wrong direction makes things worse.
+    #
+    # The fingers are JAW_FINGER_THICKNESS_M along the closing axis and
+    # JAW_FINGER_WIDTH_M across it, so the two directions cost very differently.
+    # Measured on the 2026-08-13 numbers, with the green brick as the target:
+    # a neighbour 34 mm away ACROSS the closing axis clears by +8.7 mm, while one
+    # 40 mm away ALONG it is still 11.3 mm INTO the fingers. Distance is the wrong
+    # variable and it is the one an operator reaches for.
+    blocker = _decompose_blocker(target, others, best[0], best[3])
+    if blocker is not None:
+        along_mm, across_mm, index = blocker
+        print("[clearance] neighbour #%d sits %.0f mm ALONG the closing axis and "
+              "%.0f mm across it. The fingers are %.0f mm thick along that axis "
+              "and %.0f mm wide across, so ALONG is the expensive direction."
+              % (index, abs(along_mm), abs(across_mm),
+                 JAW_FINGER_THICKNESS_M * 1000, JAW_FINGER_WIDTH_M * 1000))
+        print("[clearance] MOVE IT OFF THE END of the target instead of beside "
+              "it -- i.e. increase the %.0f mm and let the %.0f mm shrink. "
+              "Sliding it further along the closing axis buys much less per mm."
+              % (abs(across_mm), abs(along_mm)))
     if len(axes) == 1:
         print("[clearance] This block's footprint is %d-fold, so base+180 is the "
               "SAME jaw axis -- there is no alternative orientation to try. Move "
-              "the blocks apart, or pick the neighbour first."
+              "the blocks apart AS ABOVE, or pick the neighbour first."
               % (symmetry or 1))
     else:
         print("[clearance] Both axes are blocked. In a %.0f mm zone the usable "
@@ -1996,7 +2101,25 @@ def choose_jaw_axis(target, others, base_deg, symmetry, label="block"):
     return best[0], False
 
 
-def merged_contour_reason(detection, index):
+def _decompose_blocker(target, others, jaw_axis_deg, index):
+    """(along_mm, across_mm, index) for the neighbour that blocked, or None.
+
+    Same frame as jaw_footprint_rects: +along is the closing axis, +across is
+    perpendicular, origin at the target's centre. Exists only so the refusal can
+    name a DIRECTION -- see the note at its call site for why distance alone is
+    misleading advice.
+    """
+    if index is None or index < 0 or index >= len(others):
+        return None
+    other = others[index]
+    dx = other.zx - target.zx
+    dy = other.zy - target.zy
+    c, s = (math.cos(math.radians(jaw_axis_deg)),
+            math.sin(math.radians(jaw_axis_deg)))
+    return ((dx * c + dy * s) * 1000.0, (-dx * s + dy * c) * 1000.0, index)
+
+
+def merged_contour_reason(detection, index, label=None):
     """Why this contour is probably two blocks rather than one, or None.
 
     TWO SIGNALS, strongest first.
@@ -2007,22 +2130,32 @@ def merged_contour_reason(detection, index):
        it a perfectly good grasp candidate for --any-block. Definitive, needs no
        threshold, and free.
 
-    2. THE FOOTPRINT IS TOO LONG TO BE ONE BLOCK. The fallback for untagged
-       blocks, and the only signal the colour path will have. See
-       MERGED_FOOTPRINT_M for why its margin is only 6 mm either side.
+    2. THE FOOTPRINT IS TOO BIG TO BE ONE BLOCK. The fallback for untagged
+       blocks, and the only signal the colour path will have. Both axes are
+       compared against THIS block's nominal footprint plus MERGED_MARGIN_M --
+       see that constant for why a margin and not an absolute length, and why
+       the short side has to be tested as well as the long one.
+
+    `label` names the block so nominal_footprint can look its size up; None
+    means "assume the 30 mm cube", which is what the tag path wants.
 
     Returns a string to print and refuse on, or None.
     """
     if index in LAST_IDENTITY_CONFLICTS:
         return ("two different block classes' TOP tags both matched this "
                 "contour, so it is two blocks touching, not one")
-    longest = max(detection.width, detection.length)
-    if longest >= MERGED_FOOTPRINT_M:
-        return ("its footprint is %.0f mm long, past the %.0f mm at which one "
-                "%.0f mm block becomes implausible -- two blocks touching read "
-                "as one blob whose centroid sits in the seam between them"
-                % (longest * 1000, MERGED_FOOTPRINT_M * 1000,
-                   BLOCK_NOMINAL_M * 1000))
+    short_nom, long_nom = nominal_footprint(label)
+    short_seen = min(detection.width, detection.length)
+    long_seen = max(detection.width, detection.length)
+    for seen, nominal, axis in ((long_seen, long_nom, "long"),
+                                (short_seen, short_nom, "short")):
+        if seen >= nominal + MERGED_MARGIN_M:
+            return ("its %s footprint side is %.0f mm, past the %.0f mm at "
+                    "which a %.0f mm side becomes implausible -- two blocks "
+                    "touching read as one blob whose centroid sits in the seam "
+                    "between them"
+                    % (axis, seen * 1000, (nominal + MERGED_MARGIN_M) * 1000,
+                       nominal * 1000))
     return None
 
 
@@ -2137,6 +2270,97 @@ BLOCK_NOMINAL_M = 0.030
 # 4 mm is wide on purpose: view-to-view footprint scatter of 1-2 mm is normal at
 # these ranges, and the failure this is aimed at was 7 mm on both axes.
 BLOCK_SIZE_WARN_M = 0.004
+
+# NOMINAL FOOTPRINTS FOR THE COLOUR PATH, (short side, long side) in metres.
+#
+# WHY THIS HAD TO EXIST. Every "is this footprint plausible" check in this file
+# used to compare against BLOCK_NOMINAL_M alone, which is right for the tag path
+# -- every tagged block on this bench is a 30 mm cube -- and structurally wrong
+# for the colour path, whose whole point is a block set with different shapes.
+# On 2026-08-13 it cost two full hardware runs: the green brick is 30.5 x 61.0 mm
+# BY CONSTRUCTION, read 29.7 x 60.3 (within 1 mm, a good measurement), and was
+# refused as "two blocks touching" because 60 mm is past the 50 mm at which one
+# 30 mm block becomes implausible. It is not a 30 mm block. Nothing was wrong
+# except the number it was compared against.
+#
+# ONE POSE PER BLOCK, the least-tall one -- the scope cut of 2026-08-13. Both of
+# these are 30.5 mm tall in that pose, which is what lets one --block-thickness
+# serve a stack of two different blocks.
+#
+# THESE ARE READ OFF THE AMAZON SHEET, NOT MEASURED HERE. 1.2 in = 30.5,
+# 1.4 in = 35.6, 2.4 in = 61.0. The blue is a hexagonal PRISM: 30.5 across the
+# flats, so its bounding rectangle is 30.5 x 35.2 and the sheet's 1.4 in is the
+# across-corners figure. Add a colour by adding a row; an unlisted label falls
+# back to the cube, which is what the tag path wants.
+#
+# THIS TABLE IS BENCH STATE, NOT A BLOCK LIBRARY, and the distinction bit on
+# 2026-08-13. It is keyed by COLOUR, and the set has several blocks of each
+# colour -- two reds, two blues, two greens. So an entry is only correct while
+# that particular block is the one on the mat. When the demo pair changed from
+# "green brick + blue frustum" to "red trapezoid + blue frustum", the `green` row
+# stopped describing anything present. Update the rows when the blocks change; a
+# stale row is worse than a missing one, because a missing one falls back to the
+# cube and says so.
+COLOUR_FOOTPRINT_M = {
+    "green": (0.0305, 0.0610),   # 1.2 x 1.2 x 2.4 in brick, lying down
+    "blue": (0.0305, 0.0356),    # 1.2 in frustum, standing: 1.2 x 1.4 in base
+    "red": (0.0305, 0.0356),     # 1 in trapezoid, sitting: 1.2 x 1.4 in base
+}
+
+# HEIGHT in the same assumed rest pose, metres. Read off the same sheet.
+#
+# WHY IT IS SEPARATE FROM THE FOOTPRINT: the footprint answers "is this one block
+# and can the jaws span it", the height answers "how far up is the next level".
+# Different consumers, and one of them is the stack step.
+#
+# 30.5 mm, NOT the 30.0 of pick_place.BLOCK_HEIGHT_M -- and that 0.5 mm is real.
+# The first colour stack, 2026-08-13, put the blue down on a green whose top face
+# is at MAT_SURFACE_Z + 30.5 while the level-1 arithmetic assumed 30.0, so the
+# release was 0.5 mm INSIDE the block below before the arm's own z error was
+# added. See stack_blocks.PLACE_DROP_M for the rest of that number.
+# THESE ARE NOT ALL THE SAME, which is the whole reason height_at takes a
+# sequence. Red 25.4 under blue 30.5 is the 2026-08-13 demo pair.
+COLOUR_HEIGHT_M = {
+    "green": 0.0305,             # 1.2 in brick, lying down
+    "blue": 0.0305,              # 1.2 in frustum, standing
+    "red": 0.0254,               # 1 in trapezoid -- 5.1 mm SHORTER than the rest
+}
+
+# Blocks whose sides SLOPE. Recorded rather than acted on: the footprint the
+# camera measures is somewhere between the base and the (smaller, and optically
+# magnified) top face, so its nominal is a range and not a number, and a block
+# clamped on a slope is driven up and out of the jaws by its own taper.
+#
+# BOTH of the 2026-08-13 demo blocks are in here, so the operator should watch the
+# first close on each. What makes the pair work anyway: the taper NARROWS upward,
+# and the jaws close 15 mm up, so they meet a section narrower than the measured
+# footprint -- the error is toward a looser grip, not a wider one. Stacking ONTO a
+# tapered block is the risk, because its top face is the small end.
+COLOUR_TAPERED = ("red", "blue", "yellow", "purple")
+
+
+def nominal_height(label=None):
+    """Block height in metres for a label, falling back to the 30 mm cube."""
+    if label:
+        found = COLOUR_HEIGHT_M.get(str(label).lower())
+        if found:
+            return found
+    return pp.BLOCK_HEIGHT_M
+
+
+def nominal_footprint(label=None):
+    """(short side, long side) nominal footprint in metres for a block label.
+
+    Falls back to the 30 mm cube for anything not in COLOUR_FOOTPRINT_M, which
+    is every tag-path block and every colour whose dimensions are not yet on
+    the sheet. The fallback is the OLD behaviour exactly, so nothing that used
+    to pass starts failing.
+    """
+    if label:
+        found = COLOUR_FOOTPRINT_M.get(str(label).lower())
+        if found:
+            return found
+    return (BLOCK_NOMINAL_M, BLOCK_NOMINAL_M)
 
 # WHY THIS EXISTS. The standard hover is APPROACH_HEIGHT = 40 mm above the grasp,
 # which puts the fingertips 25 mm above the block's top face. Judging a lateral
@@ -2361,7 +2585,14 @@ def run_stage1(io_client, detector, args, log):
     # world +Z), so convert explicitly here rather than at the FusedDetection
     # boundary -- and explicitly, not by relying on zone_yaw being 0.0 today,
     # which would silently break the moment a zone is surveyed at an angle.
-    block_yaw_world = block.zyaw + detector.zone_yaw
+    #
+    # GRASP_YAW_FROM_MAJOR_DEG was missing from THIS path while stack_blocks had
+    # it, so the two files would have disagreed about the wrist the moment the
+    # constant stopped being zero. It is 90 as of 2026-08-13. On a symmetry-4
+    # block reduce_yaw's 90 deg period absorbs it exactly, so every tagged-cube
+    # result is unchanged.
+    block_yaw_world = (block.zyaw + detector.zone_yaw
+                       + math.radians(GRASP_YAW_FROM_MAJOR_DEG))
     grasp_yaw = reduce_yaw(block_yaw_world, block.symmetry)
     grasp_yaw_deg = math.degrees(grasp_yaw)
     # YAW OUT OF THE LOOP, on request, for x/y calibration runs.
@@ -2405,7 +2636,12 @@ def run_stage1(io_client, detector, args, log):
     # --- 1b. is this contour one block, and can the jaws get to it? --------
     chosen_index = next((i for i, f in enumerate(fused_blocks) if f is block),
                         None)
-    merged = (merged_contour_reason(block, chosen_index)
+    # The identity, where there is one, names the block so the guard measures
+    # against the right nominal footprint. On the tag path that is always a
+    # 30 mm cube and the lookup is a no-op; on --by-colour it is the difference
+    # between grasping the green brick and refusing it. See COLOUR_FOOTPRINT_M.
+    merged = (merged_contour_reason(block, chosen_index,
+                                    label=identity.get(chosen_index))
               if chosen_index is not None else None)
     if merged and not getattr(args, "ignore_merged", False):
         print("[stage1] REFUSING to grasp this contour: %s." % merged)

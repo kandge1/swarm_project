@@ -9,7 +9,7 @@ AprilTag-free, identified by COLOUR (needs block_detector_node method:=colour):
 
     python3 stack_blocks.py --by-colour --survey-only
     python3 stack_blocks.py --by-colour --dry-run --confirm
-    python3 stack_blocks.py --by-colour --confirm    # green, then blue on it
+    python3 stack_blocks.py --by-colour --confirm    # red, then blue on it
     python3 stack_blocks.py --by-colour --confirm --pickup-at 0.209 0.003 --zone-yaw -93
 
 One process, one survey of each zone, two picks, two places. The second block
@@ -194,6 +194,7 @@ The speedup that actually matters in this file is decision 1 above.
 """
 
 import argparse
+import collections
 import json
 import shlex
 import math
@@ -276,20 +277,28 @@ def resolve_block_class(text, classes=bc.BLOCK_CLASSES):
         "silently and confidently." % (text, len(hits), ", ".join(hits)))
 
 
-# THE DEMO PAIR, 2026-08-12: the green cuboid and the blue hexagonal prism, green
-# on the bottom.
+# THE DEMO PAIR, and it is BENCH STATE -- update it when the blocks change.
 #
-# Chosen for a reason worth writing down. Both are 1.2 in (30.5 mm) tall in their
-# least-tall rest pose -- the green 2.4 x 1.2 x 1.2 in brick lying down, the blue
-# 1.2 x 1.4 x 1.2 in prism standing -- so the SINGLE --block-thickness of 0.030
-# is correct for BOTH levels to within 0.5 mm. That is the only reason a stack of
-# two DIFFERENT blocks works at all before the rest-pose table exists: the stack
-# arithmetic has one height for every level (see stack_surface_z).
+# 2026-08-13: the RED TRAPEZOID under the BLUE FRUSTUM. The green brick was
+# retired by the operator -- at 61 mm long it needs ~50 mm of jaw clearance from
+# its neighbour in a mat whose usable box for a block centre is 46.6 mm across, so
+# it refused on clearance as often as it grasped. Its entries stay in
+# COLOUR_FOOTPRINT_M and COLOUR_HEIGHT_M; only the default changed.
 #
-# Green underneath because its 61 x 30.5 mm footprint is the larger base. Both
-# short sides are under the jaw aperture: 30.5 mm for the brick, 30.5 or 35.6 for
-# the prism depending on which way it lands.
-DEFAULT_STACK_COLOUR = ("green", "blue")
+# Red underneath, for two reasons and against one:
+#   FOR: at 25.4 mm it is the shorter block, so the taller one goes on top and the
+#        stack's centre of mass stays low; and its 1.2 x 1.4 in base is the wider
+#        footprint of the two.
+#   AGAINST: it is a TRAPEZOID, so its top face is the small end of a slope and
+#        the frustum lands on less bearing area than its own footprint. This is
+#        the risk in the pair and place_block says so at the release.
+# Both short sides are 30.5 mm, comfortably under the 40 mm jaw aperture, and
+# both are ~35 mm on the long side so neither is anywhere near the merge
+# threshold.
+#
+# The heights are now PER LEVEL (25.4 then 30.5) rather than one number for the
+# stack -- see height_at. That is what this pair forced.
+DEFAULT_STACK_COLOUR = ("red", "blue")
 
 # The tag path's own default, unchanged -- these are BLOCK_CLASSES, not colours.
 DEFAULT_STACK_TAG = ("orange", "green")
@@ -430,16 +439,30 @@ def transit_flange_z(x, y, obstacle_top_z, block_height=None,
     clearance it actually achieved, because that number is the one that decides
     whether a block gets knocked over.
     """
-    if block_height is None:
-        block_height = pp.BLOCK_HEIGHT_M
+    # `block_height` IS ACCEPTED AND IGNORED. It used to supply a `/2.0` here, as
+    # the carried block's half-height, and that was the same mistake as in
+    # release_flange_z: what has to clear the obstacle is the block's BASE, and the
+    # base sits GRIP_HEIGHT_ABOVE_BASE_M below the fingertips because that is where
+    # the pick closed on it -- a property of --grasp-z, not of the block.
+    #
+    # Two things follow. The clearance is now exact for a block of any height,
+    # whereas the old form under-cleared a short one. And this function no longer
+    # cares whether it is handed a scalar or a per-level sequence -- which is what
+    # crashed the run of 2026-08-13 with `unsupported operand type(s) for /: 'list'
+    # and 'float'`, after the grasp, with the block in the jaws.
+    #
+    # The parameter stays for the callers that pass it positionally, and because
+    # obstacle_top_z is still computed FROM the heights by the caller.
+    del block_height
     if yaw_deg is None:
         yaw_deg = radial_yaw_deg(x, y)
-    wanted = obstacle_top_z + clearance_m + block_height / 2.0 + pp.GRASP_OFFSET_Z
+    load_bottom = GRIP_HEIGHT_ABOVE_BASE_M + pp.GRASP_OFFSET_Z
+    wanted = obstacle_top_z + clearance_m + load_bottom
     # hover_z_for does both clamps -- MAX_HOVER_Z and the reach envelope at the
     # COMPENSATED flange radius -- so express the request as a target plus
     # APPROACH_HEIGHT and let the one validated clamp do the work.
     z = pp.hover_z_for(x, y, wanted - pp.APPROACH_HEIGHT, yaw_deg)
-    achieved = z - (obstacle_top_z + block_height / 2.0 + pp.GRASP_OFFSET_Z)
+    achieved = z - (obstacle_top_z + load_bottom)
     if not quiet:
         print("[stack] transit flange z %.4f over an obstacle top of %.4f: "
               "%.1f mm under the load (asked for %.1f)"
@@ -454,33 +477,125 @@ def transit_flange_z(x, y, obstacle_top_z, block_height=None,
     return z
 
 
-def stack_surface_z(level, block_height=None):
-    """World z of the surface level `level` rests on. Level 0 is the mat."""
+# RELEASE THIS FAR ABOVE THE COMPUTED SURFACE AND LET THE BLOCK DROP.
+#
+# EARNED ON THE FIRST COLOUR STACK, 2026-08-13. The operator: "it stacked the
+# block and was probably trying to dig into the block below". It was. Two
+# independent millimetres, and neither is noise:
+#
+#   1. THE BLOCK IS 30.5 mm TALL, not 30.0. The level-1 surface was computed at
+#      MAT_SURFACE_Z + 30.0 while the green's top face is at +30.5, so the
+#      release aimed 0.5 mm inside it. Fixed properly by tag_pick_place's
+#      COLOUR_HEIGHT_M, which --block-thickness now defaults to.
+#   2. THE ARM DOES NOT LAND WHERE IT IS SENT IN Z, and the error CHANGES SIGN.
+#      From that run's own [reached] lines at the two place descents:
+#          level 0   commanded 0.1443   reached 0.1471   dz +2.8 mm  (high)
+#          level 1   commanded 0.1743   reached 0.1729   dz -1.4 mm  (low)
+#      A 4.2 mm spread between two descents to the same XY minutes apart. No
+#      constant corrects that, because it is not a constant.
+#
+# So the height is fixed where it is knowable and the rest is given clearance.
+# A 30 mm block dropped 4 mm onto a flat top lands flat; a block pressed 3 mm
+# into the one below either tips the stack or stalls the arm holding it there.
+# 3 mm covers the observed -1.4 mm and leaves the worst case a 4.4 mm drop.
+#
+# THIS RAISES THE RELEASE, NOT THE SURFACE. The stack step stays honest -- level
+# n+1 still sits exactly one block height above level n -- and only the drop
+# changes. Raising the surface instead would compound up the stack.
+PLACE_DROP_M = 0.003
+
+
+# HOW FAR ABOVE A BLOCK'S BASE THE FINGERTIPS CLOSE.
+#
+# Set by the PICK and not by the block: the descent goes to the fixed --grasp-z,
+# so the tips end up this far above whatever base is under them, on a 25.4 mm
+# trapezoid exactly as on a 30.5 mm frustum. Derived from the two constants that
+# already encode it rather than written as 0.015, so it cannot drift from them:
+#
+#   GRASP_FLANGE_Z = MAT_SURFACE_Z + GRIP_HEIGHT_ABOVE_BASE_M + GRASP_OFFSET_Z
+#
+# It equals BLOCK_HEIGHT_M / 2 today, which is a COINCIDENCE of the pick gripping
+# a 30 mm cube at its centre -- and a misleading one. See release_flange_z for the
+# 2.3 mm error that reading it as "half the held block" produced.
+GRIP_HEIGHT_ABOVE_BASE_M = (tpp.GRASP_FLANGE_Z - pp.MAT_SURFACE_Z
+                            - pp.GRASP_OFFSET_Z)
+
+
+def height_at(block_height, level):
+    """Height of the block sitting AT `level`, metres.
+
+    `block_height` may be a scalar -- every level the same, which is what this
+    file assumed until 2026-08-13 -- or a SEQUENCE of per-level heights, bottom
+    first. A scalar reproduces the old arithmetic exactly.
+
+    WHY THE SEQUENCE HAD TO EXIST. The demo pair became the red trapezoid
+    (1 in = 25.4 mm tall) under the blue frustum (1.2 in = 30.5 mm), and a single
+    number cannot describe that stack. Taking the max, which is what the first
+    version did, is safe in the sense that it never digs in -- but it puts level 1
+    5.1 mm too HIGH, so the blue is dropped 5.1 + 3.0 = 8.1 mm onto a trapezoid's
+    small top face. Safe from the arm's point of view, not from the stack's.
+
+    Levels past the end of the sequence reuse the last height, so a 3-high stack
+    built from a 2-name list still returns something rather than raising.
+    """
     if block_height is None:
-        block_height = pp.BLOCK_HEIGHT_M
-    return pp.MAT_SURFACE_Z + level * block_height
+        return pp.BLOCK_HEIGHT_M
+    try:
+        seq = list(block_height)
+    except TypeError:
+        return float(block_height)
+    if not seq:
+        return pp.BLOCK_HEIGHT_M
+    return float(seq[level] if level < len(seq) else seq[-1])
 
 
-def release_flange_z(level, block_height=None):
+def stack_surface_z(level, block_height=None):
+    """World z of the surface level `level` rests on. Level 0 is the mat.
+
+    The sum of the heights BELOW this level, not level * one height -- see
+    height_at. Identical to the old form for a scalar.
+    """
+    return pp.MAT_SURFACE_Z + sum(height_at(block_height, i)
+                                  for i in range(level))
+
+
+def release_flange_z(level, block_height=None, clearance_m=0.0):
     """Flange z at which a block held in the jaws is released onto `level`.
 
     Same shape as run_stage1's release height, with the surface a function of
     the level instead of the constant PLACE_XYZ.z:
 
-        surface + block_height/2 + GRASP_OFFSET_Z
+        surface(level) + GRIP_HEIGHT_ABOVE_BASE_M + GRASP_OFFSET_Z + clearance
 
-    At level 0 this returns GRASP_FLANGE_Z (0.1455) -- the height the pick side
-    independently grasps this block at. The two derivations agreeing is the only
-    available check on this formula.
+    THE SECOND TERM IS A PROPERTY OF THE PICK, NOT OF THE BLOCK, and I got this
+    wrong for one commit on 2026-08-13 by writing `height_at(level)/2` there. It
+    reads like "half the held block's height" and it is not: the pick descends to
+    the fixed `--grasp-z`, so the fingertips always close
+    GRIP_HEIGHT_ABOVE_BASE_M above whatever the block's base is, whatever the
+    block is. To put that base back down on `surface`, the release has to undo the
+    grip height it was picked at. Using the block's own half-height instead made
+    level 0 come out at 0.1432 for the 25.4 mm red trapezoid -- 2.3 mm BELOW
+    GRASP_FLANGE_Z, i.e. pressing the block into the mat.
+
+    So per-level heights belong in the SURFACE and nowhere else. The height of the
+    block being carried does not enter at all.
+
+    At level 0 with no clearance this returns GRASP_FLANGE_Z (0.1455) -- the
+    height the pick side independently grasps at -- FOR EVERY BLOCK, which is
+    exactly the invariant that catches the mistake above. The two derivations
+    agreeing is the only available check on this formula, so the clearance
+    defaults to 0 here and is passed in by the placing path. See PLACE_DROP_M --
+    and note it is a DIFFERENT constant from PLACE_CLEARANCE_M, which is how far
+    above the release the block is PARKED for inspection. Park high, release
+    slightly high, land.
     """
-    if block_height is None:
-        block_height = pp.BLOCK_HEIGHT_M
-    return (stack_surface_z(level, block_height) + block_height / 2.0
-            + pp.GRASP_OFFSET_Z)
+    return (stack_surface_z(level, block_height) + GRIP_HEIGHT_ABOVE_BASE_M
+            + pp.GRASP_OFFSET_Z + clearance_m)
 
 
 def check_stack_geometry(level, place_x, place_y, block_height=None,
-                         max_level=DEFAULT_MAX_LEVEL, yaw_deg=None):
+                         max_level=DEFAULT_MAX_LEVEL, yaw_deg=None,
+                         clearance_m=0.0):
     """(release_z, hover_z) for a place at `level`, or (None, None) with why not.
 
     Checks three things that each fail differently and each read like something
@@ -512,7 +627,14 @@ def check_stack_geometry(level, place_x, place_y, block_height=None,
                  pp.MAX_HOVER_Z))
         return None, None
 
-    release_z = release_flange_z(level, block_height)
+    # LEVEL 0 GETS NO DROP. The mat cannot be dented, so there is nothing to dig
+    # into, and level 0's placement is the one the stack's straightness is
+    # measured against -- both levels target the same XY so a systematic place
+    # error displaces the stack instead of tipping it (design decision 4). A drop
+    # that lets the bottom block bounce a millimetre is the one thing that breaks
+    # that cancellation. Set it down; drop only onto blocks.
+    clearance_m = clearance_m if level > 0 else 0.0
+    release_z = release_flange_z(level, block_height, clearance_m)
     place_yaw = (radial_yaw_deg(place_x, place_y) if yaw_deg is None
                  else yaw_deg)
     hover = pp.hover_z_for(place_x, place_y, release_z, place_yaw)
@@ -534,9 +656,13 @@ def check_stack_geometry(level, place_x, place_y, block_height=None,
     r_max = pp.max_flange_radius(release_z)
     margin = r_max - flange_r
     print("[stack] level %d: surface z %.4f, release flange z %.4f, hover "
-          "%.4f (%.0f mm descent)"
+          "%.4f (%.0f mm descent)%s"
           % (level, stack_surface_z(level, block_height), release_z, hover,
-             descent * 1000))
+             descent * 1000,
+             "" if not clearance_m else
+             " -- releasing %.1f mm high, so the block DROPS that far rather "
+             "than being pressed into level %d (see PLACE_DROP_M)"
+             % (clearance_m * 1000, level - 1)))
     print("[stack] level %d: flange radius %.4f at that height, envelope "
           "allows %.4f -- margin %+.1f mm"
           % (level, flange_r, r_max, margin * 1000))
@@ -798,7 +924,7 @@ def traverse(io_client, memory, args, from_xy, to_xy, obstacle_top_z, label,
     no worse than not having tried. The sweep is not best effort.
     """
     z = transit_flange_z(from_xy[0], from_xy[1], obstacle_top_z,
-                         args.block_thickness, args.transit_clearance_mm / 1000.0)
+                         args.block_heights, args.transit_clearance_mm / 1000.0)
     print("\n=== Lift to transit height before crossing to the %s ===" % label)
     if pp.cartesian_move_to(io_client, from_xy[0], from_xy[1], z,
                             allow_fallback=True,
@@ -811,7 +937,7 @@ def traverse(io_client, memory, args, from_xy, to_xy, obstacle_top_z, label,
     # envelope over the place mat, and arriving is the half that has to be
     # reachable.
     arrive_z = transit_flange_z(to_xy[0], to_xy[1], obstacle_top_z,
-                               args.block_thickness,
+                               args.block_heights,
                                args.transit_clearance_mm / 1000.0,
                                yaw_deg=to_yaw_deg, quiet=True)
     print("\n=== Cross to the %s at flange z %.4f ===" % (label, arrive_z))
@@ -982,7 +1108,7 @@ def survey_pickup_blocks(io_client, detector, args):
                     if args.debug_image else None)
     fused, views_used, _tags, block_tags = tpp.detect_multiview(
         io_client, detector, "pickup", flange[0], flange[1], hover, 0.0,
-        debug_prefix=debug_prefix)
+        debug_prefix=debug_prefix, recentre_lens=not args.no_lens_recentre)
     if views_used == 0:
         print("[stack] no still saw enough tags to fuse. Framing, focus or "
               "lighting -- look at the debug frames before the geometry.")
@@ -1047,6 +1173,26 @@ def have_every_block(candidates, wanted):
         print("[stack] REFUSING: %s not found in the pickup zone. See the "
               "[identify] lines above for what the detector did see."
               % "; ".join(missing))
+        # NAME THE COMMAND THAT WOULD HAVE WORKED. The zone was surveyed and every
+        # block in it was identified with a score -- the run knows exactly what is
+        # on the mat, and "--stack green blue against a mat holding red and blue"
+        # costs a two-minute sweep to discover. On 2026-08-13 it cost exactly that,
+        # with the detector reporting red at score 1.00 and blue at 0.60 in the
+        # very lines above the refusal.
+        #
+        # SHORTEST FIRST, because the bottom of a stack should be the wider block
+        # and the smaller footprint is the one that goes on top -- a guess, but a
+        # better-than-nothing one, and the operator is reading it not obeying it.
+        found = sorted(tally, key=lambda k: -tally[k])
+        if found and sorted(found) != sorted(set(wanted)):
+            order = " ".join(k for k in found for _ in range(tally[k]))
+            print("[stack] The mat is holding %s. Did you mean:"
+                  % ", ".join("%s x%d" % (k, tally[k]) for k in found))
+            print("[stack]     python3 stack_blocks.py --by-colour --stack %s"
+                  % order)
+            print("[stack] Check the order -- the FIRST name goes on the bottom, "
+                  "and it should be the block with the larger and flatter top "
+                  "face.")
         return False
     return True
 
@@ -1102,18 +1248,44 @@ def pick_block(io_client, detector, args, memory, block, want_class,
     # because a mis-sized footprint is the failure that displaces a centroid and
     # this file trusts that centroid twice -- once to grasp and once, via the
     # release, to stack on.
-    for axis, measured in (("width", block.width), ("length", block.length)):
-        if abs(measured - tpp.BLOCK_NOMINAL_M) > tpp.BLOCK_SIZE_WARN_M:
+    #
+    # PER SIDE, SHORT AGAINST SHORT. Comparing both axes against one nominal was
+    # wrong for any block that is not square: the green brick's 60.3 mm long side
+    # is 0.7 mm from ITS nominal and 30 mm from the cube's, so the old form
+    # printed a 30 mm error on a good measurement, every run.
+    # AND A TAPERED BLOCK'S NOMINAL IS A RANGE, NOT A NUMBER. The camera sees a
+    # silhouette somewhere between the base and the (smaller, optically magnified)
+    # top face, and the top-face parallax correction then scales the whole thing by
+    # a factor derived for a straight-sided block -- so a frustum reads UNDER its
+    # base every time. The blue read 31.5 mm against a 35.6 mm base on 2026-08-13
+    # and this warning fired on a perfectly good measurement, which is how real
+    # warnings get ignored. Tapered blocks get a one-sided band: over the base is
+    # still worth saying, under it is expected.
+    short_nom, long_nom = tpp.nominal_footprint(want_class)
+    tapered = str(want_class).lower() in tpp.COLOUR_TAPERED
+    for axis, measured, nominal in (
+            ("short side", min(block.width, block.length), short_nom),
+            ("long side", max(block.width, block.length), long_nom)):
+        over = measured - nominal
+        if tapered and over < 0:
+            continue
+        if abs(over) > tpp.BLOCK_SIZE_WARN_M:
             print("[stack] WARNING: measured %s %.1f mm against a nominal "
-                  "%.1f mm. A footprint that reads N mm too long displaces its "
+                  "%.1f mm%s. A footprint that reads N mm too long displaces its "
                   "own centroid by N/2, and that error is carried into the "
-                  "stack." % (axis, measured * 1000,
-                              tpp.BLOCK_NOMINAL_M * 1000))
+                  "stack."
+                  % (axis, measured * 1000, nominal * 1000,
+                     " (its BASE -- it is tapered, so reading over the base is "
+                     "the direction that means something)" if tapered else ""))
 
     # --- is this one block, and can the jaws get to it? -------------------
     # A stack run always has a second block in the zone, so this is the normal
     # case here rather than an edge one. See tag_pick_place.choose_jaw_axis.
-    merged = tpp.merged_contour_reason(block, None)
+    #
+    # want_class is passed so the guard knows WHICH block's nominal footprint to
+    # measure against. Without it every non-cube in the colour set is refused as
+    # two touching cubes -- see COLOUR_FOOTPRINT_M.
+    merged = tpp.merged_contour_reason(block, None, label=want_class)
     if merged and not args.ignore_merged:
         print("[stack] REFUSING to grasp the %s: %s." % (want_class, merged))
         print("[stack] Its centroid is not on a block, so the jaws would close "
@@ -1169,7 +1341,7 @@ def pick_block(io_client, detector, args, memory, block, want_class,
             "zone": [block.zx, block.zy], "views": int(block.n_views),
             "spread_m": float(block.spread_m), "symmetry": block.symmetry,
             "nudges": nudges, "measurements": measurements,
-            "flange_fk": None, "grasped": False}
+            "flange_fk": None, "grasped": None}
 
     if args.dry_run:
         print("\n[stack] --dry-run: parked over the %s block. No descent, no "
@@ -1204,22 +1376,61 @@ def pick_block(io_client, detector, args, memory, block, want_class,
         print("[stack] step FAILED: Retreat after grasp")
         return None
 
-    if args.confirm:
-        pose["grasped"] = tpp._ask(
-            "\n[confirm] did the jaws actually close on the %s block? y = yes, "
-            "anything else = no > " % want_class) in ("y", "yes")
-        if not pose["grasped"]:
-            print("[stack] the grasp was not confirmed. Stopping before the "
-                  "place -- releasing nothing at the stack would leave a level "
-                  "that the next block is then stacked onto.")
-            return None
-    else:
-        # ROS logs are not evidence of motion: arm_group_controller reports
-        # "Goal reached, success!" from elapsed time alone. --yes buys speed by
-        # giving up the one check that a block is in the jaws.
-        print("[stack] --yes: nothing confirms the grasp physically. Recording "
-              "it as UNCONFIRMED.")
+    # NO "did the jaws close" PROMPT. Removed on request, 2026-08-13: the
+    # operator is watching the arm and will Ctrl-C a failed grasp, so asking
+    # after the fact only adds a keystroke between them and the stop.
+    #
+    # WHAT IS LOST, recorded so nobody re-derives it as a surprise: nothing else
+    # in the loop knows whether a block is in the jaws. The gripper's own CONTACT
+    # detection is the closest thing -- it stops the close when the jaw trails its
+    # command by >= 0.06 rad -- and that fires on a fingertip touching anything,
+    # including each other on a missed block. So `grasped` is now what the gripper
+    # inferred, not what a human saw, and calibration rows carry it as such.
+    pose["grasped"] = None
     return pose
+
+
+def release_z_gap(placed, level, block_heights, release_z):
+    """Metres between the held block's base and the surface, as ACHIEVED. Or None.
+
+    Positive is a gap the block will drop through; NEGATIVE means the block is
+    being pressed into the level below by that much. Reads `pp.LAST_FLANGE_FK`,
+    which `cartesian_move_to` has just written, so it costs nothing.
+
+    Also records the z tracking error into `placed`, because that number is the
+    one thing this whole file needs measured and it was going to stdout and being
+    discarded. Fifteen readings per run, thrown away every run since 2026-08-06.
+
+    None when there is no FK to read -- a dry run, or a fallback path that did not
+    record one. Never raises: a missing measurement must not stop a place.
+    """
+    fk = getattr(pp, "LAST_FLANGE_FK", None)
+    if not fk or len(fk) < 3:
+        print("[stack] no flange FK from the descent, so the release height is "
+              "UNVERIFIED. Proceeding open-loop, as before.")
+        return None
+    achieved = float(fk[2])
+    placed["release_z_commanded"] = release_z
+    placed["release_z_achieved"] = achieved
+    placed["release_z_error_mm"] = (achieved - release_z) * 1000.0
+    # Where the block's base ended up, against where the surface is. The base is
+    # GRIP_HEIGHT_ABOVE_BASE_M below the fingertips -- see release_flange_z.
+    base = achieved - pp.GRASP_OFFSET_Z - GRIP_HEIGHT_ABOVE_BASE_M
+    surface = stack_surface_z(level, block_heights)
+    gap = base - surface
+    placed["release_gap_mm"] = gap * 1000.0
+    print("[stack] descent landed at flange %.4f, asked for %.4f (%+.1f mm). "
+          "The block's base is %.4f against a surface of %.4f: %+.1f mm."
+          % (achieved, release_z, (achieved - release_z) * 1000.0,
+             base, surface, gap * 1000.0))
+    if gap < 0.0:
+        print("[stack] NEGATIVE -- the block is %.1f mm INTO level %d. That is "
+              "what tips a stack." % (-gap * 1000.0, level - 1))
+    elif gap > 2.0 * PLACE_DROP_M:
+        print("[stack] that is more than twice the %.1f mm drop asked for, so "
+              "the block falls further than intended. Not dangerous; worth "
+              "knowing." % (PLACE_DROP_M * 1000.0))
+    return gap
 
 
 # ---------------------------------------------------------------------------
@@ -1234,8 +1445,23 @@ def place_block(io_client, args, memory, place_x, place_y, level, pick_pose):
     anyway so that measuring them later fixes this path for free rather than
     leaving it as a second place to remember.
     """
+    # STACKING ONTO A TAPER is the risk the taper actually creates. A tapered
+    # block's TOP face is the small end, so the block landing on it has less
+    # bearing area than its own footprint suggests and less margin for the place
+    # error. The grasp direction is the safe one -- the jaws close 15 mm up, where
+    # a taper is narrower than the footprint the camera measured -- so this warns
+    # about the place and not the pick.
+    below = (args.stack[level - 1] if level and level - 1 < len(args.stack)
+             else None)
+    if below and below.lower() in tpp.COLOUR_TAPERED:
+        print("[stack] NOTE: level %d lands on the %s, whose sides SLOPE -- its "
+              "top face is the SMALL end. Less bearing area than its footprint "
+              "suggests, so a place error tips this level sooner than it would "
+              "on a flat-topped block. Watch this release."
+              % (level, below))
     release_z, place_hover = check_stack_geometry(
-        level, place_x, place_y, args.block_thickness, args.max_level)
+        level, place_x, place_y, args.block_heights, args.max_level,
+        clearance_m=args.place_drop_mm / 1000.0)
     if release_z is None:
         return None
     place_yaw_deg = radial_yaw_deg(place_x, place_y)
@@ -1260,8 +1486,8 @@ def place_block(io_client, args, memory, place_x, place_y, level, pick_pose):
         # The target moved, so re-check the geometry against the new radius AND
         # the nudged yaw rather than reusing a hover computed for the old pose.
         release_z, place_hover = check_stack_geometry(
-            level, place_x, place_y, args.block_thickness, args.max_level,
-            yaw_deg=place_yaw_deg)
+            level, place_x, place_y, args.block_heights, args.max_level,
+            yaw_deg=place_yaw_deg, clearance_m=args.place_drop_mm / 1000.0)
         if release_z is None:
             print("[stack] the nudge moved the release outside what is "
                   "reachable. STILL HOLDING THE BLOCK.")
@@ -1281,7 +1507,7 @@ def place_block(io_client, args, memory, place_x, place_y, level, pick_pose):
     # produce.
     placed = {"level": level, "x": place_x, "y": place_y, "z": release_z,
               "yaw_deg": place_yaw_deg, "hover_z": place_hover,
-              "surface_z": stack_surface_z(level, args.block_thickness),
+              "surface_z": stack_surface_z(level, args.block_heights),
               "nudges": nudges, "measurements": measurements,
               "released": False, "ok": True}
 
@@ -1314,17 +1540,51 @@ def place_block(io_client, args, memory, place_x, place_y, level, pick_pose):
                      "in the jaws"))
             placed["ok"] = False
             return placed
+        if name == "Descend to place":
+            # CHECK WHERE IT ACTUALLY LANDED, BEFORE OPENING THE JAWS.
+            #
+            # This is the one closed loop available for free, and the run of
+            # 2026-08-13 says it is needed. Its own [reached] lines, downward
+            # moves only: +0.5 +2.1 +1.0 +4.6 +0.7 +0.2 -7.7 -2.7 mm against
+            # command. At the two releases the flange finished 1.6 mm HIGH at
+            # level 0 and 3.9 mm LOW at level 1 -- so the blue went 0.9 mm INTO
+            # the red despite the 3.0 mm drop. Same shape the run before:
+            # +2.8 then -1.4. Level 0 high, level 1 low, ~5 mm apart.
+            #
+            # Nothing was measuring it. The number was already on stdout and
+            # thrown away, while the arithmetic upstream assumed the arm goes
+            # where it is sent.
+            #
+            # A BIGGER DROP IS NOT THE FIX -- it trades digging in for a harder
+            # landing, and PLACE_DROP_M is already carrying the whole ±5 mm. The
+            # fix is to look, and to lift by the shortfall if the block is being
+            # pressed into the level below.
+            gap = release_z_gap(placed, level, args.block_heights, release_z)
+            if gap is not None and gap < 0.0:
+                print("[stack] lifting %.1f mm before releasing, so the block is "
+                      "set down rather than pressed in." % (-gap * 1000))
+                placed["release_lifted"] = -gap * 1000.0
+                if pp.cartesian_move_to(io_client, place_x, place_y,
+                                        release_z - gap, allow_fallback=True,
+                                        block_yaw_deg=place_yaw_deg,
+                                        holding_block=True) is False:
+                    print("[stack] the corrective lift FAILED. Releasing where "
+                          "it is -- the block is %.1f mm into the level below."
+                          % (-gap * 1000))
+                    placed["release_lifted"] = None
         if name == "Open gripper (release)":
             placed["released"] = True
         time.sleep(0.5)
 
-    if args.confirm:
-        placed["stacked"] = tpp._ask(
-            "\n[confirm] is the block sitting squarely on level %d? y = yes, "
-            "anything else = no > " % level) in ("y", "yes")
-        if not placed["stacked"]:
-            print("[stack] the placement was not confirmed. Nothing further "
-                  "will be stacked on it.")
+    # NO "is it sitting squarely" PROMPT either, same request and same reason: the
+    # operator watches the place and stops the run if it goes down crooked.
+    #
+    # WHAT THIS GAVE UP is more than the grasp prompt did, so it is worth naming.
+    # A crooked level 0 is the one failure that makes level 1 land on a slope, and
+    # nothing measures it -- the camera never looks at the stack, only at the
+    # pickup zone. So `stacked` is unknown rather than false, and the next level
+    # proceeds. If a level goes down crooked, stop the run; it will not notice.
+    placed["stacked"] = None
     return placed
 
 
@@ -1380,6 +1640,17 @@ def stack_row(args, pick_pose, placed, place_origin, level):
                                  place_measured[0]["dy_mm"] / 1000.0]
                                 if place_measured else None),
         place_measured_flag=bool(args.confirm and not args.dry_run),
+        # THE Z TRACKING ERROR, which nothing has ever recorded. Measured by the
+        # arm's own FK at the instant of the release, so it needs no operator and
+        # no instrument -- and it is the largest uncontrolled quantity in a stack
+        # (±5 mm across the two levels of 2026-08-13, level 0 high and level 1
+        # low in both runs). Three fields because they answer three questions:
+        # how far off the command the flange landed, where that put the block's
+        # base relative to the surface, and whether the run corrected for it.
+        place_release_z_achieved=placed.get("release_z_achieved"),
+        place_release_z_error_mm=placed.get("release_z_error_mm"),
+        place_release_gap_mm=placed.get("release_gap_mm"),
+        place_release_lifted=placed.get("release_lifted"),
         released=bool(placed.get("released")),
         stacked=placed.get("stacked"),
         # The pick that supplied the block, so a place error can be attributed
@@ -1393,7 +1664,10 @@ def stack_row(args, pick_pose, placed, place_origin, level):
         pick_flange_fk=pick_pose.get("flange_fk"),
         pick_views=pick_pose.get("views"),
         pick_view_spread_m=pick_pose.get("spread_m"),
-        grasped=bool(pick_pose.get("grasped")),
+        # None, NOT False: nothing looked, which is not the same claim as
+        # "the operator said the jaws were empty". bool() here would have
+        # relabelled every grasp in the log as a confirmed failure.
+        grasped=pick_pose.get("grasped"),
         constants=tpp.model_provenance(args),
         note=args.note or "")
 
@@ -1475,6 +1749,13 @@ def build_parser():
                         default=None,
                         help="stack at this world XY and do not survey the "
                              "place zone at all")
+    parser.add_argument("--pickup-yaw", type=float, default=None, metavar="DEG",
+                        help="fixed yaw for the PICKUP zone only, degrees. Use "
+                             "this rather than --zone-yaw: the two mats are ~180 "
+                             "deg apart on this bench, so one shared value is "
+                             "wrong for one of them by construction")
+    parser.add_argument("--place-yaw", type=float, default=None, metavar="DEG",
+                        help="fixed yaw for the PLACE zone only, degrees")
     parser.add_argument("--pickup-at", type=float, nargs=2, metavar=("X", "Y"),
                         default=None,
                         help="PICK from this world XY and do not survey the "
@@ -1493,11 +1774,22 @@ def build_parser():
                         default=tpp.zv.DEFAULT_ZONE_SIZE)
     parser.add_argument("--tag-size", type=float,
                         default=tpp.zv.DEFAULT_TAG_SIZE)
-    parser.add_argument("--block-thickness", type=float,
-                        default=tpp.DEFAULT_BLOCK_THICKNESS,
-                        help="block height, metres (default %(default)s). Sets "
-                             "BOTH the release height and the per-level step, "
-                             "so it is the one number a stack's Z depends on")
+    parser.add_argument("--block-thickness", type=float, default=None,
+                        help="block height, metres. Sets BOTH the release height "
+                             "and the per-level step, so it is the one number a "
+                             "stack's Z depends on. Default: %.4f, or the tallest "
+                             "block in --stack when --by-colour names blocks with "
+                             "known heights (0.0305 for the demo pair -- the 0.5 "
+                             "mm the first colour stack dug in by)"
+                             % tpp.DEFAULT_BLOCK_THICKNESS)
+    parser.add_argument("--place-drop-mm", type=float,
+                        default=PLACE_DROP_M * 1000.0,
+                        help="release this far ABOVE the computed surface and let "
+                             "the block drop, rather than pressing it into the "
+                             "level below (default %(default)s). The arm's z "
+                             "error changed sign between two descents to the "
+                             "same XY on 2026-08-13 (+2.8 then -1.4 mm), so this "
+                             "is clearance, not a correction. 0 disables it")
     parser.add_argument("--by-colour", "--by-color", action="store_true",
                         dest="by_colour",
                         help="identify blocks by COLOUR instead of by AprilTag, "
@@ -1556,14 +1848,25 @@ def build_parser():
     # they already have, should be accepted rather than rejected.
     parser.add_argument("--confirm", dest="confirm", action="store_true",
                         default=True,
-                        help="stop at the park for an operator check. This is "
-                             "ALREADY the default; the flag exists so the "
-                             "spelling works. --yes is what turns it off")
+                        help="stop at each PARK -- before the grasp and before "
+                             "the release -- to nudge or to record with 'm'. "
+                             "This is ALREADY the default; the flag exists so "
+                             "the spelling works. --yes is what turns it off. "
+                             "The two after-the-fact yes/no questions were "
+                             "removed on 2026-08-13; watch the arm and Ctrl-C")
     parser.add_argument("--yes", dest="confirm", action="store_false",
                         default=True,
-                        help="no operator checkpoints. Gives up the place-side "
+                        help="no operator parks. Gives up the place-side "
                              "measurement, which is the one number this script "
                              "can take that nothing else can")
+    parser.add_argument("--no-lens-recentre", "--no-lens-recenter",
+                        dest="no_lens_recentre", action="store_true",
+                        help="do NOT shift the survey stills to put the lens on "
+                             "the zone centre. The correction is learned at ONE "
+                             "wrist yaw and pushes the framing flange 13-15 mm "
+                             "further out, which cost 4 of 5 stills their "
+                             "DETECT_HOVER_Z on 2026-08-13. Run it both ways and "
+                             "compare '[multiview] N usable view(s)'")
     parser.add_argument("--debug-image", default=None, metavar="PATH",
                         help="write the survey's annotated frames, one per "
                              "still, prefixed from this path")
@@ -1680,6 +1983,31 @@ def _selftest():
     check("--yes still turns it off",
           parser.parse_args(["--yes"]).confirm is False)
 
+    print("per-zone yaw flags")
+    parser = build_parser()
+    for argv in (["--zone-yaw", "-93"], ["--pickup-yaw", "-91"],
+                 ["--place-yaw", "88.6"],
+                 ["--pickup-yaw", "-91", "--place-yaw", "88.6"],
+                 ["--by-colour", "--pickup-at", "0.22", "-0.01",
+                  "--pickup-yaw", "-93"]):
+        try:
+            parser.parse_args(argv)
+            ok = True
+        except SystemExit:
+            ok = False
+        check("parses: %s" % " ".join(argv), ok)
+    a = parser.parse_args(["--zone-yaw", "-93", "--place-yaw", "88.6"])
+    check("--place-yaw and --zone-yaw coexist; main resolves the precedence",
+          a.zone_yaw == -93.0 and a.place_yaw == 88.6 and a.pickup_yaw is None)
+    # The two mats' surveyed yaws, from the run log. If these were within the
+    # warning threshold of each other a single --zone-yaw would be fine, and this
+    # whole flag pair would be unnecessary -- so assert they are not.
+    gap = abs((math.radians(88.6) - math.radians(-91.0) + math.pi)
+              % (2.0 * math.pi) - math.pi)
+    check("the pickup and place squares really are ~180 deg apart, which is why "
+          "one shared --zone-yaw cannot serve both",
+          gap > math.radians(150.0), "%.1f deg apart" % math.degrees(gap))
+
     print("colour names (the AprilTag-free path)")
     def colour_ok(text, want):
         try:
@@ -1739,25 +2067,333 @@ def _selftest():
     check("and it is still flagged as UNMEASURED",
           tpp.JAW_GEOMETRY_MEASURED is False)
 
-    print("the wrist-yaw convention (unverified, so pinned)")
-    # GRASP_YAW_FROM_MAJOR_DEG must stay 0 until a hardware observation moves it.
-    # A change here rotates EVERY grasp, so it should not happen by accident.
-    check("GRASP_YAW_FROM_MAJOR_DEG is still 0 (today's validated behaviour)",
-          tpp.GRASP_YAW_FROM_MAJOR_DEG == 0.0,
+    print("the wrist-yaw convention (MEASURED 2026-08-13, so pinned at 90)")
+    # Settled by the first colour stack: the green brick's long axis lay at
+    # +0.2 deg, the wrist was commanded to +0.2, and the operator typed
+    # `0 0 -90` to grasp it. So block_yaw_deg names the block's MAJOR axis and
+    # the closing axis needs 90 on top. A change here rotates every non-4-fold
+    # grasp, so it should not happen by accident.
+    check("GRASP_YAW_FROM_MAJOR_DEG is 90 (the measured convention)",
+          tpp.GRASP_YAW_FROM_MAJOR_DEG == 90.0,
           "%.1f" % tpp.GRASP_YAW_FROM_MAJOR_DEG)
-    # ... and that a cube cannot tell the two conventions apart, which is why it
-    # has never been caught.
+    # THE INVARIANCE THAT MAKES THIS SAFE: on a cube the two conventions are the
+    # same wrist angle, so no tagged-cube result -- i.e. every calibration row
+    # ever recorded -- moves. This is also why no run could ever distinguish them.
     for yaw in (0.0, 17.0, 44.0, 61.0):
         a = tpp.reduce_yaw(math.radians(yaw), 4)
         b = tpp.reduce_yaw(math.radians(yaw + 90.0), 4)
         check("a cube at %+.0f deg grasps identically either convention" % yaw,
               abs(a - b) < 1e-9, "%.4f vs %.4f" % (a, b))
-    # On a 2-fold block they differ, which is the whole risk.
+    # On a 2-fold block they differ, which is what the brick exposed.
     a = tpp.reduce_yaw(math.radians(20.0), 2)
     b = tpp.reduce_yaw(math.radians(110.0), 2)
-    check("a 2-fold block DOES distinguish them (the risk)",
+    check("a 2-fold block DOES distinguish them (what the brick showed)",
           abs(a - b) > math.radians(80), "%.1f vs %.1f deg"
           % (math.degrees(a), math.degrees(b)))
+    # +90 and -90 name ONE closing axis, so the operator's -90 and the
+    # constant's +90 are the same instruction.
+    for sym in (2, 4):
+        a = tpp.reduce_yaw(math.radians(0.2 + 90.0), sym)
+        b = tpp.reduce_yaw(math.radians(0.2 - 90.0), sym)
+        check("+90 and -90 are the same closing axis at symmetry %d" % sym,
+              abs(a - b) < 1e-9, "%.1f vs %.1f deg"
+              % (math.degrees(a), math.degrees(b)))
+    # AND THE TWO FILES MUST AGREE. stack_blocks applied the offset and
+    # tag_pick_place.run_stage1 did not, which was invisible only while it was 0.
+    # A source check, deliberately: the bug is "one of two call sites was
+    # updated", which no single-path behavioural test can see. Every place that
+    # turns a zone yaw into a world block yaw must carry the offset.
+    # The needles are assembled from pieces so that this loop does not count
+    # ITSELF as a call site when it reads stack_blocks.py.
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _needle = "block.zyaw + " + "detector.zone_yaw"
+    for _fname, _prefix in (("tag_pick_place.py", ""),
+                            ("stack_blocks.py", "tpp.")):
+        _src = open(os.path.join(_here, _fname)).read()
+        _sites = _src.count(_needle)
+        _offsets = _src.count("math.radians(%sGRASP_YAW_FROM" % _prefix
+                              + "_MAJOR_DEG)")
+        check("%s applies the offset at every zone->world yaw site" % _fname,
+              _sites and _sites == _offsets,
+              "%d site(s), %d carry the offset" % (_sites, _offsets))
+
+    print("the wrist is now CHECKED perpendicular, not asked about")
+    # grasp_yaw_report used to ask the operator to set a constant that is now
+    # set. It has to verify it instead, and the check is an angle between two
+    # LINES so the answer lives in [0, 90] and 90 is correct.
+    class _EB(object):
+        def __init__(self, zyaw_deg, w, l, sym):
+            self.zyaw = math.radians(zyaw_deg)
+            self.width, self.length, self.symmetry = w, l, sym
+            self.shape = "rect"
+
+    # The run's own numbers: zone yaw -91.3, block zone yaw +178.3, so the long
+    # axis lands at +87.0 in the world and the wrist was commanded to -3.0.
+    brick = _EB(178.3, 0.0323, 0.0612, 2)
+    major = math.degrees(brick.zyaw) + (-91.3)
+    gap = abs((-3.0 - major + 90.0) % 180.0 - 90.0)
+    check("the run's commanded wrist came out perpendicular to the long axis",
+          gap > 89.0, "%.1f deg off" % gap)
+    # And with the constant back at 0 it would NOT have, which is the case the
+    # message has to shout about.
+    bad = math.degrees(tpp.reduce_yaw(brick.zyaw + math.radians(-91.3), 2))
+    bad_gap = abs((bad - major + 90.0) % 180.0 - 90.0)
+    check("with no offset the wrist would lie ALONG the long axis",
+          bad_gap < 1.0, "%.1f deg off" % bad_gap)
+    check("and the long side really is wider than the jaws open",
+          brick.length > tpp.JAW_APERTURE_OPEN_M,
+          "%.1f mm vs %.1f mm" % (brick.length * 1000,
+                                  tpp.JAW_APERTURE_OPEN_M * 1000))
+
+    print("the release height is CHECKED, not assumed (2026-08-13 autonomous run)")
+    # BOTH LEVELS OF THAT RUN, from its own [reached] lines. Level 0 asked for
+    # 0.1455 and the flange finished at 0.1471; level 1 asked for 0.1739 and
+    # finished at 0.1700. Same XY, minutes apart, 5.5 mm of disagreement.
+    _hsr = [tpp.nominal_height(n) for n in DEFAULT_STACK_COLOUR]
+    _saved_fk = getattr(pp, "LAST_FLANGE_FK", None)
+    try:
+        for _lvl, _asked, _reached, _want_neg in ((0, 0.1455, 0.1471, False),
+                                                  (1, 0.1739, 0.1700, True)):
+            pp.LAST_FLANGE_FK = (0.0107, 0.2337, _reached)
+            _rec = {}
+            _g = release_z_gap(_rec, _lvl, _hsr, _asked)
+            check("level %d's z error is recorded, not just printed" % _lvl,
+                  _g is not None
+                  and abs(_rec["release_z_error_mm"]
+                          - (_reached - _asked) * 1000.0) < 1e-6,
+                  str(_rec.get("release_z_error_mm")))
+            if _want_neg:
+                check("level 1 is caught PRESSING IN despite the 3 mm drop",
+                      _g < 0, "%+.1f mm" % (_g * 1000))
+                check("...by 0.9 mm, which is the run's own number",
+                      abs(_g * 1000 + 0.9) < 0.15, "%+.2f mm" % (_g * 1000))
+            else:
+                check("level 0 is caught landing HIGH, which is harmless",
+                      _g > 0, "%+.1f mm" % (_g * 1000))
+        # A missing FK must degrade to open loop, never raise -- dry runs and
+        # fallback paths do not always record one.
+        pp.LAST_FLANGE_FK = None
+        check("no FK degrades to open-loop rather than raising",
+              release_z_gap({}, 1, _hsr, 0.1739) is None)
+        pp.LAST_FLANGE_FK = (0.0, 0.0)
+        check("a short FK tuple is refused rather than indexed",
+              release_z_gap({}, 1, _hsr, 0.1739) is None)
+        # The corrective lift has to land the base ON the surface, not past it.
+        pp.LAST_FLANGE_FK = (0.0107, 0.2337, 0.1700)
+        _rec = {}
+        _g = release_z_gap(_rec, 1, _hsr, 0.1739)
+        _corrected = 0.1739 - _g
+        pp.LAST_FLANGE_FK = (0.0107, 0.2337, _corrected + (0.1700 - 0.1739))
+        _g2 = release_z_gap({}, 1, _hsr, _corrected)
+        check("lifting by the shortfall puts the base back on the surface",
+              abs(_g2 * 1000) < 0.01, "%+.3f mm" % (_g2 * 1000))
+    finally:
+        pp.LAST_FLANGE_FK = _saved_fk
+    # And a tapered block must not fire the footprint warning for reading UNDER
+    # its base -- that is what a taper does, and the blue did it every run.
+    check("the demo blocks are tapered, so the under-read is expected",
+          "blue" in tpp.COLOUR_TAPERED)
+    _s, _l = tpp.nominal_footprint("blue")
+    check("the blue's 31.5 mm read really is under its 35.6 mm base by >4 mm",
+          (_l - 0.0315) > tpp.BLOCK_SIZE_WARN_M,
+          "%.1f mm under" % ((_l - 0.0315) * 1000))
+
+    print("clearance names a DIRECTION (the 2026-08-13 refusal)")
+    _T = collections.namedtuple("_T", "zx zy width length symmetry shape")
+    _g = _T(0.0065, -0.0246, 0.0323, 0.0612, 2, "rect")
+    _b = _T(-0.0220, 0.0146, 0.0286, 0.0316, 0, "circle")
+    _ok, _margin, _who = tpp.grasp_clearance(_g, [_b], 88.3)
+    check("the run's layout is reproduced: blocked by 0.2 mm",
+          not _ok and abs(_margin * 1000 + 0.2) < 0.3,
+          "%+.1f mm" % (_margin * 1000))
+    _d = tpp._decompose_blocker(_g, [_b], 88.3, _who)
+    check("the blocker decomposes into along and across", _d is not None)
+    _along, _across, _ = _d
+    check("and the run's neighbour was mostly ALONG the closing axis",
+          abs(_along) > abs(_across),
+          "%.0f mm along, %.0f mm across" % (abs(_along), abs(_across)))
+    # THE POINT: distance is the wrong variable. A neighbour FURTHER away along
+    # the closing axis is worse than a nearer one across it.
+    _far_along = _T(_g.zx, _g.zy + 0.040, _b.width, _b.length, 0, "circle")
+    _near_across = _T(_g.zx + 0.034, _g.zy, _b.width, _b.length, 0, "circle")
+    _ok_far, _m_far, _ = tpp.grasp_clearance(_g, [_far_along], 90.0)
+    _ok_near, _m_near, _ = tpp.grasp_clearance(_g, [_near_across], 90.0)
+    check("40 mm ALONG the closing axis is blocked",
+          not _ok_far, "%+.1f mm" % (_m_far * 1000))
+    check("34 mm ACROSS it is clear -- nearer, and fine",
+          _ok_near, "%+.1f mm" % (_m_near * 1000))
+    check("so moving OFF THE END is worth more than moving further away",
+          _m_near > _m_far,
+          "%+.1f mm at 34 across vs %+.1f mm at 40 along"
+          % (_m_near * 1000, _m_far * 1000))
+    check("_decompose_blocker survives a None/out-of-range index",
+          tpp._decompose_blocker(_g, [_b], 88.3, None) is None
+          and tpp._decompose_blocker(_g, [], 88.3, 0) is None)
+
+    print("stack step and drop (the 2026-08-13 dig-in)")
+    # THE INTERFERENCE, REBUILT FROM THE RUN. The green's top face is at
+    # MAT_SURFACE_Z + 30.5 mm; level 1's release assumed a 30.0 mm step.
+    dug = tpp.nominal_height("green") - pp.BLOCK_HEIGHT_M
+    check("a 30.0 mm step under a 30.5 mm block aims 0.5 mm inside it",
+          abs(dug - 0.0005) < 1e-9, "%.1f mm" % (dug * 1000))
+    check("an unnamed block still falls back to BLOCK_HEIGHT_M",
+          tpp.nominal_height(None) == pp.BLOCK_HEIGHT_M
+          and tpp.nominal_height("chartreuse") == pp.BLOCK_HEIGHT_M)
+    # The parser must PICK the step up from the block names, or the fix is inert
+    # at the only place it matters.
+    _p = build_parser()
+    check("--block-thickness defaults to None so main() can resolve it",
+          _p.parse_args([]).block_thickness is None)
+    check("...and an explicit --block-thickness still wins",
+          abs(_p.parse_args(["--block-thickness", "0.031"]).block_thickness
+              - 0.031) < 1e-12)
+
+    print("PER-LEVEL heights (the 2026-08-13 mixed-height pair)")
+    # A SCALAR MUST REPRODUCE THE OLD ARITHMETIC EXACTLY, or every constant in
+    # this file that was tuned against level * h has quietly moved.
+    for _h in (0.030, 0.0305, 0.025):
+        for _lvl in (0, 1, 2, 3):
+            check("scalar %.4f at level %d is still MAT + level*h"
+                  % (_h, _lvl),
+                  abs(stack_surface_z(_lvl, _h)
+                      - (pp.MAT_SURFACE_Z + _lvl * _h)) < 1e-12)
+    check("height_at reads a scalar, a sequence, and None",
+          abs(height_at(0.025, 3) - 0.025) < 1e-12
+          and abs(height_at([0.0254, 0.0305], 1) - 0.0305) < 1e-12
+          and abs(height_at(None, 0) - pp.BLOCK_HEIGHT_M) < 1e-12)
+    check("a level past the end of the sequence reuses the last height",
+          abs(height_at([0.0254, 0.0305], 5) - 0.0305) < 1e-12)
+    check("an empty sequence falls back rather than raising",
+          abs(height_at([], 0) - pp.BLOCK_HEIGHT_M) < 1e-12)
+
+    # THE DEMO PAIR: red 25.4 under blue 30.5.
+    _hs = [tpp.nominal_height(n) for n in DEFAULT_STACK_COLOUR]
+    check("the default pair is red then blue", list(DEFAULT_STACK_COLOUR)
+          == ["red", "blue"], str(DEFAULT_STACK_COLOUR))
+    check("and their heights DIFFER, which is what forced per-level",
+          abs(_hs[0] - 0.0254) < 1e-9 and abs(_hs[1] - 0.0305) < 1e-9,
+          "%.4f then %.4f" % tuple(_hs))
+    check("level 1's surface is the RED's height above the mat, not the blue's",
+          abs(stack_surface_z(1, _hs) - (pp.MAT_SURFACE_Z + 0.0254)) < 1e-12,
+          "%.4f" % stack_surface_z(1, _hs))
+    # WHAT max(heights) WOULD HAVE DONE, which is the bug this replaced.
+    _maxed = max(_hs)
+    _over = stack_surface_z(1, _maxed) - stack_surface_z(1, _hs)
+    check("max(heights) would have put level 1 5.1 mm too HIGH",
+          abs(_over - 0.0051) < 1e-9, "%+.1f mm" % (_over * 1000))
+    # THE DROP. Level 0 sets down, level 1 and up drop -- see the note in
+    # check_stack_geometry for why level 0 is different.
+    drop = PLACE_DROP_M
+    check("release_flange_z adds the drop where it is asked to",
+          abs(release_flange_z(1, _hs, drop)
+              - (release_flange_z(1, _hs) + drop)) < 1e-12)
+    # THE INVARIANT THAT CATCHES THE 2.3 mm MISTAKE. Level 0 must equal the height
+    # the pick side grasps at FOR EVERY BLOCK -- the grip height is a property of
+    # the pick, not of the block. Checking it only at the default let a version
+    # through that used the held block's half-height and put the 25.4 mm red
+    # trapezoid 2.3 mm INTO the mat. Every height, not just 30 mm.
+    check("the grip height is derived from the pick constants, not written down",
+          abs(GRIP_HEIGHT_ABOVE_BASE_M
+              - (tpp.GRASP_FLANGE_Z - pp.MAT_SURFACE_Z - pp.GRASP_OFFSET_Z))
+          < 1e-12)
+    for _h in (None, 0.030, 0.0305, 0.0254, 0.020, [0.0254, 0.0305],
+               [0.0305, 0.0254]):
+        check("level 0 == GRASP_FLANGE_Z with heights %s" % (_h,),
+              abs(release_flange_z(0, _h) - tpp.GRASP_FLANGE_Z) < 1e-12,
+              "%.4f" % release_flange_z(0, _h))
+    # And the block being CARRIED must not enter the release at all -- only what
+    # is under it. Same surface, different top block, same release.
+    check("the carried block's own height does not move the release",
+          abs(release_flange_z(1, [0.0254, 0.0305])
+              - release_flange_z(1, [0.0254, 0.020])) < 1e-12)
+    _r0, _ = check_stack_geometry(0, 0.0174, 0.2317, _hs, 2, clearance_m=drop)
+    _r1, _h1 = check_stack_geometry(1, 0.0174, 0.2317, _hs, 2, clearance_m=drop)
+    check("level 0 is SET DOWN -- no drop onto the mat",
+          _r0 is not None and abs(_r0 - release_flange_z(0, _hs)) < 1e-12)
+    check("level 1 DROPS, so it clears the block below",
+          _r1 is not None
+          and abs(_r1 - (release_flange_z(1, _hs) + drop)) < 1e-12)
+    # THE POINT: the blue's underside must end up above the RED's top face, by
+    # more than the 1.4 mm that run's level-1 descent landed low by, and NOT by
+    # the 8.1 mm that max(heights) would have dropped it.
+    # WHERE THE HELD BLOCK'S BASE IS: undo the grip height it was picked at, not
+    # half its own height. Getting this wrong in the test is the same error as
+    # getting it wrong in release_flange_z, and it showed up as a 2.8 mm gap where
+    # the drop is 3.0.
+    _blue_base = _r1 - pp.GRASP_OFFSET_Z - GRIP_HEIGHT_ABOVE_BASE_M
+    _red_top = pp.MAT_SURFACE_Z + tpp.nominal_height("red")
+    _gap = _blue_base - _red_top
+    check("the blue's underside sits above the red's top face",
+          _gap > 0, "%+.1f mm" % (_gap * 1000))
+    check("by the drop and nothing more -- 3 mm, not 8.1",
+          abs(_gap - drop) < 1e-9, "%.1f mm" % (_gap * 1000))
+    check("which still covers the 1.4 mm that descent undershot by",
+          _gap >= 0.0014, "%.1f mm" % (_gap * 1000))
+    # Raising the release must not invert the descent at level 1, where the hover
+    # is already clamped at MAX_HOVER_Z.
+    check("level 1 still has a real descent",
+          _h1 - _r1 >= pp.MIN_USEFUL_DESCENT_M,
+          "%.1f mm of descent" % ((_h1 - _r1) * 1000))
+    # And the shorter bottom block BUYS descent back, which is worth knowing:
+    # level 1 is 5.1 mm lower than it was with the green.
+    _tall = [0.0305, 0.0305]
+    check("a shorter bottom block lowers level 1, easing the MAX_HOVER_Z clamp",
+          release_flange_z(1, _hs) < release_flange_z(1, _tall),
+          "%.4f vs %.4f" % (release_flange_z(1, _hs),
+                            release_flange_z(1, _tall)))
+    # Both demo blocks are TAPERED, and place_block warns on the one that matters.
+    check("both demo blocks are recorded as tapered",
+          all(n in tpp.COLOUR_TAPERED for n in DEFAULT_STACK_COLOUR))
+    check("their short sides still clear the jaw aperture",
+          all(tpp.nominal_footprint(n)[0] <= tpp.JAW_APERTURE_OPEN_M
+              for n in DEFAULT_STACK_COLOUR))
+
+    # EVERY CONSUMER OF args.block_heights MUST TAKE A SEQUENCE.
+    #
+    # This is the test that was missing. Turning a scalar into a list touched ten
+    # call sites and one consumer -- transit_flange_z -- still divided by it, so
+    # the 2026-08-13 run raised `unsupported operand type(s) for /: 'list' and
+    # 'float'` on the lift after the grasp, with the block in the jaws. Every
+    # function below is called with `args.block_heights` somewhere in main(); the
+    # arithmetic must survive both forms, and a scalar must still give the same
+    # answer it always did.
+    _obst = obstacle_top_z(["x"], 0, _hs)
+    _consumers = (
+        ("height_at", lambda h: height_at(h, 1)),
+        ("stack_surface_z", lambda h: stack_surface_z(1, h)),
+        ("release_flange_z", lambda h: release_flange_z(1, h, drop)),
+        ("obstacle_top_z", lambda h: obstacle_top_z(["x"], 0, h)),
+        ("transit_flange_z", lambda h: transit_flange_z(
+            0.0174, 0.2317, _obst, h, 0.025, quiet=True)),
+        ("check_stack_geometry", lambda h: check_stack_geometry(
+            1, 0.0174, 0.2317, h, 2, clearance_m=drop)[0]),
+    )
+
+    def _quietly(fn, arg):
+        """-> None if it worked, else the exception as a string."""
+        import contextlib
+        import io as _io
+        try:
+            with contextlib.redirect_stdout(_io.StringIO()):
+                fn(arg)
+            return None
+        except Exception as exc:                        # noqa: BLE001
+            return "%s: %s" % (type(exc).__name__, exc)
+
+    for _name, _fn in _consumers:
+        _err = _quietly(_fn, _hs)
+        check("%s accepts a per-level SEQUENCE" % _name, _err is None,
+              _err or "")
+        _err = _quietly(_fn, 0.030)
+        check("%s still accepts a scalar" % _name, _err is None, _err or "")
+    # AND THE TRANSIT IDENTITY IS NOW EXACT FOR ANY HEIGHT, where the old
+    # half-height form under-cleared a short block. Unclamped radius.
+    for _h in (0.030, 0.0254, [0.0254, 0.0305]):
+        _top = stack_surface_z(1, _h)
+        check("transit over one %s block == release + clearance" % (_h,),
+              abs(transit_flange_z(0.0095, 0.2318, _top, _h,
+                                   TRANSIT_CLEARANCE_M, quiet=True)
+                  - (release_flange_z(1, _h) + TRANSIT_CLEARANCE_M)) < 1e-9)
 
     print("transit height (the 2026-08-12 collision)")
     # RECONSTRUCTS THE FAILURE from the two constants it came out of, so that
@@ -2004,6 +2640,53 @@ def _selftest():
     check("the conflict set is per-survey, not sticky",
           tpp.merged_contour_reason(_Blk(0, 0, 0.030, 0.030), 7) is None)
 
+    # THE 2026-08-13 FALSE POSITIVE, reconstructed from the constants. Two full
+    # hardware runs were refused on the green brick, whose footprint was measured
+    # to within 1 mm. Nothing was wrong except the nominal it was compared with.
+    print("merged-contour guard knows which block it is looking at")
+    green = _Blk(0, 0, 0.0297, 0.0603)          # the fused reading from the run
+    check("the green brick IS refused when nothing names it (the cube default)",
+          tpp.merged_contour_reason(green, 0) is not None)
+    check("the green brick is ACCEPTED once it is named",
+          tpp.merged_contour_reason(green, 0, label="green") is None)
+    check("the name is case-insensitive",
+          tpp.merged_contour_reason(green, 0, label="GREEN") is None)
+    check("the blue prism is accepted",
+          tpp.merged_contour_reason(_Blk(0, 0, 0.0298, 0.0314), 0,
+                                    label="blue") is None)
+    # Naming a block must not disarm the guard for THAT block. Both merge
+    # geometries have to be caught, and on an elongated block they are two
+    # different rectangles -- which is why both axes are tested.
+    check("two green bricks END TO END (30 x 122) are still flagged",
+          tpp.merged_contour_reason(_Blk(0, 0, 0.030, 0.122), 0,
+                                    label="green") is not None)
+    side_by_side = tpp.merged_contour_reason(_Blk(0, 0, 0.061, 0.061), 0,
+                                             label="green")
+    check("two green bricks SIDE BY SIDE (61 x 61) are flagged on the SHORT "
+          "side -- the long side alone cannot see this one",
+          side_by_side is not None and "short" in side_by_side)
+    check("an unknown colour falls back to the cube, i.e. the old behaviour",
+          tpp.merged_contour_reason(_Blk(0, 0, 0.030, 0.060), 0,
+                                    label="chartreuse") is not None)
+    check("nominal_footprint returns (short, long), short first",
+          all(s <= l for s, l in tpp.COLOUR_FOOTPRINT_M.values()))
+    check("the margin still reproduces the tuned 50 mm cube threshold",
+          abs((tpp.BLOCK_NOMINAL_M + tpp.MERGED_MARGIN_M) - 0.050) < 1e-9)
+    # Every colour the stack defaults to must have a footprint, or the run dies
+    # on the demo pair again.
+    for _name in DEFAULT_STACK_COLOUR:
+        check("the default colour %r has a nominal footprint" % _name,
+              _name in tpp.COLOUR_FOOTPRINT_M)
+        _s, _l = tpp.nominal_footprint(_name)
+        check("%r clears the jaw aperture on its short side" % _name,
+              _s <= tpp.JAW_APERTURE_OPEN_M,
+              "short side %.1f mm vs aperture %.1f mm"
+              % (_s * 1000, tpp.JAW_APERTURE_OPEN_M * 1000))
+        check("%r fits zone_vision's length filter" % _name,
+              _l <= tpp.zv.MAX_BLOCK_LENGTH_M,
+              "long side %.1f mm vs cap %.1f mm"
+              % (_l * 1000, tpp.zv.MAX_BLOCK_LENGTH_M * 1000))
+
     print("survey framing (the 2026-08-12 angled-mat fix)")
 
     class _Zone(object):
@@ -2137,26 +2820,85 @@ def main():
               "each on the bench, and the second pick would be sent at a block "
               "that is already in the stack." % ", ".join(wanted))
         return 2
+    # THE STEP COMES FROM THE BLOCKS, PER LEVEL, once their names are resolved.
+    #
+    # The first version of this took max(heights), which never digs in but
+    # over-shoots every level whose supporting block is shorter than the tallest.
+    # With the 25.4 mm red trapezoid under the 30.5 mm blue frustum that is 5.1 mm
+    # of extra drop on top of PLACE_DROP_M -- 8.1 mm onto a trapezoid's small top
+    # face. Each level now gets its own block's height; see height_at.
+    #
+    # An explicit --block-thickness still overrides, as one number for every
+    # level, because that is what a person typing a single float means.
+    if args.block_thickness is not None:
+        args.block_heights = float(args.block_thickness)
+    else:
+        args.block_heights = [tpp.nominal_height(name) for name in wanted]
+        known = [n for n in wanted if n.lower() in tpp.COLOUR_HEIGHT_M]
+        print("[stack] per-level step from the blocks themselves: %s"
+              % ", ".join("%s %.1f mm" % (n, h * 1000)
+                          for n, h in zip(wanted, args.block_heights)))
+        if len(known) < len(wanted):
+            print("[stack]   %s not in COLOUR_HEIGHT_M, so %s using the %.1f mm "
+                  "default. If that is wrong the level above it lands wrong."
+                  % (", ".join(n for n in wanted if n not in known),
+                     "it is" if len(wanted) - len(known) == 1 else "they are",
+                     tpp.DEFAULT_BLOCK_THICKNESS * 1000))
     if len(wanted) - 1 > args.max_level:
         print("[stack] %d blocks means a top level of %d, above --max-level %d."
               % (len(wanted), len(wanted) - 1, args.max_level))
         print("[stack] Level 2's release flange z is %.4f against MAX_HOVER_Z "
               "%.3f -- see check_stack_geometry."
-              % (release_flange_z(2, args.block_thickness), pp.MAX_HOVER_Z))
+              % (release_flange_z(2, args.block_heights), pp.MAX_HOVER_Z))
         return 2
     print("[stack] stacking bottom-first: %s" % " -> ".join(wanted))
+    # LEVEL 0 GETS NO DROP, and this summary has to agree with
+    # check_stack_geometry about that or it prints a height the arm never goes
+    # to. It did, on the 2026-08-13 run: 0.1488 here against 0.1458 in the
+    # per-level line, 3 mm apart, with this line's own label saying "no drop".
+    drop = args.place_drop_mm / 1000.0
     for i, name in enumerate(wanted):
-        print("[stack]   level %d  %s  release flange z %.4f"
-              % (i, name, release_flange_z(i, args.block_thickness)))
+        level_drop = drop if i else 0.0
+        print("[stack]   level %d  %s  release flange z %.4f%s"
+              % (i, name, release_flange_z(i, args.block_heights, level_drop),
+                 "  (%.1f mm of drop)" % args.place_drop_mm if level_drop
+                 else "  (set down, no drop -- it lands on the mat)"))
 
-    if args.block_thickness != pp.BLOCK_HEIGHT_M:
-        print("[stack] NOTE: --block-thickness %.4f differs from "
-              "pick_place.BLOCK_HEIGHT_M %.4f. The stack step uses yours; "
-              "GRASP_OFFSET_Z and the measurement parks are referenced to the "
-              "constant." % (args.block_thickness, pp.BLOCK_HEIGHT_M))
+    # The heights the stack is about to use, against the constant that everything
+    # ELSE in the pipeline is referenced to. Worth saying out loud, because the
+    # two disagreeing is normal now rather than exceptional.
+    if any(abs(height_at(args.block_heights, i) - pp.BLOCK_HEIGHT_M) > 1e-9
+           for i in range(len(wanted))):
+        print("[stack] NOTE: the stack step (%s) differs from "
+              "pick_place.BLOCK_HEIGHT_M %.4f. The stack uses these; "
+              "GRASP_OFFSET_Z, the parks and the parallax correction are all "
+              "referenced to the constant."
+              % (", ".join("%.4f" % height_at(args.block_heights, i)
+                           for i in range(len(wanted))), pp.BLOCK_HEIGHT_M))
 
-    yaw_fixed = (math.radians(args.zone_yaw) if args.zone_yaw is not None
-                 else None)
+    # PER-ZONE YAW. The two mats do NOT share one: on this bench the pickup
+    # square surveys near -91 deg and the place square near +88.6, ~180 deg
+    # apart. Passing a single --zone-yaw therefore breaks one of them, and a
+    # 180 deg error is the worst case rather than a harmless flip -- see
+    # explore.zone_yaw_for. Measured 2026-08-12: --zone-yaw -93 surveyed the
+    # pickup zone fine and scattered the place zone by 49.5 mm.
+    def _rad(deg):
+        return math.radians(deg) if deg is not None else None
+
+    yaw_fixed = _rad(args.zone_yaw)
+    yaw_pickup = _rad(args.pickup_yaw) if args.pickup_yaw is not None else yaw_fixed
+    yaw_place = _rad(args.place_yaw) if args.place_yaw is not None else yaw_fixed
+    if args.zone_yaw is not None and (args.pickup_yaw is None
+                                      or args.place_yaw is None):
+        print("[stack] --zone-yaw %+.1f is being applied to %s. The two mats on "
+              "this bench are ~180 deg apart (pickup near -91, place near +88.6), "
+              "and a yaw 180 deg out displaces every origin by TWICE the camera "
+              "offset -- which is how the place zone came out 49.5 mm "
+              "inconsistent on 2026-08-12. Prefer --pickup-yaw / --place-yaw."
+              % (args.zone_yaw,
+                 "both zones" if (args.pickup_yaw is None
+                                  and args.place_yaw is None)
+                 else "the zone you did not override"))
     memory = PoseMemory(path=args.memory,
                         tol_m=args.memory_tol_mm / 1000.0,
                         enabled=args.memory_enabled)
@@ -2194,6 +2936,9 @@ def main():
             fine_step=args.fine_step, fine_span=args.fine_span,
             pitch=args.pitch, wrist=args.wrist, settle=args.settle,
             zone_yaw=yaw_fixed,
+            # Read per zone by explore.zone_yaw_for, so the coarse sweep no
+            # longer rotates one mat's origins by the other mat's yaw.
+            pickup_yaw=yaw_pickup, place_yaw=yaw_place,
             coarse_patience=max(0, args.coarse_patience))
         # Only sweep for the zones still being surveyed. Sweeping for one that
         # has been given on the command line costs a full arc and can only
@@ -2235,22 +2980,23 @@ def main():
                   "in the ZONE frame, so your number only sets where that frame "
                   "sits in the world -- but it sets it for the GRASP. Tape it, "
                   "do not estimate it, and keep --confirm on.")
-            if yaw_fixed is None:
-                print("[survey] REFUSING: --pickup-at needs --zone-yaw as well. "
+            if yaw_pickup is None:
+                print("[survey] REFUSING: --pickup-at needs --pickup-yaw (or "
+                      "--zone-yaw) as well. "
                       "The zone frame has an origin and a rotation, and a "
                       "surveyed yaw is exactly what was skipped -- guessing it "
                       "rotates every block position about your origin.")
                 return 2
         else:
             pickup = epp.survey_zone("pickup", seen["pickup"],
-                                     detector.zone_size, fit_step, yaw_fixed)
+                                     detector.zone_size, fit_step, yaw_pickup)
         if args.place_at is not None:
             place = None
             print("[survey] place zone: not surveyed -- stacking at the "
                   "(%.4f, %.4f) you gave." % tuple(args.place_at))
         else:
             place = epp.survey_zone("place", seen["place"],
-                                    detector.zone_size, fit_step, yaw_fixed)
+                                    detector.zone_size, fit_step, yaw_place)
         epp.record_survey("pickup", pickup, args.truth_pickup, args.note)
         epp.record_survey("place", place, args.truth_place, args.note)
 
@@ -2275,7 +3021,7 @@ def main():
             return 1
 
         if args.pickup_at is not None:
-            pickup_origin, pickup_yaw = tuple(args.pickup_at), yaw_fixed
+            pickup_origin, pickup_yaw = tuple(args.pickup_at), yaw_pickup
         else:
             pickup_origin, pickup_yaw = tuple(pickup.origin), pickup.yaw
         place_origin = (tuple(args.place_at) if args.place_at is not None
@@ -2292,8 +3038,9 @@ def main():
         # Check every level's geometry before the first block is lifted.
         for level in range(len(wanted)):
             if check_stack_geometry(level, place_origin[0], place_origin[1],
-                                    args.block_thickness,
-                                    args.max_level)[0] is None:
+                                    args.block_heights, args.max_level,
+                                    clearance_m=args.place_drop_mm
+                                    / 1000.0)[0] is None:
                 print("[stack] Stopping before anything is grasped.")
                 return 1
 
@@ -2386,7 +3133,7 @@ def main():
             if level > 0:
                 traverse(io_client, memory, args, stack_xy,
                          (pickup_origin[0], pickup_origin[1]),
-                         obstacle_top_z(candidates, level, args.block_thickness),
+                         obstacle_top_z(candidates, level, args.block_heights),
                          "pickup zone", holding=False)
 
             pick_pose = pick_block(io_client, detector, args, memory, block,
@@ -2403,7 +3150,7 @@ def main():
             # mat entirely.
             traverse(io_client, memory, args, (pick_pose["x"], pick_pose["y"]),
                      stack_xy,
-                     obstacle_top_z(others, level, args.block_thickness),
+                     obstacle_top_z(others, level, args.block_heights),
                      "place zone", holding=not args.dry_run,
                      to_yaw_deg=radial_yaw_deg(stack_xy[0], stack_xy[1]))
 
@@ -2432,9 +3179,10 @@ def main():
             if placed.get("released"):
                 stack_xy = (placed["x"], placed["y"])
                 print("[stack] level %d released at (%.4f, %.4f). Level %d "
-                      "will target the same XY, %.0f mm higher."
+                      "will target the same XY, %.1f mm higher -- this block's "
+                      "own height, not a fixed step."
                       % (level, stack_xy[0], stack_xy[1], level + 1,
-                         args.block_thickness * 1000))
+                         height_at(args.block_heights, level) * 1000))
 
             # The block just picked is no longer in the zone. Dropped by object
             # identity, so the pairing of detection to class survives -- which

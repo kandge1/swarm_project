@@ -345,7 +345,95 @@ def load_sightings(path):
     return out
 
 
-def refine_pitch(anchor, pitch_deg, label="zone"):
+# How far the coarse sightings may disagree about a zone's RADIUS before their
+# median stops being worth aiming at, metres -- measured as a MEDIAN ABSOLUTE
+# DEVIATION, not as max-minus-min.
+#
+# The distinction is load-bearing and it was caught by the selftest. A range is
+# not a robust spread, so pairing one with a median defeats the median: the
+# realistic pool from the failing run, radii of 0.1731 / 0.207 / 0.208 / 0.209 /
+# 0.211, has a RANGE of 38 mm -- entirely due to the one bad view the median
+# exists to ignore -- and a range-based guard therefore refused to refine at all.
+# Its MAD is 1 mm, which is the honest statement that four of five views agree.
+# The scattered pool 0.15..0.29 has a MAD of 40 mm and is still correctly refused.
+#
+# 15 mm on a 102 mm mat: the coarse pass agrees with itself to well inside the
+# thing being centred on. (A MAD is ~0.67 sigma for normal data, so this is a
+# tighter statement than the same number as a range would be.)
+#
+# MEASURED NEED, 2026-08-12. refine_pitch took the single anchor sighting's
+# radius and aimed the fine arc at it. In one run the pickup anchor read
+# 0.1731 m against a true ~0.209 (36 mm short) and the place anchor read
+# 0.2866 against a surveyed 0.2348 (52 mm long). For the pickup zone that made
+# framing WORSE than not refining at all: the unrefined pitch -71 aims the axis
+# at 0.1961, which is 13 mm inside a 0.209 m mat, while the "refined" -74.3 aimed
+# at 0.1730, 36 mm inside. The refinement moved the aim 23 mm further from the
+# truth, and the fine arc then never brought the camera closer than 74 mm to the
+# zone centre -- against a 3-tag trust radius of 72 mm. It missed by 2 mm and
+# threw away all eleven sightings.
+#
+# A single coarse sighting's origin is a projection through one homography from
+# one pose; the spread across sightings is the honest measure of how much that is
+# worth. 25 mm is a quarter of the mat, i.e. "the coarse pass agrees with itself
+# to within the thing we are trying to centre on".
+COARSE_RADIUS_SPREAD_LIMIT_M = 0.015
+
+
+def reseat_coarse_origins(sightings, yaw_fixed=None, label="zone"):
+    """Recompute every coarse sighting's zone_origin from a yaw SOLVED here.
+
+    THE DEFAULT THAT COST FOUR RUNS. `sweep_both` builds each coarse sighting's
+    zone_origin with `zone_yaw_for(args, zone) or 0.0`, and with no yaw flag that
+    is a literal ZERO -- while the pickup mat on this bench sits at -91.4 deg.
+    zone_origin_from subtracts R(zone_yaw) . (camera_zx, camera_zy), so a 91 deg
+    error in that rotation, applied to coarse camera offsets of 58-178 mm,
+    scatters the radii over a quarter of a metre. Measured on run 10's own six
+    coarse views:
+
+        zone_yaw   0.0 (assumed):  0.0365 .. 0.2837   median 0.1491  MAD 84.3 mm
+        zone_yaw -91.4 (solved):   0.2445 .. 0.2497   median 0.2481  MAD  1.6 mm
+
+    The same six numbers. Everything downstream followed from the wrong one:
+    refine_pitch's MAD guard refused to refine (correctly -- the radii it was
+    handed WERE garbage), the fine arc ran at the default pitch 52 mm off, the
+    camera sat 53-86 mm from the mat centre at 0.35 m where a 1 in tag is only
+    39 px across, and five of eleven fine views were then gated for having 2 tags
+    or for sitting past the 3-tag trust radius. One `or 0.0`.
+
+    THE YAW IS SOLVABLE HERE AND NEEDS NOTHING NEW. camera_zx/zy and joints are
+    both yaw-FREE -- the yaw only enters when the two are combined -- so fit_zone
+    can solve it from the coarse sweep directly. The coarse pass pans the camera
+    ~149 mm across the mat against MIN_YAW_BASELINE_M's 25 mm, so the baseline is
+    never the binding constraint.
+
+    A GIVEN yaw still wins: this only fills in the case where none was given,
+    which used to be the case that silently assumed zero.
+
+    Returns the yaw in radians that the origins now use, or None if it could not
+    be solved and they were left alone.
+    """
+    if yaw_fixed is not None:
+        return yaw_fixed
+    fit, why = fit_zone(sightings)
+    if fit is None:
+        print("[explore] %s: cannot solve a coarse zone yaw (%s) -- the coarse "
+              "origins keep their assumed 0 deg, so treat their radii as "
+              "indicative only." % (label, why))
+        return None
+    for sighting in sightings:
+        origin = zone_origin_from(sighting.joints, sighting.camera_zx,
+                                  sighting.camera_zy, fit.yaw)
+        if origin is not None:
+            sighting.zone_origin = origin
+    print("[explore] %s: coarse yaw solved at %+.1f deg over %d view(s), "
+          "residual %.1f mm -- coarse origins recomputed with it rather than "
+          "with an assumed 0 deg."
+          % (label, math.degrees(fit.yaw), len(fit.sightings),
+             fit.residual * 1000.0))
+    return fit.yaw
+
+
+def refine_pitch(anchor, pitch_deg, label="zone", sightings=None):
     """Pitch for the FINE arc, aimed at where the coarse pass says the mat is.
 
     The coarse pass's origin is coarse -- a couple of centimetres, and its yaw is
@@ -354,25 +442,61 @@ def refine_pitch(anchor, pitch_deg, label="zone"):
     Being 20 mm out on a 102 mm mat is fine; being 33 mm out systematically, as
     the old fixed pitch was, is what threw away eleven sightings on 2026-08-12.
 
-    Returns pitch_deg unchanged when the anchor carries no origin, so a caller
-    can pass any sighting without checking first.
+    MEDIAN OVER ALL THE SIGHTINGS, NOT THE ANCHOR'S OWN RADIUS. `sightings` is
+    every coarse sighting of this zone; pass it. The anchor is chosen for TAG
+    COUNT, which says nothing about whether its projected origin is any good, and
+    trusting that one number aimed a fine arc 36 mm inside the mat on 2026-08-12
+    -- worse than not refining. A median over five views is robust to the one
+    sighting that caught a tag at the frame edge.
+
+    AND IT REFUSES rather than guessing when those views disagree by more than
+    COARSE_RADIUS_SPREAD_LIMIT_M: a refinement is only as good as the radius it
+    is given, and the unrefined pitch is a known quantity while a confidently
+    wrong one is not.
+
+    Returns pitch_deg unchanged when nothing carries an origin, so a caller can
+    pass any sighting without checking first.
     """
-    origin = getattr(anchor, "zone_origin", None)
-    if not origin:
+    pool = [s for s in (sightings or [anchor])
+            if getattr(s, "zone_origin", None)]
+    if not pool:
         return pitch_deg
-    radius = math.hypot(origin[0], origin[1])
+    radii = sorted(math.hypot(s.zone_origin[0], s.zone_origin[1]) for s in pool)
+
+    def _median(values):
+        v = sorted(values)
+        mid = len(v) // 2
+        return v[mid] if len(v) % 2 else (v[mid - 1] + v[mid]) / 2.0
+
+    radius = _median(radii)
+    # MEDIAN ABSOLUTE DEVIATION, not the range. See
+    # COARSE_RADIUS_SPREAD_LIMIT_M -- a range lets one outlier veto the median
+    # that exists to ignore it.
+    spread = _median([abs(r - radius) for r in radii])
+
     # A coarse origin can land anywhere if the sighting was a single tag at the
     # frame edge. Refuse the absurd rather than aim the camera at the floor.
     if not 0.05 <= radius <= 0.40:
         print("[explore] %s: coarse radius %.3f m is not credible -- keeping "
               "pitch %+.1f" % (label, radius, pitch_deg))
         return pitch_deg
+    if len(radii) > 1 and spread > COARSE_RADIUS_SPREAD_LIMIT_M:
+        print("[explore] %s: %d coarse view(s) disagree about the radius -- MAD "
+              "%.0f mm over %.4f..%.4f, past the %.0f mm this will aim on. "
+              "KEEPING pitch %+.1f, which is a known %+.0f mm off their median "
+              "rather than a guess."
+              % (label, len(radii), spread * 1000, radii[0], radii[-1],
+                 COARSE_RADIUS_SPREAD_LIMIT_M * 1000, pitch_deg,
+                 (axis_hit_radius(pitch_deg) - radius) * 1000))
+        return pitch_deg
+
     refined = pitch_for_radius(radius)
     was = axis_hit_radius(pitch_deg)
-    print("[explore] %s: coarse radius %.4f m; pitch %+.1f aims the axis at "
-          "%.4f (%+.0f mm off the mat centre) -> using pitch %+.1f, axis %.4f"
-          % (label, radius, pitch_deg, was, (was - radius) * 1000,
-             refined, axis_hit_radius(refined)))
+    print("[explore] %s: coarse radius %.4f m (median of %d, MAD %.0f mm); "
+          "pitch %+.1f aims the axis at %.4f (%+.0f mm off the mat centre) -> "
+          "using pitch %+.1f, axis %.4f"
+          % (label, radius, len(radii), spread * 1000, pitch_deg, was,
+             (was - radius) * 1000, refined, axis_hit_radius(refined)))
     return refined
 
 
@@ -467,6 +591,11 @@ def zone_origin_from(joints, camera_zx, camera_zy, zone_yaw=0.0):
 # marginal baseline costs millimetres.
 MIN_YAW_BASELINE_M = 0.025
 
+# How far a GIVEN zone yaw may differ from the one the views imply before saying
+# so. 10 deg: the solved yaw's own scatter across good runs is well under a
+# degree (dYaw sd 0.47), so 10 is far outside anything the fit does on its own.
+FIXED_YAW_WARN_RAD = math.radians(10.0)
+
 # How well the single-point model has to hold. The fine pass fits to 3.7 mm and
 # the coarse pass to 8.8 mm on real data; 20 mm is loose enough for a sloppy
 # sweep and tight enough that two mats averaged together (which lands near
@@ -530,6 +659,37 @@ def fit_zone(sightings, yaw_fixed=None):
 
     if yaw_fixed is not None:
         yaw = yaw_fixed
+        # CHECK THE GIVEN YAW AGAINST THE ONE THE VIEWS IMPLY, whenever there is
+        # enough baseline to imply anything. Costs two sums and it is the
+        # difference between "views disagree by 49.5 mm, an input is wrong" and
+        # knowing WHICH input.
+        #
+        # 2026-08-12: --zone-yaw -93 was correct for the pickup mat and 181.6 deg
+        # wrong for the place mat, whose square sits near +88.6. The residual gate
+        # caught it and said an input was wrong; nothing said which, and the flag
+        # had been recommended in the run instructions. A 180 deg error is the
+        # worst case rather than a sign flip -- R(yaw) then points the correction
+        # the opposite way and every origin moves by twice the camera offset.
+        if baseline >= MIN_YAW_BASELINE_M:
+            a = sum((r[0] - hx) * (r[2] - px) + (r[1] - hy) * (r[3] - py)
+                    for r in rows)
+            b = sum((r[1] - hy) * (r[2] - px) - (r[0] - hx) * (r[3] - py)
+                    for r in rows)
+            solved = math.atan2(b, a)
+            gap = abs((solved - yaw_fixed + math.pi) % (2.0 * math.pi) - math.pi)
+            if gap > FIXED_YAW_WARN_RAD:
+                print("[explore] the %d view(s) imply a zone yaw of %+.1f deg, "
+                      "but %+.1f deg was given -- %.1f deg apart. The given one "
+                      "is being used, as asked, and everything downstream "
+                      "inherits it. If the origin then looks scattered, THIS is "
+                      "the input that is wrong."
+                      % (len(rows), math.degrees(solved),
+                         math.degrees(yaw_fixed), math.degrees(gap)))
+                if gap > math.radians(150.0):
+                    print("[explore]   %.0f deg is a HALF TURN: the two mats on "
+                            "this bench are ~180 deg apart, so this is what a "
+                            "single --zone-yaw applied to both looks like. Use "
+                            "--pickup-yaw / --place-yaw." % math.degrees(gap))
     elif baseline < MIN_YAW_BASELINE_M:
         return None, ("the camera moved only %.0f mm across the mat -- too "
                       "little to solve the zone yaw (need %.0f mm). Pan "
@@ -613,6 +773,11 @@ def coarse_then_fine(io_client, detector, args):
     if not coarse:
         return coarse, []
 
+    # SOLVE THE COARSE YAW BEFORE READING ANY COARSE RADIUS. Without this the
+    # origins were built with an assumed 0 deg and their radii are meaningless on
+    # a mat that is not axis-aligned -- see reseat_coarse_origins.
+    reseat_coarse_origins(coarse, zone_yaw_for(args, args.zone), "coarse yaw")
+
     # Centre the fine pass on the coarse hit with the MOST TAGS, not on the one
     # with the best origin estimate -- at coarse spacing the origin is expected
     # to be poor, and tag count is the honest measure of "the mat is this way".
@@ -624,7 +789,7 @@ def coarse_then_fine(io_client, detector, args):
     # at whatever pitch was configured; the fine pass is the one whose sightings
     # have to survive the centre-offset gate, so it gets the mat's own radius.
     saved_pitch = args.pitch
-    args.pitch = refine_pitch(anchor, args.pitch, "fine arc")
+    args.pitch = refine_pitch(anchor, args.pitch, "fine arc", coarse)
     try:
         fine = sweep_range(io_client, detector, args,
                            anchor.j1_deg - args.fine_span,
@@ -633,6 +798,27 @@ def coarse_then_fine(io_client, detector, args):
     finally:
         args.pitch = saved_pitch
     return coarse, fine
+
+
+def zone_yaw_for(args, zone):
+    """The fixed zone yaw to use for `zone`, in radians, or None to solve it.
+
+    Per-zone first, then the shared --zone-yaw, then None. Exists because the two
+    mats do NOT share a yaw: on this bench the pickup square surveys near -91 deg
+    and the place square near +88.6, i.e. ~180 deg apart, so a single
+    --zone-yaw is necessarily wrong for one of them.
+
+    A 180 deg error is the worst possible one here, not a harmless sign flip:
+    zone_origin_from subtracts R(zone_yaw) . (camera_zx, camera_zy), so the
+    correction lands in the opposite direction and each view's origin is off by
+    TWICE the camera offset. With offsets of 25-130 mm that is the 49.5 mm of
+    disagreement MAX_FIT_RESIDUAL_M rejected on 2026-08-12 -- correctly, and with
+    "an input is wrong", which it was.
+    """
+    per_zone = getattr(args, "%s_yaw" % zone, None)
+    if per_zone is not None:
+        return per_zone
+    return getattr(args, "zone_yaw", None)
 
 
 def sweep_both(io_client, detector, args, zones=("pickup", "place"),
@@ -683,8 +869,15 @@ def sweep_both(io_client, detector, args, zones=("pickup", "place"),
             response = detector.detect(zone=zone)
             if response is None or not response.tag_ids:
                 continue
+            # PER-ZONE YAW. The two mats on this bench sit ~180 deg apart
+            # (pickup surveys near -91, place near +88.6), so one shared yaw is
+            # wrong for one of them by construction -- and a yaw 180 deg out
+            # flips R(zone_yaw) and displaces every origin by twice the camera
+            # offset. Measured 2026-08-12: --zone-yaw -93 applied to the place
+            # zone scattered its coarse origins over 0.1375..0.2859 m.
             origin = zone_origin_from(joints, response.camera_zx,
-                                      response.camera_zy, args.zone_yaw or 0.0)
+                                      response.camera_zy,
+                                      zone_yaw_for(args, zone) or 0.0)
             sighting = Sighting(j1, joints, response, origin, measured)
             out[zone].append(sighting)
             seen.append("%s tags %s rms %.2f px" % (zone, sighting.tag_ids,
@@ -900,8 +1093,30 @@ def choose(sightings, zone_size, step, yaw_fixed=None):
         why = gate(sighting, zone_size)
         (rejected if why else usable).append((sighting, why))
 
+    # CONTIGUITY IS A PROPERTY OF THE SWEEP, NOT OF THE SURVIVORS. split_runs is
+    # here to stop two DIFFERENT mats being averaged into a confident point in the
+    # empty space between them, and its evidence for "different mat" is a gap
+    # where the tags went out of sight. A gated sighting is not that: the arm went
+    # there, the tags WERE seen, and the measurement was judged untrustworthy. The
+    # mat did not move.
+    #
+    # Splitting the survivors instead made every isolated rejection a fake mat
+    # boundary. Run 10's pickup arc, 2026-08-13: eleven views at 2.5 deg, six
+    # usable, but the five rejections were interleaved, so the six were split into
+    # runs of 1, 2 and 3 with 0, 7 and 14 mm of baseline -- and all three were
+    # then refused for under-running MIN_YAW_BASELINE_M's 25 mm. Pooled, those
+    # same six span 52 mm and fit to 5.3 mm, which gate_fit accepts. Eleven good
+    # sightings were thrown away by the bookkeeping.
+    #
+    # So: group over ALL the sightings, which is where the real holes are, then
+    # keep the usable members of each group. The 90 deg gap of 2026-08-05 still
+    # splits, because nothing at all was seen across it.
+    usable_ids = set(id(pair[0]) for pair in usable)
     fits, rejected_fits = [], []
-    for run in split_runs([pair[0] for pair in usable], step):
+    for stretch in split_runs([pair[0] for pair in usable + rejected], step):
+        run = [s for s in stretch if id(s) in usable_ids]
+        if not run:
+            continue
         fit, why = fit_zone(run, yaw_fixed)
         if fit is None:
             rejected_fits.append((run, why))
@@ -1298,6 +1513,198 @@ def selftest(pitch=REPLAY_PITCH_DEG, wrist=REPLAY_WRIST_DEG):
           refine_pitch(_Anchor(None), -66.6) == -66.6)
     check("refine_pitch refuses a non-credible coarse radius",
           refine_pitch(_Anchor((2.0, 2.0)), -66.6) == -66.6)
+
+    # THE 2026-08-12 FAILURE, reconstructed from the run that hit it.
+    #
+    # The pickup anchor projected a radius of 0.1731 m against a true ~0.209.
+    # refine_pitch aimed the fine arc at 0.1730 -- 36 mm inside the mat -- where
+    # the UNREFINED -71 aims at 0.1961, only 13 mm inside. The refinement made
+    # framing worse, the fine arc never came closer than 74 mm to the zone
+    # centre, the 3-tag trust radius is 72 mm, and all 11 sightings were thrown
+    # away. It missed by 2 mm.
+    true_r, anchor_r = 0.209, 0.1731
+    default_err = abs(axis_hit_radius(-71.0) - true_r)
+    anchor_err = abs(axis_hit_radius(refine_pitch(_Anchor((anchor_r, 0.0)),
+                                                 -71.0)) - true_r)
+    check("the single-anchor radius really did aim WORSE than not refining "
+          "(this is the bug, not a hypothetical)",
+          anchor_err > default_err,
+          "refined %.0f mm off vs unrefined %.0f mm off"
+          % (anchor_err * 1000, default_err * 1000))
+
+    # THE FIX, part 1: a median over the views is robust to the one bad anchor.
+    pool = [_Anchor((r, 0.0)) for r in (0.207, 0.209, 0.1731, 0.211, 0.208)]
+    med_err = abs(axis_hit_radius(refine_pitch(pool[2], -71.0, "median",
+                                               sightings=pool)) - true_r)
+    check("a median over the coarse views beats both",
+          med_err < default_err and med_err < anchor_err,
+          "median %.0f mm vs unrefined %.0f mm vs anchor %.0f mm"
+          % (med_err * 1000, default_err * 1000, anchor_err * 1000))
+
+    # THE FIX, part 2: when the views genuinely disagree, keep the known pitch
+    # rather than aiming at a median of noise.
+    scattered = [_Anchor((r, 0.0)) for r in (0.15, 0.17, 0.21, 0.25, 0.29)]
+    check("a scattered coarse radius keeps the unrefined pitch",
+          refine_pitch(scattered[2], -71.0, "scattered",
+                       sightings=scattered) == -71.0)
+    # AND THE POINT OF USING A MAD: the realistic pool's RANGE is 38 mm, so a
+    # range-based guard would have refused to refine it -- vetoed by the single
+    # outlier the median exists to ignore. Its MAD is ~1 mm.
+    rr = sorted((0.207, 0.209, 0.1731, 0.211, 0.208))
+    rng_spread = rr[-1] - rr[0]
+    med = rr[len(rr) // 2]
+    mad = sorted(abs(r - med) for r in rr)[len(rr) // 2]
+    check("a range would have vetoed the realistic pool; a MAD does not",
+          rng_spread > COARSE_RADIUS_SPREAD_LIMIT_M
+          > mad, "range %.0f mm, MAD %.1f mm, limit %.0f mm"
+          % (rng_spread * 1000, mad * 1000,
+             COARSE_RADIUS_SPREAD_LIMIT_M * 1000))
+    # A tight cluster must still refine, or the guard has eaten the feature.
+    tight = [_Anchor((r, 0.0)) for r in (0.2350, 0.2372, 0.2390)]
+    check("a tight cluster still refines",
+          abs(axis_hit_radius(refine_pitch(tight[1], -71.0, "tight",
+                                           sightings=tight)) - 0.2372) < 0.003)
+    check("one sighting is still allowed to refine (no spread to measure)",
+          abs(axis_hit_radius(refine_pitch(_Anchor((0.2372, 0.0)), -71.0,
+                                           "single", sightings=[_Anchor((0.2372, 0.0))]))
+              - 0.2372) < 0.0005)
+
+    # ---- the two run-10 defects, rebuilt from that run's own numbers --------
+    # Every value below is copied out of logs.txt, 2026-08-13, run 10's pickup
+    # zone. Both defects are reconstructed, not approximated.
+    print("\ncoarse yaw is SOLVED, not assumed (run 10, 2026-08-13):")
+    RUN10_COARSE = ((-45, 131.4, -119.4), (-30, 99.4, -88.2), (-15, 61.6, -65.9),
+                    (0, 19.7, -54.6), (15, -24.0, -54.5), (30, -65.1, -65.5))
+
+    def _coarse_sightings():
+        return [_ReplaySighting(j1, zx, zy, pitch, wrist)
+                for j1, zx, zy in RUN10_COARSE]
+
+    def _radii(pool):
+        return sorted(math.hypot(*s.zone_origin) for s in pool)
+
+    def _median(values):
+        v = sorted(values)
+        mid = len(v) // 2
+        return v[mid] if len(v) % 2 else (v[mid - 1] + v[mid]) / 2.0
+
+    def _mad(values):
+        m = _median(values)
+        return _median([abs(v - m) for v in values])
+
+    # What the code used to do: build the origins with a literal 0 deg.
+    assumed = _coarse_sightings()
+    for s in assumed:
+        s.zone_origin = zone_origin_from(s.joints, s.camera_zx, s.camera_zy, 0.0)
+    bad = _radii(assumed)
+    check("assuming zone yaw 0 scatters the coarse radii past the MAD limit",
+          _mad(bad) > COARSE_RADIUS_SPREAD_LIMIT_M,
+          "MAD %.1f mm over %.4f..%.4f" % (_mad(bad) * 1000, bad[0], bad[-1]))
+    check("...which is why refine_pitch refused, and it was right to",
+          refine_pitch(assumed[0], -71.0, "assumed-0", sightings=assumed)
+          == -71.0)
+
+    solved = _coarse_sightings()
+    yaw = reseat_coarse_origins(solved, None, "run 10 pickup")
+    check("the coarse sweep solves a yaw at all", yaw is not None)
+    check("and it lands on the -91.4 deg the fine survey independently found",
+          abs(math.degrees(yaw) - (-91.4)) < 3.0,
+          "solved %+.1f deg" % math.degrees(yaw))
+    good = _radii(solved)
+    check("the SAME six views then agree to a few mm",
+          _mad(good) <= COARSE_RADIUS_SPREAD_LIMIT_M,
+          "MAD %.1f mm over %.4f..%.4f" % (_mad(good) * 1000, good[0], good[-1]))
+    # 0.2481 is the median the solved yaw gives; the fine survey's own radius was
+    # 0.2193-0.2296 across runs 8-10, so this must aim NEAR the mat, not 52 mm off.
+    refined = refine_pitch(solved[0], -71.0, "solved", sightings=solved)
+    check("so the fine arc is now aimed at the mat instead of 52 mm inside it",
+          abs(axis_hit_radius(refined) - _median(good)) < 0.005,
+          "aims at %.4f, coarse median %.4f"
+          % (axis_hit_radius(refined), _median(good)))
+    check("the unrefined pitch really was ~50 mm off, so this matters",
+          abs(axis_hit_radius(-71.0) - _median(good)) > 0.040,
+          "%+.0f mm" % ((axis_hit_radius(-71.0) - _median(good)) * 1000))
+    # A GIVEN yaw must still win -- this fills in the no-flag case only.
+    given = _coarse_sightings()
+    check("a given yaw is used as-is and nothing is re-solved",
+          reseat_coarse_origins(given, math.radians(-91.4)) ==
+          math.radians(-91.4))
+
+    print("\nan isolated rejection is not a mat boundary (run 10's fine arc):")
+    # J1, camera zx/zy in mm, and whether the run's gate accepted it.
+    RUN10_FINE = ((2.5, 6.1, -53.3, True), (5.0, 3.9, -53.3, False),
+                  (7.5, -3.1, -53.1, True), (10.0, -9.7, -53.3, True),
+                  (12.5, -16.8, -53.8, False), (15.0, -23.9, -54.6, True),
+                  (17.5, -30.9, -55.7, True), (20.0, -37.8, -57.0, True),
+                  (22.5, -45.2, -58.8, False), (25.0, -52.4, -60.9, False),
+                  (27.5, -58.6, -63.0, False))
+    kept = [_ReplaySighting(j1, zx, zy, pitch, wrist)
+            for j1, zx, zy, ok in RUN10_FINE if ok]
+    everything = [_ReplaySighting(j1, zx, zy, pitch, wrist)
+                  for j1, zx, zy, _ in RUN10_FINE]
+    check("splitting the SURVIVORS fragments the arc into three",
+          len(split_runs(kept, 2.5)) == 3,
+          "%d run(s)" % len(split_runs(kept, 2.5)))
+    check("every fragment then fails MIN_YAW_BASELINE_M, which is the run's "
+          "'11 sighting(s), none of them usable'",
+          all(fit_zone(r)[0] is None for r in split_runs(kept, 2.5)))
+    check("splitting the WHOLE sweep gives one stretch, as it should",
+          len(split_runs(everything, 2.5)) == 1,
+          "%d run(s)" % len(split_runs(everything, 2.5)))
+    pooled, why = fit_zone(kept)
+    check("pooled, the six survivors fit", pooled is not None, str(why))
+    check("their baseline clears the 25 mm they were each refused for",
+          pooled.baseline >= MIN_YAW_BASELINE_M,
+          "%.0f mm" % (pooled.baseline * 1000))
+    check("and gate_fit accepts the result", gate_fit(pooled) is None,
+          str(gate_fit(pooled)))
+    check("the pooled origin agrees with runs 8-9's surveyed 0.219-0.220 m",
+          abs(math.hypot(*pooled.origin) - 0.2195) < 0.010,
+          "r %.4f m" % math.hypot(*pooled.origin))
+    # AND THE 2026-08-05 PROTECTION MUST SURVIVE. A real hole -- tags out of
+    # sight for 90 deg -- still has to split, or this fix has eaten the guard.
+    two_mats = [_ReplaySighting(j1, 10.0, -50.0, pitch, wrist)
+                for j1 in (-135, -125, -115, 45, 55, 65)]
+    check("a 90 deg hole in the sweep still splits (the 2026-08-05 two-mat case)",
+          len(split_runs(two_mats, 10.0)) == 2,
+          "%d run(s)" % len(split_runs(two_mats, 10.0)))
+
+    print("\nper-zone yaw (the 2026-08-12 place-zone failure):")
+
+    class _Args(object):
+        pass
+
+    a = _Args()
+    a.zone_yaw = math.radians(-93.0)
+    check("a shared --zone-yaw reaches both zones when nothing overrides it",
+          zone_yaw_for(a, "pickup") == zone_yaw_for(a, "place")
+          == math.radians(-93.0))
+    a.pickup_yaw = math.radians(-91.0)
+    a.place_yaw = math.radians(88.6)
+    check("a per-zone yaw wins over the shared one",
+          abs(zone_yaw_for(a, "pickup") - math.radians(-91.0)) < 1e-12
+          and abs(zone_yaw_for(a, "place") - math.radians(88.6)) < 1e-12)
+    a.place_yaw = None
+    check("and one zone may be overridden while the other falls back",
+          abs(zone_yaw_for(a, "pickup") - math.radians(-91.0)) < 1e-12
+          and abs(zone_yaw_for(a, "place") - math.radians(-93.0)) < 1e-12)
+    b = _Args()
+    check("with nothing given at all the yaw is solved (None)",
+          zone_yaw_for(b, "pickup") is None)
+
+    # THE NUMBERS FROM THE RUN. pickup surveyed -93.0 with residual 4.1 mm; the
+    # place square sits near +88.6, so the SAME flag was 178.4 deg out for it.
+    gap = abs((math.radians(88.6) - math.radians(-93.0) + math.pi)
+              % (2.0 * math.pi) - math.pi)
+    check("the shared flag was >150 deg out for the place zone",
+          gap > math.radians(150.0), "%.1f deg" % math.degrees(gap))
+    check("and that is well past the warning threshold",
+          gap > FIXED_YAW_WARN_RAD)
+    # A good fixed yaw must stay quiet, or the warning is noise.
+    ok_gap = abs((math.radians(88.6) - math.radians(88.2) + math.pi)
+                 % (2.0 * math.pi) - math.pi)
+    check("a fixed yaw that agrees with the views stays quiet",
+          ok_gap < FIXED_YAW_WARN_RAD, "%.1f deg" % math.degrees(ok_gap))
 
     print("\nsighting dump round trip:")
     import tempfile

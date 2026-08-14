@@ -153,6 +153,15 @@ def coarse_then_fine_both(io_client, detector, args, zones=("pickup", "place")):
         if not coarse[zone]:
             out[zone] = []
             continue
+        # SOLVE THIS MAT'S YAW BEFORE READING ANY OF ITS COARSE RADII. The coarse
+        # origins were built with `zone_yaw_for(args, zone) or 0.0`, and with no
+        # yaw flag that zero is 91 deg wrong for the pickup mat -- which scattered
+        # its coarse radii over 240 mm and made refine_pitch refuse. Per zone,
+        # because the two mats are ~180 deg apart. See
+        # explore.reseat_coarse_origins.
+        explore.reseat_coarse_origins(coarse[zone],
+                                      explore.zone_yaw_for(args, zone),
+                                      "%s coarse yaw" % zone)
         anchor = sorted(coarse[zone],
                         key=lambda s: (-len(s.tag_ids), s.offset_mm))[0]
         print("\n[explore] %s coarse best: J1 %+.1f with %d tag(s) -- refining "
@@ -164,8 +173,12 @@ def coarse_then_fine_both(io_client, detector, args, zones=("pickup", "place")):
         # args.pitch could not express. See explore.refine_pitch for what the
         # fixed pitch cost on 2026-08-12.
         saved_pitch = args.pitch
+        # ALL the coarse sightings, not just the anchor -- see refine_pitch. The
+        # anchor is chosen for tag count, which says nothing about whether its
+        # projected origin is any good.
         args.pitch = explore.refine_pitch(anchor, args.pitch,
-                                          "%s fine arc" % zone)
+                                          "%s fine arc" % zone,
+                                          sightings=coarse[zone])
         try:
             fine = sweep_both(io_client, detector, args,
                               anchor.j1_deg - args.fine_span,
@@ -173,6 +186,9 @@ def coarse_then_fine_both(io_client, detector, args, zones=("pickup", "place")):
                               args.fine_step, (zone,))[zone]
         finally:
             args.pitch = saved_pitch
+        # NOTE the fine arc sweeps ONE zone, so explore.zone_yaw_for picks that
+        # zone's own yaw for every sighting in it -- which is the half that
+        # matters, because these are the sightings the fit is built from.
         # The fine pass REPLACES the coarse one rather than adding to it, for
         # the reason explore.py gives: mixing them lets a coarse sighting --
         # taken exactly where the framing is worst -- win on tag count by luck.
@@ -272,6 +288,17 @@ def survey_zone(name, sightings, zone_size, step, yaw_fixed):
             print("[survey]     %s" % fit.describe())
     best = fits[0]
     print("[survey] %s zone: %s" % (name, best.describe()))
+    # A ONE-VIEW FIT HAS RESIDUAL 0 BY CONSTRUCTION. describe() then prints
+    # "residual 0.0 mm over 1 view(s)", which reads as perfect and is arithmetic:
+    # one view cannot disagree with itself. Lesson 4 -- internal agreement is not
+    # accuracy -- and this path is reachable exactly when it matters, because
+    # --zone-yaw skips the baseline check that otherwise rejects a single view.
+    if len(best.sightings) < 2:
+        print("[survey] %s zone: WARNING -- that origin comes from ONE sighting. "
+              "Its residual is 0.0 mm because there is nothing to compare it "
+              "with, NOT because it is exact. Nothing cross-checks the origin, "
+              "and --zone-yaw means nothing cross-checks the yaw either. Keep "
+              "--confirm on and look at the jaws." % name)
     return best
 
 

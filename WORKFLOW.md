@@ -821,14 +821,80 @@ Names are plain English: `orange`, `orange top`, `the orange block`,
 **refused**, not guessed. `python3 stack_blocks.py --selftest` lists the
 phrasings that are covered.
 
-### The two checkpoints, and why the first runs must keep them
+### The two parks, and why the first runs must keep them
 
 Same protocol as the pick side — `m dx dy` records and moves nothing, `dx dy`
-nudges and re-parks, ENTER goes. **The place park is where the one measurement
-this project has never taken gets taken.** The place side has never been
-calibrated (stage 0 declared ±25 mm acceptable), so type `m` at the place park
-on every early run. It writes a row with `kind: "place"` and
+nudges and re-parks, `dx dy dyaw` also turns the wrist, ENTER goes. **The place
+park is where the one measurement this project has never taken gets taken.** The
+place side has never been calibrated (stage 0 declared ±25 mm acceptable), so type
+`m` at the place park on every early run. It writes a row with `kind: "place"` and
 `place_open_loop_offset`.
+
+**The two after-the-fact yes/no questions are gone** (removed on request,
+2026-08-13): *"did the jaws actually close on the X block?"* and *"is the block
+sitting squarely on level N?"*. The operator is watching the arm and will stop it,
+so the prompts only added a keystroke between them and the Ctrl-C.
+
+What that gave up, so it is not a surprise later:
+
+- **Nothing else knows whether a block is in the jaws.** The gripper's own
+  `CONTACT` detection is the closest thing — it stops the close when the jaw
+  trails its command by ≥ 0.06 rad — and that fires on the fingertips touching
+  *anything*, including each other on a missed block.
+- **Nothing measures whether a level went down square.** The camera never looks at
+  the stack, only at the pickup zone. A crooked level 0 is the one failure that
+  makes level 1 land on a slope, and the run will not notice.
+
+Both fields are now recorded as `null` — *nobody looked* — rather than `false`,
+which would have claimed the operator saw a failure. **Watch the place, and stop
+the run yourself if a level goes down crooked.**
+
+### Repeatability -- the four things that limit it, in order (2026-08-13)
+
+Measured off the first autonomous colour stack. **Nothing here needs new hardware
+and only the last needs new code.**
+
+1. **The place survey moves up to 8 mm between runs.** Decomposed: pickup zone
+   radial spread **0.17 mm** / tangential 1.5 mm; place zone radial 1.8 mm /
+   tangential **8.3 mm** = 2.0 deg of J1. The error is almost purely *tangential*
+   at both zones, and tangential is J1. Within a run it does **not** tip the stack
+   -- both levels get the same surveyed XY, so it is common-mode -- but between
+   runs it moves where the stack lands. **Not yet attributable**: run
+   `--survey-only` twice touching nothing. Agree to ~1 mm and it is the bench;
+   disagree by 8 mm and it is `j1_unidirectional_approach`.
+2. **Half the survey stills never reach the vote** -- 10 of 20 across these logs.
+   One causal chain: the lens re-centring pushes the framing flange 13-15 mm
+   further out, four of five stills then lose `DETECT_HOVER_Z`, drop to z 0.240,
+   soften (tag modules ~39 px instead of ~57), and fail `MULTIVIEW_MIN_TAGS`.
+   Test with **`--no-lens-recentre`** and compare `[multiview] N usable view(s)`.
+3. **The jaw aperture and finger dimensions are still guesses.** The clearance gate
+   passed at +8.5 mm on this run and refused at −0.2 mm on the one before, both
+   computed from unmeasured numbers. Three caliper readings.
+4. **The z landing error, ±5 mm** -- now *measured* rather than assumed, see below.
+   Ten runs of the new fields and it becomes a correction.
+
+### The release height is checked before the jaws open
+
+The arm does not land where it is sent in z, and the error changes sign with the
+level: level 0 finished **+1.6 mm high** and level 1 **−3.9 mm low** on 2026-08-13,
+so the blue was pressed **0.9 mm into the red** despite the 3 mm `PLACE_DROP_M`.
+The run before was the same shape (+2.8 then −1.4).
+
+So `release_z_gap()` reads the flange FK the instant the descent finishes, works
+out where the held block's base actually is against the surface, and **lifts by the
+shortfall before releasing** if it is negative:
+
+```
+[stack] descent landed at flange 0.1700, asked for 0.1739 (-3.9 mm). The block's
+        base is 0.0205 against a surface of 0.0214: -0.9 mm.
+[stack] NEGATIVE -- the block is 0.9 mm INTO level 0. That is what tips a stack.
+[stack] lifting 0.9 mm before releasing ...
+```
+
+`place_release_z_achieved`, `place_release_z_error_mm` and `place_release_gap_mm`
+now go into `calibration_history.jsonl`. **A bigger drop is not the fix** -- it
+trades digging in for a harder landing, and `PLACE_DROP_M` was carrying the whole
+±5 mm alone.
 
 ### What limits a stack
 
@@ -913,14 +979,67 @@ contour spanning two differently-coloured blocks, which must not be grasped).
 [stack] no pickup zone, so there is nothing to pick.
 ```
 
-**That is a missing zone tag, not a colour problem.** One undetected tag drops the
-trust radius from 144 mm to 72 mm (`MAX_CENTRE_OFFSET_HALF_DIAGONALS`) and
-everything falls outside it. Clean or reprint the tag. The override, for when you
-cannot:
+**That is framing plus a missing zone tag, not a colour problem, and the two
+stack.** One undetected tag drops the trust radius from 144 mm to 72 mm
+(`MAX_CENTRE_OFFSET_HALF_DIAGONALS`); if the fine arc also fails to bring the
+camera inside 72 mm of the zone centre, every sighting goes. On 2026-08-12 the
+closest approach was **74 mm** — it missed by 2 mm, ten times over. `refine_pitch`
+now medians the coarse radius over every sighting instead of trusting the anchor's,
+which is what aimed it 36 mm inside the mat.
+
+**Two upstream causes of this were fixed on 2026-08-13; if you are reading an
+older log, that is why it failed.**
+
+1. **The coarse origins were built with an assumed zone yaw of 0°** (`zone_yaw_for(...)
+   or 0.0`), while the pickup mat sits at −91.4°. On run 10's six coarse views that
+   turned radii of 0.2445–0.2497 (MAD 1.6 mm) into 0.0365–0.2837 (MAD 84 mm), so
+   `refine_pitch` refused to refine, the arc ran 51 mm short of the mat, and the
+   camera never came inside the trust radius. `reseat_coarse_origins` now solves the
+   yaw from the coarse sweep — `camera_zx/zy` and `joints` are both yaw-free, so
+   `fit_zone` can do it with no new measurement — and rewrites the origins with it.
+   A given `--pickup-yaw` still wins.
+2. **An isolated rejected sighting split the arc.** `split_runs` grouped the
+   *survivors*, so a gated view left a hole indistinguishable from the tags going
+   out of sight. Run 10's six good views became fragments of 1, 2 and 3 with 0, 7
+   and 14 mm of baseline, all refused for needing 25 mm — pooled they span 52 mm and
+   fit to 5.3 mm. Grouping now runs over **all** the sightings; a real 90° hole
+   still splits.
+
+If a survey still rejects everything, the messages to read first are
+`coarse yaw solved at ... deg` (is it near ±90 for these mats?) and whether
+`fine arc` says *refine* or *KEEPING pitch*. A `KEEPING pitch` means the arc is
+aimed at a known-wrong radius and the rest of the run is downstream of that.
+
+**`--zone-yaw` APPLIES TO BOTH ZONES AND THE TWO MATS ARE ~180 DEG APART** —
+pickup surveys near −91, place near +88.6. A yaw a half turn out displaces every
+origin by *twice* the camera offset, which is 49.5 mm of scatter and an outright
+rejection. Use the per-zone flags:
 
 ```bash
-python3 stack_blocks.py --by-colour --confirm     --pickup-at 0.209 0.003 --zone-yaw -93
+python3 stack_blocks.py --by-colour --pickup-yaw -93     # place still solved
+python3 stack_blocks.py --by-colour --place-yaw 88.6     # or the other way
 ```
+
+`fit_zone` now cross-checks any fixed yaw against the one the views imply and says
+so when they differ by more than 10°, naming a half turn when it sees one.
+
+**Try a fixed PICKUP yaw first.** `fit_zone` skips the yaw baseline check when the yaw is
+given, so a single four-tag sighting is enough to hand off a *measured* origin:
+
+```bash
+python3 stack_blocks.py --by-colour --pickup-yaw -93
+```
+
+Only if that still finds nothing, override the origin too — that one is a number
+you typed, feeding a grasp:
+
+```bash
+python3 stack_blocks.py --by-colour --pickup-at 0.209 0.003 --zone-yaw -93
+```
+
+Either way: **a one-view fit reports `residual 0.0 mm` because there is nothing to
+compare it with, not because it is exact.** The survey warns about it; believe the
+warning.
 
 `--zone-yaw` is **required** with `--pickup-at` and it refuses without it: the zone
 frame has an origin *and* a rotation, and guessing the rotation swings every block
@@ -956,6 +1075,36 @@ on the first hardware run.
 
 #### Read this before running a non-cube block
 
+- **A non-cube colour needs a row in `tag_pick_place.COLOUR_FOOTPRINT_M`, or it
+  will be refused as two blocks touching.** Three separate checks ask "is this
+  footprint plausible for one block", and until 2026-08-13 all three compared
+  against `BLOCK_NOMINAL_M = 0.030` — right for every tagged block on this bench,
+  wrong for a set whose whole point is different shapes. The green brick reads
+  60.3 mm because it *is* 61.0 mm, and it was refused on two full hardware runs
+  for being the size it is. The table is `(short side, long side)` in metres, in
+  the block's one assumed rest pose:
+
+  | colour | block | footprint | height |
+  |---|---|---|---|
+  | `red` | 1 in trapezoid, sitting | 30.5 × 35.6 mm | **25.4 mm** |
+  | `blue` | 1.2 in frustum, standing | 30.5 × 35.6 mm | 30.5 mm |
+  | `green` | 1.2 × 1.2 × 2.4 in brick, lying | 30.5 × 61.0 mm | 30.5 mm |
+  | *unlisted* | falls back to the 30 mm cube | 30.0 × 30.0 mm | 30.0 mm |
+
+  **These tables are BENCH STATE, not a block library.** They are keyed by colour
+  and the set has two reds, two blues and two greens — a row is only correct while
+  that block is the one on the mat. Update the rows when you change the blocks. A
+  *stale* row is worse than a missing one: a missing one falls back to the cube and
+  says so out loud.
+
+  **Heights are per level**, and they differ: the 25.4 mm red under the 30.5 mm
+  blue is the current default pair. `--block-thickness` overrides with one number
+  for every level.
+
+  A missing row fails **safe** — it refuses to grasp rather than grasping wrong —
+  but it fails *late*, after the whole sweep and survey. Add the row before the
+  run, not after. `stack_blocks.py --selftest` asserts every colour in the default
+  `--stack` list has one and that its short side clears the jaw aperture.
 - **The 4-fold symmetry gate is relaxed to a warning** in colour mode. This set is
   mostly 2-fold and there are no side tags yet, so "near side faces the robot" is
   not well defined — the block goes down on whichever of its two face pairs the
@@ -993,7 +1142,14 @@ Two checks now run before any descent, in `stack_blocks.py` and
 - **Merged contour.** Two touching 30 mm blocks read as one 30 × 60 mm blob whose
   centroid is in the seam — and `MAX_BLOCK_LENGTH_M` is exactly 60, so it used to
   be *accepted*. Refused now, definitively when two block classes' TOP tags claim
-  one contour, otherwise on footprint ≥ 50 mm. `--ignore-merged` overrides.
+  one contour, otherwise when **either** footprint side is `MERGED_MARGIN_M`
+  (20 mm) past that block's own nominal — 50 mm for a cube, 81/50.5 mm for the
+  green brick. Both sides are tested because two bricks touching along their long
+  sides read 61 × 61, which no long-side test can see. `--ignore-merged` overrides.
+
+  Note what this check cannot do: **two touching 30.5 mm cubes and one
+  61 × 30.5 mm brick are the same rectangle.** It has to be told which block it is
+  looking at, which is why `COLOUR_FOOTPRINT_M` exists.
 - **Jaw clearance.** The fingers need room along the **closing** axis and almost
   none across it. On a square face, base and base+90 are different axes and both
   are valid grasps, so a blocked axis is retried 90° round. Refused if neither has
@@ -1004,6 +1160,28 @@ axis and **20.8 mm** *across* it, against a usable box only **46.2 mm** across.
 So the 90° rotation is mandatory, not optional — the jaw axis must end up
 perpendicular to the line joining the two blocks. A 2-fold block (most of
 `block_database/`) has no second axis and no escape.
+
+#### Where to put the second block — direction, not distance
+
+**Put it off the END of the target, in line with the target's long axis. Not
+beside it.** The fingers are 8 mm thick along the closing axis and 18 mm wide
+across it, so the two directions cost nothing like the same. With the green brick
+as the target:
+
+| blue's position | distance | margin |
+|---|---|---|
+| 40 mm **along** the closing axis (beside the brick) | 40 mm | **−11.3 mm** blocked |
+| 34 mm **across** it (off the brick's end) | 34 mm | **+8.7 mm** clear |
+
+A neighbour 6 mm *nearer* is 20 mm *better*, because it is in the other direction.
+That is why the 2026-08-13 run refused at 48.5 mm of separation while an earlier one
+passed: distance is the wrong variable. The refusal now decomposes the blocker into
+the jaw frame and names the direction to move it.
+
+And the box is genuinely tight: a 4 in mat with 1 in corner tags leaves **46.6 mm**
+for a block centre, while the green brick is **61 mm long**. On the diagonal there
+is 66 mm, which is the only reason two of these fit at all. **This pair is at the
+geometric limit of a 4 in mat.**
 
 **The jaw aperture and finger dimensions are UNMEASURED** — every run prints so.
 Three caliper readings at `GRIPPER_OPEN` turn the rule from conservative into
