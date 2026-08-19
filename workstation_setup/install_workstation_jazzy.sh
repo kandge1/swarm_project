@@ -235,8 +235,13 @@ DDSBLOCK
 # ─── 9. VERIFY ────────────────────────────────────────────────────────────────
 step "9. Verifying the install"
 
+# nounset off across the source: ROS's setup.bash line 8 reads
+# $AMENT_TRACE_SETUP_FILES with no default and `set -u` makes that fatal.
+# Same trap that aborted install_pi_galactic.sh at step 0. Do not "tidy" this.
 # shellcheck disable=SC1090
+set +u
 source "/opt/ros/${ROS_DISTRO_TARGET}/setup.bash"
+set -u
 
 if [[ -x "$WS_ROOT/pi_setup/preflight_check.sh" ]]; then
     "$WS_ROOT/pi_setup/preflight_check.sh" || echo "[WARN] Preflight reported problems -- see above."

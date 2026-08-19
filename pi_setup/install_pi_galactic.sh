@@ -49,7 +49,15 @@ if [[ ! -d /opt/ros/galactic ]]; then
 fi
 echo "[OK] ROS2 Galactic found at /opt/ros/galactic."
 
+# `set -u` above and ROS's setup.bash do not get along: its line 8 tests
+# $AMENT_TRACE_SETUP_FILES with no default, which nounset treats as fatal, so
+# the script aborts here having installed nothing --
+#   /opt/ros/galactic/setup.bash: line 8: AMENT_TRACE_SETUP_FILES: unbound variable
+# Turn nounset off across the source and straight back on. Do not "tidy" this.
+set +u
 source /opt/ros/galactic/setup.bash
+set -u
+
 sudo apt update
 
 
@@ -126,6 +134,22 @@ else:
 step "5. colcon build tools"
 
 sudo apt install -y python3-colcon-common-extensions python3-rosdep
+
+echo "[OK] colcon build tools installed."
+
+
+# ─── 6. VERIFY ─────────────────────────────────────────────────────────────────
+step "6. Verifying the install"
+
+# Check what actually landed rather than assuming apt did what was asked. This
+# is the same read-only check you would run by hand before colcon build, and it
+# names any package that is still missing.
+WS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -x "$WS_ROOT/pi_setup/preflight_check.sh" ]]; then
+    "$WS_ROOT/pi_setup/preflight_check.sh" || echo "[WARN] Preflight reported problems -- see above."
+else
+    echo "[WARN] pi_setup/preflight_check.sh not found or not executable; skipping."
+fi
 
 echo
 echo "=============================================="
