@@ -29,6 +29,7 @@ This project assumes that the following dependencies are met:
 Make sure you have installed the ros1_bridge package. Follow the instructions on the project repo: [ros1_bridge] (https://github.com/ros2/ros1_bridge)
 
 ** talker-listener demo **
+
 Terminal A:
 `source /opt/ros/noetic/setup.bash`
 `roscore`
@@ -49,6 +50,46 @@ Terminal D:
 `ros2 run demo_nodes_cpp listener`
 
 Now Terminal C should be publishing messages and Terminal D should be receiving them.
+If the demo above is functioning as expected, then the ros2_bridge package is working
 
+### cyclonedds
+* TODO: insert cyclonedds setup guide here *
 
+### ros1_bridge - cyclonedds demo
+This demo assumes that both ros1_bridge and cyclonedds have been installed and have been verified. This demo will show a workstation computer running ROS2 broadcasting /chatter messages over cyclonedds to the myagv. The myagv will then translate the ROS2 /chatter messages into ROS1 using the ros1_bridge. This demo can be modified to transmit any topic between the two devices, and it can be modified to transmit messages in either direction, not just from workstation to agv.
 
+TERMINAL 1, AGV:
+`source /opt/ros/noetic/setup.bash`
+`source ~/myagv_ros/devel/setup.bash`
+`export ROS_MASTER_URI=http://localhost:11311`
+`roscore`
+
+TERMINAL 2, AGV:
+`source /opt/ros/noetic/setup.bash`
+`source ~/myagv_ros/devel/setup.bash`
+`export ROS_MASTER_URI=http://localhost:11311`
+`rosparam load ~/swarm_ws/bridge.yaml`
+`rostopic echo /chatter`
+
+TERMINAL 3, AGV:
+`source /opt/ros/noetic/setup.bash`
+`source ~/myagv_ros/devel/setup.bash`
+`source /opt/ros/galactic/setup.bash`
+`source ~/ros1_bridge/install/setup.bash`
+`export ROS_MASTER_URI=http://localhost:11311`
+`cat > ~/swarm_ws/bridge.yaml <<'EOF' `
+`topics: `
+`  - topic: /chatter `
+`  type: std_msgs/msg/String `
+`  queue_size: 10 `
+`EOF`
+`ros2 run ros1_bridge parameter_bridge`
+
+TERMINAL 4, WORKSTATION:
+`source /opt/ros/jammy/setup.bash`
+`export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp `
+`export ROS_DOMAIN_ID=42 `
+`export CYCLONEDDS_URI="file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_jammy.xml"`
+`ros2 run demo_nodes_cpp talker`
+
+Terminal 2 on the AGV should be printing out the chatter published on terminal 4 on the workstation. This demo works by creating a configuration file which defines what topics the bridge will translate from ROS1 to ROS2. In this case, it only translates /chatter, but it can be easily modified to translate other topics, like /cmd_vel. The parameter_bridge will only translate the topics listed in the configuration file. The dynamic_bridge does not work for this demo as it will scan for nodes and services which do not exist, which causes it to quickly crash.
