@@ -378,6 +378,7 @@ pick sees the first block gone.
 | `Starting >>> control` for a package not in `src/` | Stale checkout — `legacy/COLCON_IGNORE` fixes it |
 | Workstation sees no robot nodes, everything looks fine locally | Peer IPs wrong, or `swarm_network` not rebuilt after editing them (§6) |
 | Arm reports identical angles regardless of command | Wrong serial port — `/dev/ttyAMA0`, not `/dev/serial0` |
+| `send_angles() got an unexpected keyword argument '_async'`, arm never moves | pymycobot 3.7.0 dropped `_async`. Fixed 2026-08-19 — `git pull` and relaunch |
 | `Goal reached, success!` but the arm never moved | Multi-waypoint trajectory issue — see WORKFLOW.md |
 | Survey rejects every sighting | Framing plus a missing zone tag. Try `--pickup-yaw -93`. One undetected tag halves the trust radius |
 | Every position off by a constant factor | The mats were printed at the wrong scale |

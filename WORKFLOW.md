@@ -680,6 +680,53 @@ ros2 pkg list | grep mycobot_280pi_camera_moveit2
   sufficient proof of real motion on this setup -- always visually confirm
   the arm actually moved.**
 
+### Real hardware: `send_angles() got an unexpected keyword argument '_async'`
+
+The arm does not move and `mycobot_bridge.py` repeats:
+
+```
+[mycobot_bridge] ERROR during serial write: TypeError("send_angles() got an
+unexpected keyword argument '_async'") -- leaving command dirty so it gets retried
+```
+
+**pymycobot 3.7.0 removed the undocumented `_async` keyword from
+`send_angles`.** The bridge used to pass it unconditionally, so every write
+raised, the command stayed dirty, and it retried forever -- the arm never moved
+and `ros2_control` looked healthy throughout.
+
+Fixed 2026-08-19: `_async` support is now PROBED at startup for `send_angles`
+exactly as it already was for `set_gripper_value`, and the bridge falls back to
+the blocking call when the argument is absent. `git pull` and relaunch. On a
+pymycobot without `_async` the bridge now says so at startup:
+
+```
+[mycobot_bridge] arm writes=sync (blocking) -- this pymycobot's send_angles
+takes no _async argument. Expect 0.5-1.5s per write; see DEFAULT_ASYNC_WRITES.
+```
+
+That fallback is correct but slower per write. The read-timeout wrapper caps the
+confirmation read at 0.06s rather than pymycobot's 0.5s default, so the cost is
+far below the 0.5-1.5s the old sync path had -- but it is not free, and the
+serial loop will not reach the full 30 Hz command rate.
+
+**If the arm feels sluggish, check whether your pymycobot offers another async
+path before accepting it**, on the robot:
+
+```bash
+python3 -c "
+import inspect
+from pymycobot.mycobot280 import MyCobot280
+import pymycobot; print('pymycobot', pymycobot.__version__)
+for n in dir(MyCobot280):
+    if 'angle' in n.lower() or 'async' in n.lower():
+        try: print(n, inspect.signature(getattr(MyCobot280, n)))
+        except (TypeError, ValueError): print(n, '(no signature)')
+"
+```
+
+If that shows a separate async entry point, add a branch in `_send_angles`
+alongside the existing one. Never pass a keyword this probe has not confirmed.
+
 ### Real hardware: gripper never reports contact
 - Expected for now -- pymycobot's gripper API has no effort/force
   reading, so `gripper_close_until_contact()`'s contact detection can't
