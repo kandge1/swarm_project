@@ -19,6 +19,7 @@
   <depend>trajectory_msgs</depend>
   <depend>shape_msgs</depend>
   <depend>cv_bridge</depend>
+  <depend>swarm_interfaces</depend>
   <depend>mycobot_description</depend>
   <depend>mycobot_280pi_camera_moveit2</depend>
 

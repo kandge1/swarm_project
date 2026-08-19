@@ -1,0 +1,203 @@
+===========================================================
+SUNDAY 2026-08-09 -- 9 HOURS. THE TRUTH COLUMN IS THE SUSPECT.
+===========================================================
+
+WHAT CHANGED THIS MORNING (offline, before touching the robot)
+-------------------------------------------------------------
+Saturday's A-O sweep was re-read against tape. Three findings, in order of
+how much they change the day:
+
+1. THE TRUTH COLUMN IS THE NOMINAL INCH GRID. Every position's truth_world is
+   a round number of inches:
+        A (-3,-7)  B (0,-7)  C (+3,-7)  D (+5,-5)  E (+6,-3)  F (+7,-2)
+        G (+8,-1)  H (+9,0)  I (+8,+1)  J (+7,+2)  K (+6,+2)  L (0,+7)
+        M (+3,+7)  N (+5,0)  O (+7,0)
+   --position auto-sets truth from the nominal layout. The plan's Friday
+   19:15 step -- "pre-mark all 13 mat locations and record their TRUE
+   positions" -- never happened. So the truth column says WHERE THE MAT WAS
+   MEANT TO GO, which is Lesson 5 word for word.
+
+2. THE SURVEY IS PRECISE TO 0.30 mm.
+        same position, views stable      0.30 mm   (I 0.63, J 0.24, N 0.04)
+        same position, views 9 vs 6      3.64 mm   (O -- choose() instability)
+        BETWEEN positions                2.42 mm   (sd, tangential)
+   A survey that repeats to 0.30 mm at a FIXED pose cannot be inaccurate by
+   2.42 mm at that pose unless what it is compared against moved. The
+   between-position scatter is per-position and stable within a session --
+   which is exactly the signature of mat-taping error, because taping error
+   is also per-position and also stable within a session.
+
+3. THE RADIAL CORRECTION IS REAL AND HELPS; TANGENTIAL IS NOW THE WHOLE
+   PROBLEM. Predicted offline for -0.0285 -> -0.0272:
+        radial   RMS 1.31 -> 0.85 mm,  mean -1.03 -> +0.27 mm   GOOD
+        tangential  mean +0.35 mm, sd 2.42 mm, RMS 2.39 mm      UNTOUCHED
+        |error|  2.41 -> 2.21 mm
+   Yaw is NOT the mechanism: dYaw sd is 0.47 deg, and at the pickup zone's
+   measured 0.39 mm/deg that buys 0.18 mm, not 2.3. corr(tangential, dYaw)
+   is -0.31 on n=20, weak and the wrong sign against the +0.39 prediction.
+
+   Isotropy: radial sd 0.83 vs tangential sd 2.42. Random mat-taping error is
+   isotropic in the world frame and must hit both channels equally, so taping
+   alone does not explain the 3x asymmetry -- there is ~2.28 mm of excess
+   tangential that is either real, or a directional flaw in how the mat gets
+   placed. THIS IS THE OPEN QUESTION AND IT IS TODAY'S FIRST EXPERIMENT.
+
+CORRECTION TO SATURDAY'S HANDOFF
+--------------------------------
+The handoff's budget said "survey error after the new constant ~0.3-0.6 mm"
+and predicted 1.2-1.3 mm end to end. THAT 0.3-0.6 mm IS PRECISION, NOT
+ACCURACY -- it is the repeat of a fixed pose. Against tape the pickup survey
+is RMS 2.2-2.5 mm. So:
+    if the 2.4 mm is the truth column  -> 1.2-1.3 mm stands, and today
+                                          confirms it
+    if the 2.4 mm is real              -> end to end is ~2.7 mm and the
+                                          target is NOT met
+Nothing in the file distinguishes these. One measurement does.
+
+THE DESIGN DECISION FOR TODAY: THE CALIPER IS THE METRIC, NOT THE TAPE
+---------------------------------------------------------------------
+The caliper at the 8 mm park reads the fingertips against the PHYSICAL BLOCK.
+It does not care where the mat was meant to be, so it is immune to every
+problem above. The truth column becomes a cross-check, not the metric.
+
+This also means we do NOT spend the morning re-measuring 15 mat positions
+with a steel rule. That was the alternative and it is slow, hateful, and
+still only as good as the person doing it at hour seven.
+
+THE INSTRUMENT (verified in code this morning, not guessed)
+    python3 explore_pick_place.py --any-block --skip-pick --position X
+
+  --yes is forwarded ONLY if you pass it (explore_pick_place.py:501), so
+  without it the confirm loop runs, and the measurement park lives inside
+  that loop (tag_pick_place.py:2182). Sequence:
+    survey pickup + place -> park at the hover -> lower to 8 mm fingertip
+    clearance above the block's TOP FACE -> block report -> prompt.
+  At the prompt: caliper, then type "dx dy" in mm, or ENTER to accept.
+  --skip-pick returns before any descent, so THE BLOCK NEVER MOVES and a
+  repeat at the same position starts from an identical scene. Free repeats.
+
+  Truth-on-centre is forwarded by default; pass --no-truth-block-on-centre
+  only when the block is deliberately OFF the zone centre (Q2).
+  Add --note sun_<what> so today's rows are findable.
+
+
+===========================================================
+THE SCHEDULE
+===========================================================
+
+T+0:00-0:30   BRING-UP + RE-TAPE K
+  Robot terminals per WORKFLOW.md "Split-Compute" + Terminal 4 detector.
+  Verify:  ros2 service list | grep detect_block
+  Re-tape K at (+6,+2) in CAREFULLY, then:
+    python3 explore_pick_place.py --survey-only --position K --note sun_K_retape
+  K read +19.16 and +20.68 mm tangential on Saturday, twice, 11 min apart --
+  the survey agreed with itself to 1.5 mm while sitting 20 mm off the tape.
+  Those two rows are now marked invalid in the history (2026-08-09).
+  IF a careful re-tape brings K to ~2 mm -> hand-taping errors of that size
+  are real, and the 2.42 mm between-position scatter is the truth column.
+  That is a 10-minute test of the whole hypothesis. DO IT FIRST.
+
+T+0:30-1:15   *** THE DECISIVE TEST *** CALIPER vs TAPE AT THREE POSES
+  Block taped on the zone centre. For each of G, O, N:
+    python3 explore_pick_place.py --any-block --skip-pick --position G --note sun_decisive
+    python3 explore_pick_place.py --any-block --skip-pick --position O --note sun_decisive
+    python3 explore_pick_place.py --any-block --skip-pick --position N --note sun_decisive
+  At each park read BOTH axes with the caliper: gapL/gapR to each block face.
+    offset = (gapR - gapL)/2   -- jaw span and block width cancel, so neither
+    needs to be known.
+  Chosen because the tape says they disagree wildly while sitting in nearly
+  the same place:
+        G (+8,-1)  bearing  -8.1 deg  r 205  tape tangential  -3.52
+        O (+7, 0)  bearing  +1.6 deg  r 176  tape tangential  +4.90 / +1.26
+        N (+5, 0)  bearing  +0.9 deg  r 126  tape tangential  +2.09 / +2.13
+  G and O are 9.7 deg of bearing apart and the tape claims 8.4 mm of
+  tangential between them. No real pose-dependent bias does that.
+
+  READ THE RESULT:
+    caliper ~1 mm at all three   -> THE TRUTH COLUMN IS THE PROBLEM. The arm
+        and survey are already at target. Skip to T+1:45 and spend the day
+        CONFIRMING and on Q2. Do not touch a single constant.
+    caliper tracks the tape (-3.5 / +4.9 / +2.1)
+                                 -> THE ERROR IS REAL. Go to T+1:15 BRANCH B.
+    caliper large but NOT tracking the tape
+                                 -> both are broken; trust the caliper, and
+                                    treat every tape-referenced number in the
+                                    history as unusable.
+
+T+1:15-1:45   BRANCH B ONLY -- if the error is real
+  Cheapest first: view-set stability. O moved 3.64 mm between two runs 3 min
+  apart when choose() accepted 9 views then 6. Run O four times back to back,
+  caliper each, and log the view count:
+    python3 explore_pick_place.py --any-block --skip-pick --position O --note sun_views
+  If the caliper moves with the view count, the survey's instability IS the
+  2.28 mm and the fix is choose()'s gates, not a new constant.
+  Do NOT fit a tangential model today. tangential kr has now printed
+  -156.68, -113.55, -96.9 and -51.92 mm/m depending only on which rows were
+  in the set. A coefficient that moves with the row set is not a measurement.
+
+T+1:45-4:00   END-TO-END VERIFICATION -- THE NUMBER THAT PROVES IT
+  6 bearings spanning the range, block taped on the zone centre, caliper at
+  the park, nudge TYPED so it records with its sign:
+    B (0,-7) -89 | D (+5,-5) -44 | H (+9,0) 0 | J (+7,+2) +16 | M (+3,+7) +67 | L (0,+7) +91
+    python3 explore_pick_place.py --any-block --skip-pick --position B --note sun_verify
+    ... etc
+  Two repeats at each of B, H, L for a within-session sigma under today's
+  constants. THIS is the headline number, not any fit's R^2 (Lesson 4).
+
+T+4:00-6:30   Q2 -- THE IN-ZONE SWEEP. Completely untouched, and it is half
+  the scope you specified. Top-face parallax is 6.5 mm at the zone edge,
+  corrected in code but never once tested off-centre since the correction
+  landed.
+  Zone fixed at F or G. Survey ONCE, then drive tag_pick_place directly
+  against that surveyed --zone-origin so the survey term is held constant:
+    python3 explore_pick_place.py --survey-only --position G --note sun_q2_survey
+    # take the printed origin, then per cell:
+    python3 tag_pick_place.py --zone-origin <ox> <oy> 0.050 --skip-pick \
+        --no-truth-block-on-centre --truth-block-zone <zx> <zy> --note sun_q2
+  3x3 factorial, block taped at zx,zy in {-20, 0, +20} mm. Usable range is
+  23.1 mm and the check is on max(|zx|,|zy|) (tag_pick_place.py:1686), so the
+  corners are legal. 9 rows against 3 parameters per axis leaves 6 dof to
+  TEST for the quadratic the parallax correction should already have removed.
+  --truth-block-zone is MILLIMETRES. --truth-block-world is METRES.
+
+T+6:30-7:15   4-CORNER REPLICATION AT B (bearing -90)
+  The vision model is expressed in the ZONE frame. If it is a camera property
+  it must reproduce at a different zone pose. Four rows answer a question
+  that would otherwise be assumed for the rest of the project.
+
+T+7:15-8:15   CONFIRMED GRASPS, 6-8, spanning bearing and in-zone position,
+  with taped --truth-block-world. PROTECT THIS SLOT. It is the only source of
+  rows calibration.jaw_offset() will accept, and the only measurement of the
+  park-to-grasp compliance step that everything above extrapolates across.
+
+T+8:15-9:00   FIT, APPLY ONLY WHAT IS MEASURED, WRITE UP
+    python3 calibration.py --fit --channel survey --zone pickup
+    python3 calibration.py --fit --channel nudge --max-clearance-mm 10
+  --zone pickup is NEW as of this morning and it is now the default. Before
+  it, --fit pooled 21 place rows -- which are RANK DEFICIENT on their own,
+  because the place zone never moves and its radius is constant at 229 mm --
+  and their 4-10 mm errors at that fixed radius dragged the survey fit's kr
+  to -157 +- 32 mm/m, "measured" at 4.9 se and entirely an artefact of mixing
+  two populations.
+
+IF THE DAY RUNS SHORT: drop the 4-corner replication first, then trim the
+verification to 4 bearings. NEVER drop the decisive test or Q2 -- one decides
+whether the target is met, and the other is half the scope.
+
+
+===========================================================
+CARRIED, DELIBERATELY NOT DONE
+===========================================================
+1. J1_RESIDUAL_BIAS_DEG 1.10 -> 0.85. Residual is +0.25 deg against a 0.10
+   spread, so by the project's own rule it is actionable, but it was measured
+   at n=5 at ONE pose -- Lesson 2. Decide it from today's verification data,
+   which spans 180 deg of bearing. Worth ~0.9 mm of tangential.
+2. The zone-origin bias and the jaw-offset error are CONFOUNDED with the
+   block on the zone centre: over the usable area the block's bearing differs
+   from the zone's by at most 6.5 deg. No sweep separates them; only flange_fk
+   plus an external taped truth does. It does not stop us hitting 1-2 mm, but
+   it decides WHERE the constant is written, and that is what prevents a
+   fourth recalibration.
+3. choose()'s view-set stability. O showed 9 views vs 6 moving the origin
+   3.64 mm. Cheapest version is a WARNING on low view count, not a change to
+   the gates -- changing gates mid-calibration invalidates the day's rows.

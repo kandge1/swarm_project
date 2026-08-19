@@ -1,0 +1,1695 @@
+#!/usr/bin/env python3
+"""Locate a block inside an AprilTag-marked zone, from a single still image.
+
+PURE OPENCV. No rclpy, no ROS message types, no TF. Everything here runs
+identically on the Pi (in block_detector_node.py, in production) and on mars
+(in zone_view.py, against saved stills). That is deliberate: threshold tuning
+against a 20-frame corpus takes seconds offline and a robot session on hardware.
+
+------------------------------------------------------------------------------
+WHY A HOMOGRAPHY, AND WHAT IT BUYS
+------------------------------------------------------------------------------
+The zone is a square whose four vertices carry the CENTRES of four 1in AprilTags.
+Those vertices are at known coordinates in a "zone-local" frame. So the tags give
+a plane-to-plane homography between image pixels and zone-local metres.
+
+The consequence is the entire point of this design: the block's position in the
+zone falls out of that homography and depends on NOTHING ELSE. Not the arm's
+actual position when the still was taken, not the camera's pose on the flange,
+not the camera intrinsics. All three cancel -- they decide whether the tags are
+in frame, not where the block is once they are.
+
+That matters here specifically. PROJECT_CONTEXT.md documents that this arm's
+absolute positioning is not trustworthy (IK_POS_TOLERANCE = 0.02, a residual
+grasp tilt that is mechanical and not tunable, and a controller with no
+constraints: block, so "Goal reached, success!" is inferred from elapsed time).
+Any design that derived block position from where the arm THINKS it is would
+inherit every bit of that. This one doesn't.
+
+What it does NOT give: the zone's own pose in the world. Nothing here measures
+that -- it is surveyed and passed in by the caller. So a block's world position
+is only ever as good as the zone survey, and the honest split is:
+
+    world_block = zone_survey (caller's number)  o  block_in_zone (measured here)
+
+which is why detections carry BOTH frames. A bad zone-local reading is a vision
+bug; a good zone-local reading with a missed grasp is a survey or arm problem.
+
+------------------------------------------------------------------------------
+WHY TAG CORNERS AND NOT TAG CENTRES
+------------------------------------------------------------------------------
+A homography has 8 degrees of freedom and four point correspondences determine
+it EXACTLY. Fit it from the four tag centres and the reprojection residual is
+identically zero -- for a good fit and a garbage one alike. The health metric
+would be a constant.
+
+So the fit uses all four corners of every tag: 16 correspondences for four tags,
+12 for three. Over-determined, so the residual finally carries information, and
+homography_rms becomes the number that says whether to trust the answer. A bad
+homography otherwise fails silently and returns a confident wrong position,
+which is the worst failure mode available to this feature.
+
+It also makes the reduced-tag cases fall out for free, with no special-case
+geometry to reconstruct a missing corner: three tags give 12 correspondences and
+two give 8 (16 equations for 8 DOF -- still over-determined, so the residual
+still means something).
+
+TWO IS THE FLOOR, AND IT IS THE NORMAL CASE ON HARDWARE. The gripper hangs in
+front of the lens and hides the far pair of tags from every hover the arm can
+reach, so a real still shows 2 of the 4. What two tags cost is not degrees of
+freedom but CONDITIONING -- an adjacent pair spans the zone one way and only
+their own 25.4mm the other, so the fit extrapolates ~6x across the thin
+direction. tag_spread_ratio() measures that, and analyze_multi() is the answer
+to it: several stills at different wrist yaws, each solved independently, then
+fused. Independently is the operative word -- see the note above analyze_multi
+for why pooling the correspondences instead would reintroduce exactly the
+encoder error this whole design exists to avoid.
+
+------------------------------------------------------------------------------
+ASSUMPTION THAT MUST BE CHECKED AGAINST THE CORPUS
+------------------------------------------------------------------------------
+All four tags are printed in the SAME orientation as each other and square to
+the zone (each tag's "up" points along zone +Y). The corner ordering below
+depends on it. If the printed sheet has them rotated per-corner, TAG_CORNER_
+OFFSETS needs a per-tag rotation and the homography residual will be the thing
+that tells you -- it will be large and roughly tag-sized.
+"""
+import math
+import os
+import sys
+
+import cv2
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import block_coordinates as bc  # noqa: E402
+
+# Modules across a 36h11 tag's black square: 6x6 of data plus a one-module black
+# border. Verified against OpenCV in print_block_tags._assert_module_count
+# rather than assumed -- every px/module judgement divides by it.
+BLOCK_TAG_MODULES = 8
+
+# ---------------------------------------------------------------------------
+# Zone geometry
+# ---------------------------------------------------------------------------
+# Side of the square joining the four TAG CENTRES. Not the tag size, and not
+# the ~4in working area a block actually gets to sit in.
+#
+# 4 in. Two DIFFERENT measures of "working area" live here and conflating them
+# is what made the 2026-07-29 decision below look better than it was:
+#
+#   clear span between the tags' inner edges  =  S - tag_size
+#   range the block's CENTRE may occupy       =  S - tag_size - block_size
+#
+# The first is the physically clear square; the second is placement freedom and
+# is necessarily smaller. Reducing S by 1 in costs exactly 1 in of BOTH -- the
+# tag term is constant, it does not scale.
+#
+#     S      clear span      block-centre freedom (1.2in block)
+#     6in    5 in            3.8 in
+#     4in    3 in            1.8 in
+#
+# History: this was 4in originally, went to 6in on 2026-07-29 because a tag
+# centred on a vertex reaches tag_size/2 INWARD, so a block near a corner sat on
+# top of a tag -- and because a 3in Stage 3 cuboid needed the whole 6in square
+# (at 4in its centre freedom is 4 - 1 - 3 = 0, it fits only if perfectly
+# centred). Back to 4in on 2026-07-31: the 3in block was dropped from the
+# design, and with a 1.2in maximum block the 3in clear span is ample.
+#
+# The reason to come back down is framing, and it is measured rather than
+# assumed: at 6in the zone did not reliably fit the camera's view at the
+# detection standoff, costing tags out of frame on most stills. See
+# APRIL_TAGS.md "Usable area" for the original derivation and the synthetic
+# test, and the framing measurements that reversed it.
+#
+# CHANGING THIS REQUIRES RE-TAPING THE MAT. The tag centres must physically sit
+# on a square of this side, or the homography residual will climb and every
+# measured position is wrong by the mismatch.
+DEFAULT_ZONE_SIZE = 0.1016      # m
+# Printed side length of one AprilTag's black border. 1 in.
+DEFAULT_TAG_SIZE = 0.0254       # m
+
+# Which tag id sits at which vertex, and in what order. Index 0..3 map to the
+# ZONE_CORNER_SIGNS below, so this list is what physically ties an id to a
+# corner of the mat -- get it wrong and the zone frame comes out rotated or
+# mirrored, which the homography residual will NOT catch (a mirrored fit is
+# still a perfect fit). Verify against a still with a block at a known corner.
+PICKUP_TAG_IDS = (0, 1, 2, 3)
+PLACE_TAG_IDS = (4, 5, 6, 7)
+
+# Vertex order for the ids above, counter-clockwise from the -X/-Y corner, in
+# units of half the zone size.
+ZONE_CORNER_SIGNS = ((-1, -1), (+1, -1), (+1, +1), (-1, +1))
+
+# Offsets of one tag's four corners from its own centre, in units of half the
+# tag size, in the order cv2.aruco returns them: top-left, top-right,
+# bottom-right, bottom-left in the MARKER's own frame. Zone +Y is "up".
+TAG_CORNER_OFFSETS = ((-1, +1), (+1, +1), (+1, -1), (-1, -1))
+
+# Lowered 3 -> 2 on 2026-07-30, because on real hardware 3 is unachievable: the
+# GRIPPER occludes the far pair of tags from every hover the arm can reach, so a
+# single still sees 2 of the 4, never more. Refusing 2 refused every real frame.
+#
+# 2 tags is not a degraded fit in the way the old comment claimed. Each tag
+# contributes 4 corners and each corner 2 equations, so 2 tags give 16 equations
+# for a homography's 8 DOF -- genuinely over-determined, and the RMS residual
+# stays meaningful. (1 tag would be 8 equations for 8 DOF: exactly determined,
+# zero residual by construction, and therefore worthless as a health check.
+# That is why the floor is 2 and not 1.)
+#
+# The real hazard with 2 tags is not the DOF count, it is CONDITIONING. Two
+# adjacent tags span the zone in one direction but only their own 25.4 mm in the
+# perpendicular one, so the fit extrapolates that direction ~6x out to the zone
+# edge and amplifies corner-localisation noise by the same factor. That is what
+# TAG_SPREAD_MIN_RATIO guards, and it is the reason analyze_multi() exists:
+# fusing several weak single-still fits from different wrist yaws both averages
+# the error down and, more usefully, makes the spread ACROSS stills an honest
+# independent estimate of the total error.
+MIN_TAGS = 2
+
+# Conditioning floor for the tag-corner constellation: the ratio of its minor to
+# major spread (PCA) in ZONE coordinates. MEASURED, not estimated:
+#
+#   all four tags      1.0000
+#   any three          0.5890
+#   adjacent pair      0.1644
+#   diagonal pair      0.1170
+#   single tag         1.0000  <- see below
+#
+# Two corrections to the obvious intuitions, both of which cost a first draft:
+#
+# 1. A DIAGONAL pair is WORSE conditioned than an adjacent one (0.117 vs 0.164),
+#    which is backwards from the "diagonal spans the zone better" reading. For a
+#    homography what matters is whether the points are in general position, and
+#    two diagonal tags put all 8 corners in a thin band along the diagonal --
+#    the perpendicular direction is pinned only by the 25.4mm tag width, over a
+#    longer (x sqrt 2) baseline than the adjacent case. Genuinely thinner.
+#
+# 2. A SINGLE tag scores 1.0000, because this metric measures the constellation's
+#    SHAPE and a lone tag's four corners are a perfect square. It says nothing
+#    about scale. MIN_TAGS = 2 is what excludes the single-tag case; do not
+#    expect this number to.
+#
+# 0.08 sits below both real two-tag cases deliberately. An earlier 0.12 would
+# have rejected every diagonal pair -- and which pair the gripper leaves visible
+# is a function of wrist angle, so that is a case the acquisition plan actively
+# produces. Hard-rejecting a weak-but-usable view is the wrong trade when
+# analyze_multi() can fuse it and report the spread: throwing data away in
+# exchange for a cleaner-looking single answer is how a system ends up confident
+# and wrong. The floor is here only for TRUE degeneracy -- collinear points, or
+# two "different" tags detected on top of each other -- where the fit is singular
+# and its answer is arbitrary rather than merely noisy. Quality of everything
+# above the floor is expressed by homography_rms and the multi-view spread.
+TAG_SPREAD_MIN_RATIO = 0.08
+
+# ---------------------------------------------------------------------------
+# Detection thresholds
+# ---------------------------------------------------------------------------
+# These are the numbers the still-image corpus exists to tune. They are STARTING
+# POINTS, not measurements -- APRIL_TAGS.md's Measurements table is where the
+# tuned values get recorded once there are frames to tune against.
+
+# Reject a homography whose corner reprojection RMS exceeds this. Sized to be
+# generous initially so the corpus can show what "normal" looks like before it
+# is tightened; a value that rejects nothing is at least visible in the logs,
+# whereas one that rejects everything looks like a hardware fault.
+MAX_HOMOGRAPHY_RMS_PX = 6.0
+
+# Ignore contours smaller than this fraction of the zone area -- specks, mat
+# texture, printed markings.
+MIN_BLOCK_AREA_FRAC = 0.0018    # ~0.18% of a 6in zone square = a 6mm speck
+                                 # (kept the same ABSOLUTE speck size as the old
+                                 # 4in zone's 0.4% -- the fraction changed, the
+                                 # thing it's meant to filter did not)
+# ...and larger than this, which means the segmentation leaked out of the zone
+# and grabbed the mat itself rather than a block on it.
+MAX_BLOCK_AREA_FRAC = 0.60
+
+# SHAPE sanity, not just area. AREA ALONE IS NOT ENOUGH: a thin sliver spanning
+# most of the zone has plenty of area to clear MIN_BLOCK_AREA_FRAC while being
+# nothing like a physical block.
+#
+# Found 2026-07-31 on real hardware, not hypothesized: the mat is printed with
+# an inch-square reference grid, and Canny segmentation (the default method)
+# fires on printed grid lines exactly as readily as on a real block edge --
+# they are both genuine intensity edges, and nothing before this point
+# distinguishes "edge of an object" from "edge of a printed line." Detections
+# from that run included, verbatim:
+#     134.1 x  16.7 mm  aspect 8.0:1
+#     121.1 x  12.5 mm  aspect 9.7:1
+# against a zone that is 152.4 mm across -- these are grid lines nearly
+# spanning the mat, not blocks. No block in this project is shaped like that:
+# the largest Stage 3 entry is a 1in x 3in cuboid, 25.4 x 76.2 mm, aspect 3.0.
+#
+# 90 mm clears that largest legitimate block with real margin (76.2 -> 90) and
+# sits well under the ~121-134 mm the grid-line artifacts measured. 4.0 clears
+# the largest legitimate aspect ratio (3.0) with margin and sits well under the
+# artifacts' 8-10:1. Both must be measured tighter if a longer legitimate block
+# is ever added to blocks.yaml -- this is not a universal constant, it is sized
+# against the specific blocks this project currently has.
+# Was 0.090, sized for the 1in x 3in Stage 3 cuboid. That block was dropped
+# from the design 2026-07-31 and the largest block is now 1.2 in (30.5 mm), so
+# this could in principle come down to ~0.040.
+#
+# It deliberately does NOT. The detector currently over-reads block size by
+# roughly 50%: the real ~30 mm block measured 38.9-46.0 mm across eight stills
+# on 2026-07-31 (shadow at the tilted camera angle is the likely cause, not yet
+# fixed). A 0.040 cap would reject the real block on most frames. 0.060 is
+# still well under half the old value -- enough to reject the 121-134 mm grid
+# slivers this filter exists for -- while leaving headroom for that inflation.
+#
+# Tighten this once the size over-read is fixed, not before.
+#
+# RAISED 0.060 -> 0.075 on 2026-08-12 for the geometric block set. The reason is
+# arithmetic, not preference: the set's longest dimension is 2.4 in = 61.0 mm, so
+# a 0.060 cap REJECTS every 2.4 in block on every frame -- the 61 mm bar, the
+# green brick, the blue slab, both long prisms, the sheared slab. Found by
+# test_colour_segmentation, which detected nothing at all for a rendered 61 mm
+# block until this moved.
+#
+# 0.075 is 61.0 mm plus 23%, sized against the SAME over-read this constant has
+# always been sized against (see above), and still well under the 121-134 mm grid
+# slivers the filter exists to reject. The 55.9 mm pink disc also fits.
+#
+# THIS IS THE CEILING ON THE BLOCK SET, so it moves when the set does -- and it
+# is checked against a stated longest dimension in the selftest rather than left
+# as a number someone has to remember the provenance of.
+MAX_BLOCK_LENGTH_M = 0.075      # m
+
+# ... and the lower bound, which did not exist until 2026-08-12.
+#
+# MEASURED NEED. With method=colour on an EMPTY place mat, five consecutive
+# stills reported blobs of 7.9 x 9.4, 8.6 x 11.3, 7.4 x 9.5, 3.1 x 7.0 and
+# 2.9 x 9.6 mm, each confidently named a colour. MIN_BLOCK_AREA_FRAC (0.18% of
+# the zone = 18.6 mm^2) does not stop them: a 3 x 7 mm sliver is ~20 mm^2 and
+# squeaks through. There was a ceiling on block size and no floor.
+#
+# THE PHYSICAL FACT: the smallest footprint LONG side in the whole geometric set
+# is 30.5 mm (1.2 in) -- even the purple 2.4 x 0.6 x 0.6 in bar presents 61 mm
+# long, and the thinnest slab is still 30.5 x 30.5 in plan. So 15 mm is HALF the
+# true minimum, which leaves room for the size under-read this detector is known
+# to have (a 30 mm block has measured 23.0 x 23.5) while rejecting every one of
+# those slivers outright.
+MIN_BLOCK_LENGTH_M = 0.015      # m, on the LONG footprint side
+
+# Raised 4.0 -> 4.5 at the same time and for the same kind of reason: the purple
+# 2.4 x 0.6 x 0.6 in bar is 61.0 x 15.2 mm, an aspect of exactly 4.01, so a 4.0
+# cap rejects it by 0.3%. 4.5 clears it with margin and still rejects the grid
+# slivers, which run 8:1 and worse.
+MAX_BLOCK_ASPECT = 4.5          # length / width
+
+# A detected object's CENTRE must land this far inside the zone edge. Only the
+# centre is tested, so a block whose corner overhangs the boundary is still
+# measured at full size -- see build_masks() on why clipping is not used here.
+ZONE_INTERIOR_MARGIN = 0.004    # m
+# Grow each tag's quad by this before painting it out; the printed white quiet
+# zone around a tag reads as an edge otherwise.
+TAG_EXCLUSION_MARGIN = 0.004    # m
+
+# Shape classification. fill_ratio = contour area / its minAreaRect area:
+# a rectangle fills its own bounding rect (~1.0), a circle fills pi/4 (~0.785).
+SQUARE_ASPECT_TOL = 0.88        # short/long above this counts as "not elongated"
+CIRCLE_FILL_MAX = 0.86          # below this, and un-elongated, reads as round
+RECT_FILL_MIN = 0.80            # below this for an elongated blob: shape unknown
+
+
+class ZoneSpec:
+    """Where a zone is and how it is marked.
+
+    world_x/world_y/world_yaw/world_z are the SURVEYED pose of the zone centre,
+    supplied by the caller. Nothing in this module measures them -- see the
+    module docstring on what the homography does and does not give you.
+    """
+
+    def __init__(self, tag_ids, world_x=0.0, world_y=0.0, world_yaw=0.0,
+                 world_z=0.0, zone_size=DEFAULT_ZONE_SIZE,
+                 tag_size=DEFAULT_TAG_SIZE):
+        if len(tag_ids) != 4:
+            raise ValueError("a zone is marked by exactly 4 tags, got %d" % len(tag_ids))
+        self.tag_ids = tuple(int(t) for t in tag_ids)
+        self.world_x = float(world_x)
+        self.world_y = float(world_y)
+        self.world_yaw = float(world_yaw)
+        self.world_z = float(world_z)
+        self.zone_size = float(zone_size)
+        self.tag_size = float(tag_size)
+
+    def tag_corner_targets(self):
+        """{tag_id: 4x2 array of that tag's corners in zone-local metres}.
+
+        Corner order matches cv2.aruco's, so this pairs elementwise with what
+        detect_tags returns -- no re-ordering at the call site.
+        """
+        half_zone = self.zone_size / 2.0
+        half_tag = self.tag_size / 2.0
+        targets = {}
+        for tag_id, (sx, sy) in zip(self.tag_ids, ZONE_CORNER_SIGNS):
+            cx, cy = sx * half_zone, sy * half_zone
+            targets[tag_id] = np.array(
+                [[cx + ox * half_tag, cy + oy * half_tag]
+                 for ox, oy in TAG_CORNER_OFFSETS], dtype=np.float64)
+        return targets
+
+    def zone_to_world(self, zx, zy):
+        c, s = math.cos(self.world_yaw), math.sin(self.world_yaw)
+        return (self.world_x + c * zx - s * zy,
+                self.world_y + s * zx + c * zy)
+
+    def zone_yaw_to_world(self, zyaw):
+        return wrap_angle(zyaw + self.world_yaw)
+
+
+def zone_for(name, **kwargs):
+    """ZoneSpec for the well-known zone names used by the DetectBlock service."""
+    ids = {"pickup": PICKUP_TAG_IDS, "place": PLACE_TAG_IDS}.get(name)
+    if ids is None:
+        raise ValueError("unknown zone %r (expected 'pickup' or 'place')" % (name,))
+    return ZoneSpec(ids, **kwargs)
+
+
+def wrap_angle(a):
+    """Fold an angle into (-pi, pi]."""
+    return math.atan2(math.sin(a), math.cos(a))
+
+
+# ---------------------------------------------------------------------------
+# Colour
+# ---------------------------------------------------------------------------
+# THE ONE ORDERED LIST OF COLOUR NAMES. The wire carries an INDEX into this
+# tuple, not a string, and both the Pi node and the mars client import it from
+# here -- so there is no table to keep in sync and nothing to mismatch.
+#
+# WHY AN INDEX AND NOT A STRING. block_detector_node.py's own comment records
+# `rcl_send_response` failing on this machine with "string data is not
+# null-terminated" when a nested message carrying a string was populated. That
+# diagnosis is at best incomplete -- BlockDetection already carries
+# `string shape` across this exact wire and works -- but the failure mode it
+# describes takes the whole detection service down, whereas an index that ever
+# went wrong would show up as a wrong colour NAME: visible, harmless, fixable.
+# The cheaper failure wins. Index 0 is deliberately "unknown" so a
+# default-constructed message reads as "no answer", never as a real colour.
+#
+# APPEND ONLY. An index is a wire value; inserting in the middle renames every
+# colour above it, silently, on any machine that did not rebuild.
+COLOUR_NAMES = (
+    "unknown",
+    "red", "orange", "yellow", "green", "blue", "purple", "pink",
+    "white", "wood",
+    # APPENDED 2026-08-12. No block in the set is cyan, but green (60) and blue
+    # (112) are 52 hue units apart and the give-up radius is 21, so hues 82-90
+    # reached NO prototype and came back "unknown" -- and blue paint under warm
+    # light drifts exactly that way. Appended, never inserted: an index is a wire
+    # value.
+    "cyan",
+)
+
+# HSV prototypes: (hue 0-179 as OpenCV counts it, min saturation, min value).
+#
+# HARVESTED from the contributed object_detection.py's range table, which was
+# well aimed at this block set, and then RE-POINTED. That file decided a colour
+# by argmax over per-colour pixel counts inside overlapping HSV boxes, which
+# decides by BOX WIDTH rather than by colour distance: its `Wood` box (H 5-30)
+# contains `Orange` (8-20) and half of `Yellow` (20-36), its `Pink` (160-179)
+# overlaps both `Purple` (130-165) and the upper half of `Red`, and exact ties
+# fall to dict iteration order. A wider box wins more pixels of a hue-spread
+# blob no matter where the blob's colour actually sits.
+#
+# So: NEAREST PROTOTYPE on the blob's MEDIAN hue, with a circular metric. Median
+# because a specular highlight or a shaded facet is an outlier, not a vote.
+# Circular because red wraps 0/179 and any linear distance gets red wrong.
+# Order-independent, and it yields a real distance to threshold on.
+COLOUR_HUES = {
+    # RED'S SATURATION FLOOR IS 60, NOT 90, and it has to be: pink is red below
+    # COLOUR_PINK_MAX_SAT, so a floor of 90 made every pink paler than that come
+    # back "unknown" -- the split could never fire. 60 is exactly
+    # COLOUR_WHITE_MAX_SAT, so red/pink picks up precisely where white leaves off
+    # and there is no band between them that matches nothing.
+    "red":    (0, 60, 55),
+    "orange": (14, 90, 60),
+    "yellow": (28, 75, 75),
+    "green":  (60, 45, 35),
+    "blue":   (112, 55, 35),
+    "purple": (140, 40, 35),
+    "cyan":   (86, 40, 40),
+}
+
+# PINK IS NOT IN THE HUE TABLE, and that is a fix from 2026-08-12, not an
+# omission.
+#
+# MEASURED ON HARDWARE. A red prism in the pickup zone was named
+# `pink (score 0.72)`. Working the score back through the metric --
+# distance = (1 - score) * COLOUR_MAX_HUE_DIST -- puts its median hue 5.0 units
+# from pink's 168 prototype, i.e. at ~163 or ~173. Then the arithmetic:
+#
+#   hue  dist to red(0)  dist to pink(168)   nearest
+#   160      20.0              8.0            pink
+#   170      10.0              2.0            pink
+#   172       8.0              4.0            pink
+#   175       5.0              7.0            red
+#
+# Pink's prototype sat only 12 hue units from red's, INSIDE red's own 18-unit
+# tolerance, so it captured every hue from 160 to 174 -- which is where real
+# crimson paint lives. Red and pink are not separable by hue at this resolution
+# and never were.
+#
+# THEY ARE SEPARABLE BY SATURATION, because that is physically what pink IS: a
+# TINT of red, i.e. red mixed with white. So pink is decided from red afterwards,
+# on saturation and value, in the same spirit as white and wood being decided
+# before hue is consulted at all.
+#
+# BIASED TOWARDS RED. Both thresholds are unmeasured, so the split is set where a
+# borderline block reads "red": the pink disc is ungraspable lying flat anyway
+# (55.9 mm through its centre against a ~40 mm aperture), while a red block
+# misnamed pink is a block the operator asked for and did not get. Print the
+# H/S/V -- classify_colour returns it and the detector node logs it -- and move
+# these two numbers once, from a reading, rather than nudging them per run.
+COLOUR_PINK_MAX_SAT = 140       # above this it is red, not a tint of red
+COLOUR_PINK_MIN_VAL = 150       # ... and a tint is light, not dark
+
+# Hue used to SCORE pink, never to select it. Selection is by saturation, above.
+#
+# Needed because the score is a hue distance, and pink is reached through red's
+# prototype at 0 -- so a perfectly good pink at hue 165 scored 1 - 15/21 = 0.29
+# and would have been thrown out by tag_pick_place.COLOUR_MIN_SCORE (0.45)
+# despite being classified correctly. Detected and then discarded is the worst of
+# the three outcomes.
+#
+# 172 is the middle of where magenta actually sits, so both a pale true red
+# (hue ~0, distance 8) and a magenta-ish pink (hue ~165, distance 7) score around
+# 0.6-0.7. Kept OUT of COLOUR_HUES on purpose: putting it back there is precisely
+# the bug this whole block exists to fix.
+COLOUR_PINK_HUE_REF = 172
+
+# Achromatic classes, decided by saturation/value BEFORE hue is consulted at
+# all: the hue of a near-grey pixel is numerically defined and physically
+# meaningless, which is how a white block gets called "pink".
+COLOUR_WHITE_MAX_SAT = 60       # below this saturation nothing has a hue
+COLOUR_WHITE_MIN_VAL = 140      # ... and above this value it is white
+COLOUR_WOOD_MAX_SAT = 110       # tan/beech: a real but weak hue in the orange
+COLOUR_WOOD_HUE_RANGE = (5, 32) # band. Checked before the chromatic prototypes.
+
+# Wood needs a hue, not merely a weak one. Added 2026-08-12: `wood` is the
+# loosest class in the table -- any saturation up to 110, any value up to 205,
+# and hue 5-32 is where a NEUTRAL grey's numerically-meaningless hue tends to
+# land -- so a shadow on white paper falls straight into it, and a 28 x 45 mm
+# blob on an empty place mat was named `wood (1.00)`. Beech has a real if weak
+# hue; a grey shadow has essentially none.
+#
+# UNMEASURED, like every threshold here. The HSV is now logged per contour by
+# block_detector_node, so set this from a reading of the actual wooden block
+# rather than by nudging it.
+COLOUR_WOOD_MIN_SAT = 35
+
+# Hue distance beyond which no prototype is claimed, in OpenCV hue units (~2 deg
+# each). A GIVE-UP RADIUS, not a band half-width: which prototype wins is decided
+# by nearest-neighbour, so adjacent prototypes may sit closer together than this
+# (red 0 and orange 14 do) without anything being ambiguous.
+#
+# 18 -> 21 on 2026-08-12, and for a specific hole. Taking pink out of the hue
+# table (see COLOUR_PINK_MAX_SAT) left purple at 140 as the last prototype before
+# red wraps at 180 -- a 40-unit span covered 18 either side, so hues 159-161
+# matched NOTHING and came back "unknown". Caught by the selftest asserting that
+# a saturated hue 160 is red. 21 closes it exactly at the midpoint, 160, with a
+# unit to spare on each side.
+COLOUR_MAX_HUE_DIST = 21
+
+
+# Hue BANDS: names whose hue is a range rather than a point. Distance is 0
+# anywhere inside the band and grows from the nearest edge outside it.
+#
+# RED IS A BAND AND HAS TO BE. It straddles the 0/179 wrap and real red paints
+# spread right across it -- scarlet near 5, crimson near 172. Scored against a
+# single point at 0, the red prism measured on hardware 2026-08-12 (median hue
+# ~163-173) scored 0.19-0.29 against tag_pick_place.COLOUR_MIN_SCORE of 0.45:
+# named correctly and then thrown away for want of confidence, which is the worst
+# of the three outcomes.
+#
+# The band stops at 6 on the upper side rather than 10 so it does not crowd
+# orange's prototype at 14 -- a hue of 12 should be an honest toss-up between red
+# and orange, not a confident red.
+COLOUR_HUE_BANDS = {
+    "red": (168, 6),            # wraps through 0
+}
+
+
+def _hue_distance(a, b):
+    """Circular distance between two OpenCV hues (0-179 wraps)."""
+    d = abs(float(a) - float(b)) % 180.0
+    return min(d, 180.0 - d)
+
+
+def _in_hue_band(h, band):
+    """Is hue `h` inside `band`, which may wrap through 0?"""
+    lo, hi = band
+    if lo <= hi:
+        return lo <= h <= hi
+    return h >= lo or h <= hi
+
+
+def _band_distance(h, name, hue):
+    """Hue distance from `h` to `name`'s band, or to its point prototype."""
+    band = COLOUR_HUE_BANDS.get(name)
+    if band is None:
+        return _hue_distance(h, hue)
+    if _in_hue_band(h, band):
+        return 0.0
+    return min(_hue_distance(h, band[0]), _hue_distance(h, band[1]))
+
+
+def classify_colour(hsv, mask):
+    """(name, score, (h, s, v)) for the pixels of `hsv` selected by `mask`.
+
+    score is 1.0 at the prototype hue and falls linearly to 0.0 at
+    COLOUR_MAX_HUE_DIST, so it is a DISTANCE turned into a confidence and not a
+    pixel fraction -- a fully-agreeing blob of a colour we have no prototype for
+    scores 0 and is called "unknown", which is the honest answer.
+
+    THE MEDIAN H/S/V IS RETURNED, not just the verdict, and that is the whole
+    reason the red-vs-pink question above was answerable at all: the first
+    hardware run of this path could only be diagnosed by working the hue
+    backwards out of the score, which is a thing to do once. block_detector_node
+    logs these three numbers per contour, on the Pi, where the pixels are -- they
+    deliberately do NOT go on the wire, which has 4 bytes of margin left.
+
+    ORDER MATTERS: achromatic (white, wood) before hue, because the hue of a
+    near-grey pixel is numerically defined and physically meaningless; then the
+    chromatic prototypes; then pink, split off red by saturation. See
+    COLOUR_PINK_MAX_SAT.
+    """
+    if hsv is None or mask is None:
+        return "unknown", 0.0, (0.0, 0.0, 0.0)
+    selected = hsv[mask > 0]
+    if selected.size == 0:
+        return "unknown", 0.0, (0.0, 0.0, 0.0)
+    h = float(np.median(selected[:, 0]))
+    s = float(np.median(selected[:, 1]))
+    v = float(np.median(selected[:, 2]))
+    hsv_median = (h, s, v)
+
+    if s < COLOUR_WHITE_MAX_SAT and v >= COLOUR_WHITE_MIN_VAL:
+        return "white", 1.0, hsv_median
+    if (COLOUR_WOOD_MIN_SAT <= s < COLOUR_WOOD_MAX_SAT
+            and COLOUR_WOOD_HUE_RANGE[0] <= h <= COLOUR_WOOD_HUE_RANGE[1]):
+        return "wood", 1.0, hsv_median
+
+    best, best_d = "unknown", None
+    for name, (hue, s_min, v_min) in COLOUR_HUES.items():
+        if s < s_min or v < v_min:
+            continue
+        d = _band_distance(h, name, hue)
+        if best_d is None or d < best_d:
+            best, best_d = name, d
+    if best_d is None or best_d > COLOUR_MAX_HUE_DIST:
+        return "unknown", 0.0, hsv_median
+    # PINK IS A TINT OF RED, so it is decided here and not by hue -- and rescored
+    # against its own reference, because the distance that selected it was
+    # measured to RED. See COLOUR_PINK_HUE_REF.
+    if best == "red" and s < COLOUR_PINK_MAX_SAT and v >= COLOUR_PINK_MIN_VAL:
+        best = "pink"
+        best_d = _band_distance(h, "red", COLOUR_PINK_HUE_REF)
+    return best, max(0.0, 1.0 - best_d / float(COLOUR_MAX_HUE_DIST)), hsv_median
+
+
+def colour_index(name):
+    """Wire index for a colour name. Unknown names map to 0, never to a guess."""
+    try:
+        return COLOUR_NAMES.index(name)
+    except ValueError:
+        return 0
+
+
+def colour_name(index):
+    """Inverse of colour_index. Out-of-range means the other end has a newer
+    COLOUR_NAMES than this one -- say so rather than indexing off the end."""
+    index = int(index)
+    if 0 <= index < len(COLOUR_NAMES):
+        return COLOUR_NAMES[index]
+    print("[colour] wire index %d is outside COLOUR_NAMES (%d entries) -- the "
+          "two machines are not running the same zone_vision.py. Rebuild and "
+          "re-source both." % (index, len(COLOUR_NAMES)))
+    return "unknown"
+
+
+class Detection:
+    """One object found in the zone. Mirrors swarm_interfaces/BlockDetection."""
+
+    def __init__(self, zx, zy, zyaw, width, length, shape, symmetry,
+                 fill_ratio, area_px, box_px, colour="unknown",
+                 colour_score=0.0, colour_hsv=(0.0, 0.0, 0.0)):
+        self.zx = zx
+        self.zy = zy
+        self.zyaw = zyaw            # MAJOR (long) axis direction, rad
+        self.width = width          # SHORT footprint dimension, m
+        self.length = length        # LONG footprint dimension, m
+        self.shape = shape
+        self.symmetry = symmetry
+        self.fill_ratio = fill_ratio
+        self.area_px = area_px
+        self.box_px = box_px        # 4x2 pixel corners, for the debug overlay
+        self.colour = colour        # a COLOUR_NAMES entry
+        self.colour_score = colour_score
+        # Median H/S/V of the contour's own pixels. LOCAL TO THE DETECTOR -- it
+        # is what makes a wrong colour verdict diagnosable, and it is logged on
+        # the Pi rather than sent, because the wire has 4 bytes of margin.
+        self.colour_hsv = colour_hsv
+
+    def world_pose(self, zone):
+        x, y = zone.zone_to_world(self.zx, self.zy)
+        return x, y, zone.zone_yaw_to_world(self.zyaw)
+
+    def __repr__(self):
+        return ("Detection(zone=(%.4f, %.4f) yaw=%.1fdeg %s %s %.1fx%.1fmm "
+                "sym=%d fill=%.2f)"
+                % (self.zx, self.zy, math.degrees(self.zyaw), self.colour,
+                   self.shape, self.width * 1000.0, self.length * 1000.0,
+                   self.symmetry, self.fill_ratio))
+
+
+class ZoneResult:
+    """Everything one still frame produced."""
+
+    def __init__(self):
+        self.success = False
+        self.message = ""
+        self.tag_ids = []
+        self.tag_corners = {}       # {id: 4x2 px} -- for the overlay
+        self.homography_rms = 0.0
+        self.tag_spread = 0.0       # conditioning, see tag_spread_ratio()
+        self.scale_px_per_m = 0.0
+        self.camera_zx = 0.0        # zone-local point under the image centre
+        self.camera_zy = 0.0        # -- see camera_in_zone()
+        self.blocks = []
+        self.H_zone_to_px = None
+        self.H_px_to_zone = None
+        self.mask = None            # search mask, for the overlay
+        self.accept_mask = None     # centre-acceptance mask, for the overlay
+        self.flat_gray = None       # grayscale with the tags painted out
+        self.flat_bgr = None        # ... and the colour frame, same treatment
+
+    @property
+    def tags_seen(self):
+        return len(self.tag_ids)
+
+
+# ---------------------------------------------------------------------------
+# AprilTag detection
+# ---------------------------------------------------------------------------
+# OpenCV moved the aruco API in 4.7: Dictionary_get/DetectorParameters_create/
+# detectMarkers became getPredefinedDictionary/DetectorParameters/ArucoDetector,
+# and the old spelling was later removed. mars runs 4.6 and the Pi runs 4.2, so
+# BOTH machines currently want the legacy path -- but pinning to it would break
+# the moment either machine is updated, and this shim costs eight lines.
+_ARUCO_CACHE = {}
+
+
+def _aruco_detect(gray):
+    """[(tag_id, 4x2 float32 corners)], newest OpenCV API or legacy."""
+    if "detect" not in _ARUCO_CACHE:
+        _ARUCO_CACHE["detect"] = _build_aruco_detector()
+    return _ARUCO_CACHE["detect"](gray)
+
+
+def _build_aruco_detector():
+    if not hasattr(cv2, "aruco"):
+        raise RuntimeError(
+            "this OpenCV build has no aruco module. On the Pi, python3-opencv "
+            "normally ships contrib; if it does not, add pupil-apriltags to "
+            "pi_setup/requirements.txt and add a branch here.")
+
+    if hasattr(cv2.aruco, "ArucoDetector"):        # OpenCV >= 4.7
+        dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36h11)
+        detector = cv2.aruco.ArucoDetector(dictionary, cv2.aruco.DetectorParameters())
+
+        def detect(gray):
+            corners, ids, _ = detector.detectMarkers(gray)
+            return _pack_aruco(corners, ids)
+        return detect
+
+    dictionary = cv2.aruco.Dictionary_get(cv2.aruco.DICT_APRILTAG_36h11)
+    params = cv2.aruco.DetectorParameters_create()
+    # Sub-pixel corner refinement. The whole accuracy argument rests on the tag
+    # corners, and integer-pixel corners at ~0.2 m put a visible floor under the
+    # homography residual for free.
+    params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+
+    def detect(gray):
+        corners, ids, _ = cv2.aruco.detectMarkers(gray, dictionary, parameters=params)
+        return _pack_aruco(corners, ids)
+    return detect
+
+
+def _pack_aruco(corners, ids):
+    if ids is None or len(ids) == 0:
+        return []
+    return [(int(i), c.reshape(4, 2).astype(np.float64))
+            for i, c in zip(ids.flatten(), corners)]
+
+
+def detect_tags(gray, zone):
+    """{tag_id: 4x2 px corners} for the tags belonging to this zone.
+
+    Tags from another zone in the same frame are dropped, not an error -- the
+    two zones may well both be in shot. The caller sees which ids were used.
+    """
+    wanted = set(zone.tag_ids)
+    found = {}
+    for tag_id, corners in _aruco_detect(gray):
+        if tag_id in wanted:
+            found[tag_id] = corners
+    return found
+
+
+def detect_all_tags(gray):
+    """{tag_id: 4x2 px corners} for EVERY tag in the frame, any zone or none.
+
+    detect_tags() filters to one ZoneSpec's ids because analyze() only ever
+    wants to know about the zone it was asked about. Tooling that wants to
+    show everything the camera can see -- a live diagnostic viewer, say --
+    wants the unfiltered set instead.
+
+    DUPLICATE IDS COLLAPSE. Being a dict, two tags in the frame sharing an id
+    leave only one behind, silently. That is harmless for zone tags, which are
+    unique by construction, but not for anything that may legitimately see the
+    same id twice -- use detect_all_tags_list() there.
+    """
+    return dict(_aruco_detect(gray))
+
+
+def detect_all_tags_list(gray):
+    """[(tag_id, 4x2 px corners)] for EVERY tag, DUPLICATES PRESERVED.
+
+    The list form of detect_all_tags(), for callers that may see one id more
+    than once in a frame -- two identically-tagged blocks in the pickup zone,
+    say. Verified, not assumed: two copies of tag 8 in one frame give two
+    entries here and one from detect_all_tags().
+    """
+    return list(_aruco_detect(gray))
+
+
+class BlockTagSighting(object):
+    """One block face tag seen in one frame.
+
+    px_per_module is the number that decides whether to believe the decode: a
+    36h11 tag is BLOCK_TAG_MODULES across its black square, and measured against
+    foreshortened, blurred and noised renders the hard floor is about 3.0 with
+    reliability arriving around 4.0.
+
+    zone_xy is filled in ONLY for a mat-parallel face (top/bottom) and only when
+    a homography was fitted. A side tag stands perpendicular to the mat, so
+    projecting it through a mat-plane homography would return a plausible
+    position that means nothing -- so it stays None rather than being computed
+    and caveated. Even for a top tag it is a RAISED point projected onto the
+    mat, carrying the parallax offset in APRIL_TAGS_DEV.md's "Known systematic
+    errors": good for identifying a block, not for aiming at one.
+    """
+
+    __slots__ = ("face", "corners", "px", "px_per_module", "zone_xy")
+
+    def __init__(self, face, corners, px, px_per_module, zone_xy):
+        self.face = face                  # block_coordinates.BlockFace
+        self.corners = corners            # 4x2 px
+        self.px = px
+        self.px_per_module = px_per_module
+        self.zone_xy = zone_xy
+
+    def __iter__(self):
+        """Unpack as (face, corners, px, px_per_module, zone_xy)."""
+        return iter((self.face, self.corners, self.px, self.px_per_module,
+                     self.zone_xy))
+
+    def __repr__(self):
+        return "<%s %.1f px (%.1f px/module)>" % (self.face.label, self.px,
+                                                  self.px_per_module)
+
+
+def find_block_tags(gray, H_px_to_zone=None):
+    """[BlockTagSighting] for every block face tag in the frame, biggest first.
+
+    Independent of any zone: a frame can show block tags and no zone tags at all
+    -- the angled survey pose looks ACROSS the mat rather than down at it -- and
+    that is a useful answer, not a failure.
+
+    Uses the LIST form of the detector deliberately. Two blocks may carry the
+    same id, and detect_all_tags() would keep only one of them, silently.
+    """
+    found = []
+    for tag_id, corners in detect_all_tags_list(gray):
+        face = bc.describe(tag_id)
+        if face is None:                  # a zone tag, or something stray
+            continue
+        px = tag_pixel_size(corners)
+        zone_xy = None
+        if face.is_mat_parallel and H_px_to_zone is not None:
+            centre = corners.mean(axis=0).reshape(1, 2)
+            zone_xy = tuple(px_to_zone(H_px_to_zone, centre)[0])
+        found.append(BlockTagSighting(face, corners, px,
+                                      px / BLOCK_TAG_MODULES, zone_xy))
+    found.sort(key=lambda sighting: sighting.px, reverse=True)
+    return found
+
+
+# Below this many pixels, tag_pixel_size() reads HIGH -- see its docstring.
+# Measured against known-size renders: accurate to 0.2% at 48 px and above,
+# -2% at 28-32 px, and +14% at 20-24 px.
+TAG_PX_MEASUREMENT_FLOOR = 28.0
+
+
+def tag_pixel_size(corners):
+    """Mean edge length of a tag quad, in pixels.
+
+    The four edges differ under perspective, so the mean is the honest single
+    number; the spread between them is itself a foreshortening measure. Used to
+    judge whether a tag is big enough to have been decoded reliably (roughly
+    3 px per module is the floor for 36h11, and a 36h11 tag is 8 modules across
+    its black square) and, for a mat-parallel tag, to read its height off the
+    scale it implies.
+
+    IT OVER-READS ON SMALL TAGS, and it does so in the direction that flatters
+    them. Against renders of known size:
+
+        >= 48 px    +0.2%      trustworthy
+        28-32 px    -2%        trustworthy
+        20-24 px    +14%       OPTIMISTIC
+
+    The cause is CORNER_REFINE_SUBPIX (see _build_aruco_detector): on a tag only
+    a couple of pixels per module, refinement pushes the corners outward into
+    the quiet zone. Disabling it instead under-reads by 2-4%, and it is there to
+    hold the homography residual down, so it stays.
+
+    The consequence is what matters: the bias is largest exactly where the
+    decision is marginal. A tag reported at 24 px may really be 21, and a
+    reported 3.0 px/module may really be 2.6 -- the difference between
+    "intermittent" and "dead". Treat any reading below
+    TAG_PX_MEASUREMENT_FLOOR as an upper bound, not a measurement, and settle
+    it by moving closer rather than by believing the number.
+    """
+    corners = np.asarray(corners, dtype=np.float64).reshape(4, 2)
+    edges = np.linalg.norm(corners - np.roll(corners, -1, axis=0), axis=1)
+    return float(edges.mean())
+
+
+def _build_tag_zone_lookup():
+    lookup = {}
+    for ids, zone_name in ((PICKUP_TAG_IDS, "pickup"), (PLACE_TAG_IDS, "place")):
+        for tag_id, signs in zip(ids, ZONE_CORNER_SIGNS):
+            lookup[tag_id] = (zone_name, signs)
+    return lookup
+
+
+_TAG_ZONE_LOOKUP = _build_tag_zone_lookup()
+
+
+def describe_tag_id(tag_id):
+    """(zone_name, (sx, sy)) for a tag id that belongs to a configured zone,
+    or None if it doesn't. (sx, sy) are the ZONE_CORNER_SIGNS entry -- e.g.
+    (-1, -1) is the -X,-Y vertex, matching the +X/+Y legend printed on the
+    zone sheets by print_zone_tags.py."""
+    return _TAG_ZONE_LOOKUP.get(tag_id)
+
+
+# ---------------------------------------------------------------------------
+# Homography
+# ---------------------------------------------------------------------------
+def fit_homography(tag_corners_px, zone):
+    """(H_zone_to_px, rms_px) from every corner of every visible tag.
+
+    Least-squares over 4*n correspondences, so the residual is meaningful --
+    see the module docstring on why centres alone would not be.
+    """
+    targets = zone.tag_corner_targets()
+    src, dst = [], []
+    for tag_id in sorted(tag_corners_px):
+        src.append(targets[tag_id])
+        dst.append(tag_corners_px[tag_id])
+    src = np.concatenate(src, axis=0)
+    dst = np.concatenate(dst, axis=0)
+
+    # method=0 is a plain least-squares fit over all points. Deliberately NOT
+    # RANSAC: with 12-16 points that all matter, an outlier here means a
+    # misdetected tag, and silently discarding it would hide exactly the fault
+    # homography_rms exists to expose.
+    H, _ = cv2.findHomography(src, dst, method=0)
+    if H is None:
+        return None, float("inf")
+
+    projected = cv2.perspectiveTransform(src.reshape(-1, 1, 2), H).reshape(-1, 2)
+    rms = float(np.sqrt(np.mean(np.sum((projected - dst) ** 2, axis=1))))
+    return H, rms
+
+
+def tag_spread_ratio(tag_corners_px, zone):
+    """Minor/major spread of the visible tag corners in ZONE coordinates.
+
+    A pure geometry number -- it uses only WHICH tags were seen, never the pixel
+    measurements, so it is a property of the occlusion pattern and cannot be
+    fooled by a bad detection. See TAG_SPREAD_MIN_RATIO.
+
+    1.0 is an ideal square constellation; 0.0 is collinear, where the homography
+    is singular in one direction and its answer there is arbitrary rather than
+    just noisy.
+    """
+    targets = zone.tag_corner_targets()
+    pts = np.concatenate([targets[t] for t in sorted(tag_corners_px)], axis=0)
+    if len(pts) < 4:
+        return 0.0
+    centred = pts - pts.mean(axis=0)
+    # Singular values of the centred point set are its principal spreads.
+    sv = np.linalg.svd(centred, compute_uv=False)
+    if sv[0] <= 1e-12:
+        return 0.0
+    return float(sv[1] / sv[0])
+
+
+def _scale_at_centre(H_zone_to_px, zone):
+    """Local px-per-metre at the zone centre. Diagnostic only."""
+    probe = np.array([[[0.0, 0.0]], [[0.01, 0.0]]], dtype=np.float64)
+    pts = cv2.perspectiveTransform(probe, H_zone_to_px).reshape(2, 2)
+    return float(np.linalg.norm(pts[1] - pts[0]) / 0.01)
+
+
+def camera_in_zone(H_px_to_zone, width_px, height_px):
+    """Zone-local (x, y) that the centre of the image looks at.
+
+    THIS IS THE ONLY THING HERE THAT MEASURES THE ARM, and it is worth being
+    precise about why, because the obvious reading of "detect again to check the
+    move worked" is wrong.
+
+    A block's zone-local position comes from the tags and is completely
+    independent of where the arm is -- move the arm and re-detect, and you get
+    the same answer, because the same physical block is still in the same place
+    on the same mat. Re-detecting the BLOCK therefore verifies nothing about the
+    arm. It re-measures the block.
+
+    The camera's own position is different. The image centre corresponds to a
+    specific point on the zone plane, and mapping it back through the homography
+    says where the camera actually ended up over the mat -- an external
+    measurement of the arm's position that owes nothing to its encoders, and so
+    is blind to exactly the gravity droop and dead-zone effects that make the
+    encoders untrustworthy (see TESTS.md, which names "external metrology" as
+    the fallback if the residuals turn out not to be correctable).
+
+    TWO CAVEATS, both systematic and both constant for a given pose:
+
+    1. The image centre is used as the principal point. Without an intrinsic
+       calibration the true principal point can sit a few percent off centre.
+    2. The optical axis is assumed perpendicular to the zone plane. It is not
+       exactly -- the URDF puts it 0.5 deg off at the grasp orientation, and
+       the arm has a documented mechanical tilt on top of that. A 3 deg tilt at
+       0.20 m puts this ~10 mm out.
+
+    Both are OFFSETS, not noise. So the absolute number should be treated as
+    uncalibrated, while the CHANGE between two hovers at the same orientation is
+    accurate -- and it is the change that a correction step actually needs.
+    """
+    centre = px_to_zone(H_px_to_zone, [(width_px / 2.0, height_px / 2.0)])[0]
+    return float(centre[0]), float(centre[1])
+
+
+def zone_to_px(H_zone_to_px, pts_zone):
+    pts = np.asarray(pts_zone, dtype=np.float64).reshape(-1, 1, 2)
+    return cv2.perspectiveTransform(pts, H_zone_to_px).reshape(-1, 2)
+
+
+def px_to_zone(H_px_to_zone, pts_px):
+    pts = np.asarray(pts_px, dtype=np.float64).reshape(-1, 1, 2)
+    return cv2.perspectiveTransform(pts, H_px_to_zone).reshape(-1, 2)
+
+
+# ---------------------------------------------------------------------------
+# Search mask
+# ---------------------------------------------------------------------------
+def zone_quad_px(H_zone_to_px, zone, inset=0.0):
+    half = zone.zone_size / 2.0 - inset
+    return zone_to_px(H_zone_to_px, [(-half, -half), (half, -half),
+                                     (half, half), (-half, half)])
+
+
+def build_masks(shape_hw, H_zone_to_px, zone):
+    """(search_mask, accept_mask) in pixels.
+
+    search_mask  where edges may be looked for at all -- the zone square.
+    accept_mask  where a detected object's CENTRE must lie -- the same square
+                 inset by ZONE_INTERIOR_MARGIN.
+
+    Two masks rather than one, because clipping and accepting want different
+    shapes. Clip a block against the inset square and any block whose corner
+    overhangs the boundary comes back truncated: wrong size, wrong centre, wrong
+    yaw. Testing only the centre against the inset square rejects the mat's own
+    printed outline (whose centre is inside, but whose area is rejected anyway)
+    without mutilating a legitimately edge-adjacent block.
+    """
+    search = np.zeros(shape_hw, dtype=np.uint8)
+    cv2.fillConvexPoly(search, zone_quad_px(H_zone_to_px, zone).astype(np.int32), 255)
+
+    accept = np.zeros(shape_hw, dtype=np.uint8)
+    cv2.fillConvexPoly(
+        accept,
+        zone_quad_px(H_zone_to_px, zone, ZONE_INTERIOR_MARGIN).astype(np.int32), 255)
+    return search, accept
+
+
+def flatten_tags(gray, H_zone_to_px, zone, tag_corners_px, fill_value):
+    """Paint the tags out of the image so their borders stop being edges.
+
+    The tags sit ON the zone vertices, so half of each lies inside the search
+    area, and their black-on-white borders are the strongest edges in the frame.
+    Left in, every detection is a tag.
+
+    The obvious fix -- punch holes in the binary image where the tags are -- was
+    tried first and is WRONG. A block sitting in a corner of the zone genuinely
+    overlaps the tag region, so the hole bites a chunk out of the block's
+    contour: measured 26-37 mm for a 30 mm block, with fill_ratio collapsing to
+    ~0.11 because the contour was no longer closed. Painting the tag over at
+    the GRAYSCALE stage instead removes the tag's edges while leaving every
+    edge belonging to a neighbouring block intact.
+
+    fill_value should be the mat's own median brightness, so the painted quad
+    does not itself become a step edge. For a 3-channel image pass a (B, G, R)
+    tuple -- the mat's own median COLOUR -- and this works unchanged.
+    """
+    flat = gray.copy()
+    if not isinstance(fill_value, (tuple, list, np.ndarray)):
+        fill_value = float(fill_value)
+    else:
+        fill_value = tuple(float(v) for v in fill_value)
+    targets = zone.tag_corner_targets()
+    grow = 1.0 + 2.0 * TAG_EXCLUSION_MARGIN / zone.tag_size
+    for tag_id in tag_corners_px:
+        # Grow in ZONE space, where "4 mm" means something, rather than dilating
+        # pixels -- perspective foreshortening makes a fixed pixel margin cover
+        # different physical distances at the near and far corners of the mat.
+        quad = targets[tag_id]
+        centre = quad.mean(axis=0)
+        grown = centre + (quad - centre) * grow
+        cv2.fillConvexPoly(flat, zone_to_px(H_zone_to_px, grown).astype(np.int32),
+                           fill_value)
+    return flat
+
+
+# ---------------------------------------------------------------------------
+# Block segmentation
+# ---------------------------------------------------------------------------
+# Saturation above which a pixel is a painted block rather than the mat.
+#
+# THE WHOLE POINT OF THE COLOUR METHOD. The mat is white paper: near-zero
+# saturation at any brightness. The blocks are saturated paint. So one threshold
+# on S separates them, and it separates them as WHOLE REGIONS -- which is the
+# thing Canny cannot do. Canny finds an outline, needs a dilate and a close to
+# join it up, and every dilation iteration is added directly to the reported
+# block size (see _segment). Region segmentation has no such term.
+#
+# It also does not care about the top-face-vs-side-wall problem in the way an
+# edge finder does: a side wall of the same block is the same colour, so it joins
+# the region instead of contributing a separate edge to be closed across.
+COLOUR_SAT_MIN = 70
+
+# ... and the escape hatch for blocks that have no saturation: white and natural
+# wood. A white block on a white mat is genuinely not separable this way and is
+# NOT rescued here -- see the note in find_blocks. Wood is, by value: beech is
+# distinctly darker than printer paper.
+COLOUR_WOOD_VAL_MAX = 205
+
+
+def _segment_colour(bgr, search_mask):
+    """Binary image of SATURATED (or wood-dark) regions inside search_mask."""
+    blurred = cv2.GaussianBlur(bgr, (5, 5), 0)
+    hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+    sat = cv2.inRange(hsv, (0, COLOUR_SAT_MIN, 40), (179, 255, 255))
+    # Weakly-saturated but dark: natural wood on white paper.
+    wood = cv2.inRange(hsv, (COLOUR_WOOD_HUE_RANGE[0], COLOUR_WOOD_MIN_SAT, 40),
+                       (COLOUR_WOOD_HUE_RANGE[1], 255, COLOUR_WOOD_VAL_MAX))
+    binary = cv2.bitwise_or(sat, wood)
+    # OPEN then CLOSE, and in that order. Open first kills the speckle the
+    # printed grid lines and the mat's texture leave behind, so the close that
+    # follows has nothing spurious to bridge TO. Doing it the other way round
+    # welds a block to a nearby speck and reports one larger block.
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    return cv2.bitwise_and(binary, binary, mask=search_mask)
+
+
+def _segment(gray, search_mask, method):
+    """Binary image of candidate objects inside search_mask."""
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    inside = blurred[search_mask > 0]
+    if inside.size == 0:
+        return np.zeros_like(gray)
+
+    if method == "otsu":
+        # Otsu picks its threshold from the histogram, so it must only see the
+        # zone interior -- show it the mat outside the zone too and the split
+        # lands between "zone" and "not zone" rather than "block" and "mat".
+        # THRESH_BINARY_INV because blocks are assumed darker than the mat; if
+        # the corpus says otherwise, that assumption is this line.
+        level, _ = cv2.threshold(inside, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, binary = cv2.threshold(blurred, level, 255, cv2.THRESH_BINARY_INV)
+    else:
+        # Canny thresholds taken from the masked median rather than fixed: no
+        # absolute brightness assumption, so a lighting change that would move a
+        # hardcoded pair leaves this alone. Makes no light-vs-dark assumption
+        # either, which is why it is the default.
+        median = float(np.median(inside))
+        lo = int(max(0, 0.66 * median))
+        hi = int(min(255, 1.33 * median))
+        binary = cv2.Canny(blurred, lo, hi)
+        # One dilation, not two. Each iteration fattens the outline by ~1 px on
+        # every side, and since the OUTER boundary of that ring is what gets
+        # measured, every iteration is added directly to the reported block
+        # size. Two cost ~1 mm of systematic oversize at this working distance.
+        binary = cv2.dilate(binary, np.ones((3, 3), np.uint8), iterations=1)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+
+    return cv2.bitwise_and(binary, binary, mask=search_mask)
+
+
+# The ONE definition of which shape carries which rotational symmetry.
+#
+# _classify emits these pairs and fuse_detections derives symmetry from the
+# fused shape through this map, so the two can never disagree. Before 2026-08-12
+# fusion voted on them independently and produced a `square` carrying symmetry 0
+# on real hardware -- see the note in fuse_detections.
+#
+# Asserted against _classify below rather than trusted: a new shape added there
+# without a line here would fall back to the old independent vote, loudly.
+SHAPE_SYMMETRY = {
+    "unknown": 1,   # do not trust the yaw
+    "circle": 0,    # yaw is meaningless -- but see reduce_yaw, which folds it
+    "square": 4,    # 90 deg
+    "rect": 2,      # 180 deg
+}
+
+
+def _classify(width, length, fill_ratio):
+    """(shape, symmetry). See BlockDetection.msg for what symmetry means.
+
+    Every pair returned here must appear in SHAPE_SYMMETRY -- fuse_detections
+    relies on that to keep a fused shape and its symmetry consistent.
+    """
+    if length <= 0.0:
+        return "unknown", 1
+    aspect = width / length
+
+    if aspect >= SQUARE_ASPECT_TOL:
+        if fill_ratio < CIRCLE_FILL_MAX:
+            return "circle", 0          # yaw is meaningless, grab at any angle
+        return "square", 4              # 90 deg symmetry
+    if fill_ratio >= RECT_FILL_MIN:
+        return "rect", 2                # 180 deg symmetry
+    # Elongated but not filling its bounding box: an L, a wedge, two touching
+    # blocks segmented as one. Reported rather than dropped, but symmetry 1 so
+    # the caller does not rotate the wrist on a yaw it should not trust.
+    return "unknown", 1
+
+
+def find_blocks(gray, H_zone_to_px, H_px_to_zone, zone, search_mask, accept_mask,
+                method="canny", bgr=None):
+    """Detections inside the zone. `bgr` is required for method="colour".
+
+    A WHITE BLOCK ON A WHITE MAT IS NOT FOUND by the colour method, and is not
+    rescued here. There is no saturation step to threshold and no reliable value
+    step either; the honest fix is a coloured mat or a different segmentation,
+    not a threshold nudged until one frame works. It is reported as an absence,
+    which is the safe direction -- nothing is descended on.
+    """
+    if method == "colour":
+        if bgr is None or bgr.ndim != 3:
+            print("[colour] method='colour' needs a 3-channel frame and got "
+                  "%s -- falling back to canny for this frame."
+                  % ("grayscale" if bgr is None else str(bgr.shape)))
+            method = "canny"
+    if method == "colour":
+        binary = _segment_colour(bgr, search_mask)
+        hsv = cv2.cvtColor(cv2.GaussianBlur(bgr, (5, 5), 0), cv2.COLOR_BGR2HSV)
+    else:
+        binary = _segment(gray, search_mask, method)
+        hsv = None
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    zone_area = zone.zone_size ** 2
+    height, width_px = accept_mask.shape[:2]
+    detections = []
+    for contour in contours:
+        area_px = float(cv2.contourArea(contour))
+        if area_px < 4.0:
+            continue
+
+        rect = cv2.minAreaRect(contour)
+        # Centre-only acceptance: see build_masks(). A block overhanging the
+        # zone edge stays whole; the mat's own outline is caught by area below.
+        cx, cy = int(round(rect[0][0])), int(round(rect[0][1]))
+        if not (0 <= cx < width_px and 0 <= cy < height and accept_mask[cy, cx]):
+            continue
+
+        box_px = cv2.boxPoints(rect)
+
+        # Measure in ZONE space, not pixels. A rect that is square in pixels is
+        # not square on the mat once perspective is in play, and the px->m scale
+        # differs across the frame -- mapping the four corners through the
+        # homography and measuring there gets both right at once.
+        box_zone = px_to_zone(H_px_to_zone, box_px)
+        side_a = float(np.linalg.norm(box_zone[1] - box_zone[0]))
+        side_b = float(np.linalg.norm(box_zone[2] - box_zone[1]))
+        if side_a <= 0.0 or side_b <= 0.0:
+            continue
+
+        footprint_area = side_a * side_b
+        if not (MIN_BLOCK_AREA_FRAC * zone_area <= footprint_area
+                <= MAX_BLOCK_AREA_FRAC * zone_area):
+            continue
+
+        centre_zone = box_zone.mean(axis=0)
+        if side_a >= side_b:
+            length, width = side_a, side_b
+            major = box_zone[1] - box_zone[0]
+        else:
+            length, width = side_b, side_a
+            major = box_zone[2] - box_zone[1]
+
+        # zyaw IS THE MAJOR AXIS, and this branch is what makes it so: side_a and
+        # side_b are the ZONE-space lengths of the two box edges below, so the
+        # test picks the LONGER edge's direction. VERIFIED 2026-08-12 through the
+        # full render -> warp -> findContours -> minAreaRect path at four
+        # orientations: at a rendered 0 deg the edges measure 26.6 and 51.7 mm and
+        # the 51.7 mm one is chosen, at 30 deg they measure 52.4 and 27.1 and the
+        # 52.4 mm one is chosen. test_rectangle in zone_vision_selftest.py asserts
+        # exactly this and is the reason to trust it.
+        #
+        # DO NOT "SIMPLIFY" THIS TO min()/max() ON rect[1]. cv2's rect[1] pair is
+        # NOT in the same order as the box edges -- at a rendered 0 deg here
+        # rect[1] is (211.1, 107.4) px while box[1]-box[0] is the SHORT side --
+        # and normalising against rect[1] instead of against the edges themselves
+        # inverts the axis at some orientations and not others. Tried on
+        # 2026-08-12; test_rectangle failed at all four angles, which is the only
+        # reason it is written down here instead of shipped.
+        # SHAPE, not just area -- see MAX_BLOCK_LENGTH_M. A printed grid line
+        # closed into a contour by the morphological close in _segment() can
+        # easily clear the area filter above while being nothing like a block.
+        if (length > MAX_BLOCK_LENGTH_M or length < MIN_BLOCK_LENGTH_M
+                or (width > 0 and length / width > MAX_BLOCK_ASPECT)):
+            continue
+
+        # Contour area in metric terms, via the same box the sides came from --
+        # cheaper and less perspective-sensitive than warping the whole contour.
+        px_area_of_box = float(cv2.contourArea(box_px.astype(np.float32)))
+        fill_ratio = area_px / px_area_of_box if px_area_of_box > 0 else 0.0
+
+        shape, symmetry = _classify(width, length, fill_ratio)
+
+        # Colour from THIS CONTOUR'S OWN PIXELS, not the bounding box: the box of
+        # a rotated block is up to 41% mat, which drags the median saturation
+        # down and is exactly how a coloured block reads "white".
+        colour, colour_score, colour_hsv = "unknown", 0.0, (0.0, 0.0, 0.0)
+        if hsv is not None:
+            blob = np.zeros(binary.shape[:2], dtype=np.uint8)
+            cv2.drawContours(blob, [contour], -1, 255, thickness=-1)
+            # Erode before sampling. The contour's own boundary pixels are a
+            # blend of block and mat, and on a 60 px blob the rim is a
+            # meaningful share of the pixels.
+            blob = cv2.erode(blob, np.ones((3, 3), np.uint8), iterations=1)
+            if cv2.countNonZero(blob) == 0:      # a blob thinner than the erode
+                cv2.drawContours(blob, [contour], -1, 255, thickness=-1)
+            colour, colour_score, colour_hsv = classify_colour(hsv, blob)
+
+        detections.append(Detection(
+            zx=float(centre_zone[0]), zy=float(centre_zone[1]),
+            zyaw=wrap_angle(math.atan2(major[1], major[0])),
+            width=width, length=length, shape=shape, symmetry=symmetry,
+            fill_ratio=fill_ratio, area_px=area_px, box_px=box_px,
+            colour=colour, colour_score=colour_score,
+            colour_hsv=colour_hsv))
+
+    detections.sort(key=lambda d: d.width * d.length, reverse=True)
+    return detections
+
+
+# ---------------------------------------------------------------------------
+# Top level
+# ---------------------------------------------------------------------------
+def analyze(image, zone, method="canny", max_rms_px=MAX_HOMOGRAPHY_RMS_PX):
+    """Full pipeline on one frame. Never raises for an ordinary bad frame --
+    returns a ZoneResult with success=False and a message saying which stage
+    failed, because "no tags" and "wrong answer" must not look alike to the
+    caller."""
+    result = ZoneResult()
+
+    gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    tag_corners = detect_tags(gray, zone)
+    result.tag_corners = tag_corners
+    result.tag_ids = sorted(tag_corners)
+    if len(tag_corners) < MIN_TAGS:
+        result.message = (
+            "saw %d of zone's 4 tags %s, need %d. Check framing, focus and "
+            "lighting before suspecting anything else."
+            % (len(tag_corners), list(zone.tag_ids), MIN_TAGS))
+        return result
+
+    result.tag_spread = tag_spread_ratio(tag_corners, zone)
+    if result.tag_spread < TAG_SPREAD_MIN_RATIO:
+        result.message = (
+            "tags %s are too collinear (spread %.3f < %.3f). A homography fitted "
+            "to them is singular across the thin direction, so it would return a "
+            "confident-looking but arbitrary answer there. Rotate the wrist and "
+            "take another still -- see analyze_multi()."
+            % (result.tag_ids, result.tag_spread, TAG_SPREAD_MIN_RATIO))
+        return result
+
+    H, rms = fit_homography(tag_corners, zone)
+    result.homography_rms = rms
+    if H is None:
+        result.message = "homography fit failed (degenerate tag layout?)"
+        return result
+    if rms > max_rms_px:
+        result.message = (
+            "homography RMS %.2f px exceeds %.2f. The tag->zone mapping is not "
+            "trustworthy, so no position from this frame is either. Likely a "
+            "misdetected tag, a tag printed rotated, or PICKUP/PLACE_TAG_IDS "
+            "not matching the physical mat." % (rms, max_rms_px))
+        return result
+
+    result.H_zone_to_px = H
+    result.H_px_to_zone = np.linalg.inv(H)
+    result.scale_px_per_m = _scale_at_centre(H, zone)
+
+    # Where the camera itself is, in zone coordinates. See camera_in_zone().
+    height, width_px = gray.shape[:2]
+    result.camera_zx, result.camera_zy = camera_in_zone(
+        result.H_px_to_zone, width_px, height)
+
+    search_mask, accept_mask = build_masks(gray.shape[:2], H, zone)
+    result.mask = search_mask
+    result.accept_mask = accept_mask
+
+    # Paint the tags out at grayscale, using the mat's own median so the painted
+    # quad is not itself a step edge. Must happen before any edge detection.
+    interior = gray[search_mask > 0]
+    fill_value = float(np.median(interior)) if interior.size else 0.0
+    result.flat_gray = flatten_tags(gray, H, zone, tag_corners, fill_value)
+
+    # THE TAGS ARE PAINTED OUT OF THE COLOUR FRAME TOO, and the claim that they
+    # did not need to be was WRONG ON REAL OPTICS.
+    #
+    # This code originally passed the untouched colour image, reasoning that a
+    # printed black-on-white tag has no saturation so the colour segmentation
+    # would drop it for free. MEASURED 2026-08-12: five consecutive fine-pass
+    # stills of an EMPTY place mat each reported a 3-11 mm blob confidently named
+    # `purple`, and every one sat 7-12 mm from a corner tag's CENTRE -- i.e.
+    # INSIDE the tag, which spans +-12.7 mm. A tag is nothing but maximum-contrast
+    # black/white edges, and this lens fringes them: chromatic aberration puts a
+    # saturated purple-blue edge on one side of every such transition and a
+    # yellow-green one on the other. The tag has no colour; its EDGES do.
+    #
+    # So the colour path gets the same treatment as Canny, filled with the mat's
+    # own median BGR instead of its median grey. Same function, same grown quad,
+    # same reason it paints rather than punching holes (see flatten_tags: a hole
+    # bites a chunk out of a block that legitimately overlaps a corner).
+    colour_frame = None
+    if image.ndim == 3:
+        inside_bgr = image[search_mask > 0]
+        mat_bgr = (tuple(np.median(inside_bgr, axis=0)) if inside_bgr.size
+                   else (0.0, 0.0, 0.0))
+        colour_frame = flatten_tags(image, H, zone, tag_corners, mat_bgr)
+    result.flat_bgr = colour_frame
+    result.blocks = find_blocks(result.flat_gray, H, result.H_px_to_zone, zone,
+                                search_mask, accept_mask, method=method,
+                                bgr=colour_frame)
+
+    result.success = True
+    # An empty zone is a SUCCESS with zero blocks, not a failure. Stage 2 asks
+    # exactly this question before releasing, and Stage 4 asks it again.
+    result.message = "%d tag(s), rms %.2f px, %d block(s)" % (
+        result.tags_seen, rms, len(result.blocks))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Multi-view fusion
+# ---------------------------------------------------------------------------
+# WHY THIS EXISTS. On real hardware the gripper hangs in front of the lens and
+# occludes the far pair of tags from every hover the arm can reach: one still
+# sees 2 of the 4 tags, never more. A 2-tag homography is over-determined but
+# poorly conditioned across the thin direction of the pair (see MIN_TAGS), so a
+# single still is not something to descend on.
+#
+# The fix is to take several stills with the WRIST ROTATED between them, so a
+# different pair of tags is occluded each time, and combine the results.
+#
+# THE KEY DESIGN CHOICE, and the reason this is structured as "solve each still
+# independently, then fuse" rather than "pool all the correspondences into one
+# big fit": pooling would require knowing the camera pose of each still relative
+# to the others, i.e. trusting the arm's encoders about how far the wrist
+# actually turned. As of 2026-07-30 that is known to be exactly what this robot
+# cannot be trusted about -- the servo gears have enough wear that the encoder
+# and the link disagree by several degrees, invisibly (see APRIL_TAGS.md, ROOT
+# CAUSE). Each still here is self-contained: its homography comes only from tags
+# visible in that one frame, so the fused answer never depends on the wrist
+# angle being what the encoder claims. The wrist rotation only has to CHANGE the
+# occlusion; it does not have to be known.
+#
+# The second payoff is free and arguably worth more than the averaging: the
+# SPREAD across stills is an independent, end-to-end estimate of the real error,
+# measured on the actual mat under the actual lighting. Nothing else in this
+# system produces an honest error bar.
+
+MATCH_RADIUS_M = 0.012          # two views' detections are the same block if
+                                # their zone positions agree within this. 12 mm
+                                # is well under the 30 mm block so two distinct
+                                # blocks can never merge, and well over the
+                                # single-view error a 2-tag fit is expected to
+                                # have.
+MIN_VIEWS_PER_BLOCK = 2         # a block seen in only one still is reported but
+                                # flagged: one view has no cross-check at all.
+
+
+class FusedDetection:
+    """A block's pose agreed across several stills, with its spread."""
+
+    def __init__(self, zx, zy, zyaw, width, length, shape, symmetry,
+                 n_views, spread_m, spread_yaw_rad, views,
+                 colour="unknown", colour_score=0.0, colour_agree=1.0):
+        self.zx = zx
+        self.zy = zy
+        self.zyaw = zyaw
+        self.width = width
+        self.length = length
+        self.shape = shape
+        self.symmetry = symmetry
+        self.colour = colour
+        self.colour_score = colour_score
+        # Fraction of contributing views that agreed on the colour. 1.0 across
+        # several views is the strongest evidence this pipeline produces about a
+        # block's identity -- much stronger than the footprint, which is the part
+        # that has been wrong four times this week.
+        self.colour_agree = colour_agree
+        self.n_views = n_views
+        self.spread_m = spread_m            # max deviation from the fused centre
+        self.spread_yaw_rad = spread_yaw_rad
+        self.views = views                  # the contributing Detections
+
+    @property
+    def trustworthy(self):
+        return self.n_views >= MIN_VIEWS_PER_BLOCK
+
+    def world_pose(self, zone):
+        x, y = zone.zone_to_world(self.zx, self.zy)
+        return x, y, zone.zone_yaw_to_world(self.zyaw)
+
+    def __repr__(self):
+        return ("FusedDetection(zone=(%.4f, %.4f) yaw=%.1fdeg %s %s "
+                "%.1fx%.1fmm views=%d spread=%.1fmm/%.1fdeg)"
+                % (self.zx, self.zy, math.degrees(self.zyaw), self.colour,
+                   self.shape, self.width * 1000.0, self.length * 1000.0,
+                   self.n_views, self.spread_m * 1000.0,
+                   math.degrees(self.spread_yaw_rad)))
+
+
+class FusedResult:
+    def __init__(self):
+        self.success = False
+        self.message = ""
+        self.blocks = []
+        self.views = []             # every ZoneResult, good or bad
+        self.good_views = 0
+        self.tag_ids_union = []
+        self.camera_spread_m = 0.0  # how far apart the per-still camera
+                                    # positions landed; see analyze_multi
+
+
+def _fold_yaw(yaw, symmetry):
+    """Fold a yaw into the canonical wedge for its symmetry order.
+
+    A square block's 0 and 90 degrees are the same physical pose, so averaging
+    them raw would give 45 -- a pose the block is never in. Folding first is what
+    makes a circular mean meaningful here.
+    """
+    if not symmetry:                     # 0 = continuous (a circle): yaw is
+        return 0.0                       # meaningless, do not average noise
+    period = math.pi * 2.0 / symmetry
+    return yaw % period
+
+
+def _circular_mean(angles, period):
+    """Mean of angles that wrap at `period`, via unit vectors.
+
+    Plain averaging breaks across the wrap point -- two readings either side of
+    it average to the opposite of the truth, which for a 4-fold block is the one
+    error large enough to make the gripper miss.
+    """
+    scale = 2.0 * math.pi / period
+    s = sum(math.sin(a * scale) for a in angles)
+    c = sum(math.cos(a * scale) for a in angles)
+    if abs(s) < 1e-12 and abs(c) < 1e-12:
+        return angles[0]
+    return (math.atan2(s, c) / scale) % period
+
+
+def fuse_detections(per_view_blocks, match_radius_m=MATCH_RADIUS_M):
+    """Group detections that refer to the same physical block across stills.
+
+    per_view_blocks: [[Detection, ...], ...], one list per still.
+    Greedy nearest-cluster assignment in zone coordinates -- adequate because
+    match_radius_m is far below the block pitch, so clusters cannot overlap.
+    """
+    clusters = []
+    for view_blocks in per_view_blocks:
+        for det in view_blocks:
+            for cluster in clusters:
+                if math.hypot(det.zx - cluster[0].zx,
+                              det.zy - cluster[0].zy) <= match_radius_m:
+                    cluster.append(det)
+                    break
+            else:
+                clusters.append([det])
+
+    fused = []
+    for cluster in clusters:
+        zx = float(np.median([d.zx for d in cluster]))
+        zy = float(np.median([d.zy for d in cluster]))
+        width = float(np.median([d.width for d in cluster]))
+        length = float(np.median([d.length for d in cluster]))
+        # Shape by majority: a single still misreading a square as a rectangle
+        # must not decide the grasp for all of them.
+        #
+        # SYMMETRY IS DERIVED FROM THE VOTED SHAPE, NOT VOTED SEPARATELY, and
+        # that is a bug fix from 2026-08-12. The two used to be independent
+        # majority votes over the same cluster:
+        #
+        #     shape    = max(set(shapes), key=shapes.count)
+        #     symmetry = max(set(syms),   key=syms.count)
+        #
+        # _classify only ever emits the pairs (unknown,1) (circle,0) (square,4)
+        # (rect,2), so per view the two agree by construction -- but two separate
+        # votes over a non-unanimous cluster need not, and `max(set(...))` breaks
+        # a tie by set iteration order, which differs between a set of strings
+        # and a set of small ints. The result is a fused detection that is
+        # self-contradictory.
+        #
+        # OBSERVED ON HARDWARE, logs.txt 2026-08-12: a fused orange cube came out
+        # `23.9 x 30.0 mm square ... yaw +0.0 deg spread 0.0 deg`. Shape "square"
+        # -- but zyaw and spread_yaw are forced to 0.0 ONLY in the `if symmetry:`
+        # else-branch below, so that same detection carried symmetry 0. It then
+        # failed stack_blocks' 4-fold gate and refused the run.
+        #
+        # The cost was not just the refusal. Its five per-view yaws were -5.8,
+        # -95.0, +85.3, -95.0, +82.3 -- folded mod 90 that is -5.8, -5.0, -4.7,
+        # -5.0, -7.7, agreeing to 3 degrees. A perfectly good yaw was discarded
+        # for want of a consistent symmetry, which is the exact failure
+        # promote_tagged_tops_to_square was written to prevent one level up.
+        #
+        # One vote, one answer. A shape and its symmetry now cannot disagree.
+        shapes = [d.shape for d in cluster]
+        shape = max(set(shapes), key=shapes.count)
+        symmetry = SHAPE_SYMMETRY.get(shape)
+        if symmetry is None:
+            # An unknown shape name means _classify grew a case this map did not.
+            # Fall back to the old vote rather than guess a symmetry, and say so:
+            # silently assuming 1 would drive the jaws at a diagonal.
+            syms = [d.symmetry for d in cluster]
+            symmetry = max(set(syms), key=syms.count)
+            print("[fuse] shape %r has no entry in SHAPE_SYMMETRY -- falling "
+                  "back to voting symmetry separately (%d). Add it."
+                  % (shape, symmetry))
+
+        if symmetry:
+            period = math.pi * 2.0 / symmetry
+            folded = [_fold_yaw(d.zyaw, symmetry) for d in cluster]
+            zyaw = _circular_mean(folded, period)
+            # Spread measured the same wrapped way it was averaged.
+            devs = []
+            for a in folded:
+                d_ = abs(a - zyaw) % period
+                devs.append(min(d_, period - d_))
+            spread_yaw = max(devs) if devs else 0.0
+        else:
+            zyaw = 0.0
+            spread_yaw = 0.0
+
+        # COLOUR BY MAJORITY, with the agreement recorded rather than discarded.
+        # An "unknown" view is a view that saw the block and could not name it,
+        # so it votes like any other -- suppressing it would let one confident
+        # view of a shaded facet name a block on its own.
+        colours = [getattr(d, "colour", "unknown") for d in cluster]
+        colour = max(set(colours), key=colours.count)
+        colour_agree = colours.count(colour) / float(len(colours))
+        matching = [getattr(d, "colour_score", 0.0)
+                    for d in cluster if getattr(d, "colour", None) == colour]
+        colour_score = (sum(matching) / len(matching)) if matching else 0.0
+
+        spread = max(math.hypot(d.zx - zx, d.zy - zy) for d in cluster)
+        fused.append(FusedDetection(zx, zy, zyaw, width, length, shape,
+                                    symmetry, len(cluster), spread,
+                                    spread_yaw, list(cluster),
+                                    colour=colour, colour_score=colour_score,
+                                    colour_agree=colour_agree))
+    fused.sort(key=lambda f: -f.n_views)
+    return fused
+
+
+def analyze_multi(images, zone, method="canny",
+                  max_rms_px=MAX_HOMOGRAPHY_RMS_PX):
+    """analyze() over several stills of the same zone, fused into one answer.
+
+    The stills should be taken with the wrist rotated between them so a
+    different pair of tags is occluded in each. Their camera poses do NOT need to
+    be known, and deliberately are not used -- see the note above.
+
+    Views that fail are kept in .views with their messages rather than dropped
+    silently: "3 of 4 stills saw no tags" is a lighting or framing diagnosis, and
+    it must not look the same as "all 4 agreed".
+    """
+    result = FusedResult()
+    per_view = []
+    cams = []
+    ids = set()
+    for image in images:
+        view = analyze(image, zone, method=method, max_rms_px=max_rms_px)
+        result.views.append(view)
+        if not view.success:
+            continue
+        result.good_views += 1
+        ids.update(view.tag_ids)
+        per_view.append(view.blocks)
+        cams.append((view.camera_zx, view.camera_zy))
+
+    result.tag_ids_union = sorted(ids)
+
+    if result.good_views == 0:
+        msgs = "; ".join(v.message for v in result.views) or "no stills supplied"
+        result.message = "no still produced a usable homography (%s)" % msgs
+        return result
+
+    # How far apart the stills thought the CAMERA was. The arm does move the
+    # wrist between stills, so this is not expected to be zero -- it is a sanity
+    # bound, and a wild value means a still was fitted against a misdetected tag.
+    if len(cams) > 1:
+        mx = float(np.median([c[0] for c in cams]))
+        my = float(np.median([c[1] for c in cams]))
+        result.camera_spread_m = max(math.hypot(c[0] - mx, c[1] - my)
+                                     for c in cams)
+
+    result.blocks = fuse_detections(per_view)
+    result.success = True
+    result.message = "%d/%d stills usable, tags %s, %d block(s)" % (
+        result.good_views, len(result.views), result.tag_ids_union,
+        len(result.blocks))
+    return result

@@ -174,6 +174,322 @@ SETTLE_QUIET_PERIOD_SEC = 1.0
 SETTLE_MIN_PROGRESS_RAD = 0.002
 SETTLE_MAX_STALLED = 3
 
+# ---------------------------------------------------------------------------
+# BIASED SETTLE -- the fix for the persistent grasp tilt (2026-07-29)
+# ---------------------------------------------------------------------------
+# Until now settling re-sent the IDENTICAL command and hoped. TESTS.md Test 1
+# exists precisely because that cannot work, and its results say so directly:
+# re-commanding the same value moved the joint by not one digit across 20
+# consecutive attempts, because the servo is already inside its own dead band
+# and has nothing left to chase.
+#
+# What DOES work, measured 2026-07-29 over 108 trials: commanding target + k*e,
+# where e is the measured residual. Joint 0's median |err|/|e| at k=1 was 0.07 --
+# a single bias of e cut the error to 7% of itself. The pitch joints needed
+# closer to 2e (median 1.00 at k=1, mostly moving by k=2), so the gain here
+# escalates per attempt rather than sitting at 1.0.
+#
+# WHY THIS MATTERS BEYOND A FEW MILLIMETRES. The long-standing "the gripper is
+# always tilted when it grasps" complaint was diagnosed on 2026-07-29 and it is
+# this, exactly:
+#   - joint3_to_joint2, joint4_to_joint3, joint5_to_joint4 and joint6_to_joint5
+#     all have HORIZONTAL axes under the downward grasp, so each one tilts the
+#     approach axis 1:1 -- verified 1.000 deg of tilt per 1 deg of joint error.
+#   - joint2_to_joint1 and joint6output_to_joint6 are vertical and contribute
+#     exactly 0.000 deg of tilt.
+#   - the four pitch errors therefore ADD. In the logged grasp pose they were
+#     -1.63, -0.51, -1.45 and +0.87 deg, and reproducing the observed 3.704 deg
+#     tilt from those four alone matched to three decimals.
+# So the tilt is not mechanical, not the URDF, and not an IK tolerance. It is
+# four undershooting joints stacking up, and biasing the command is the fix.
+#
+# The bias is capped hard. It is an open-loop overshoot by construction, and an
+# uncapped one driven by a single bad reading would fling the arm.
+#
+# DISABLED 2026-07-29 after two hardware runs. Keep it off. The mechanism is a
+# proven dead end, and the second run was physically dangerous -- the arm struck
+# the table. Both facts come out of the same one-line model, which should have
+# been written down before either run:
+#
+#   a joint commanded to c settles at c - d, for a deterministic undershoot d
+#   (Test 1: repeatability 0.045 deg, so d really is deterministic).
+#   Biasing commands c + g*d, which settles at c + (g-1)*d.
+#   Settle measures the residual against the ORIGINAL c, so
+#
+#            residual_next = (1 - g) * residual
+#
+#   |1 - g| < 1  =>  converges only for 0 < g < 2.
+#     g = 1  -> residual 0. DEADBEAT. 1.0 was the exactly-correct gain.
+#     g = 2  -> residual -d. Marginal: sustained oscillation, no decay.
+#     g > 2  -> divergent.
+#
+# Run 1 used g = 1.0, the deadbeat value, and the arm did not move a single
+# count: bias [+1.03, +1.89, +0.51, +1.89, +0.79, +3.06] deg, final residual
+# [+1.03, +1.90, +0.51, +1.89, +0.79, +3.06]. Gain 1.0 asks for a delta of d
+# (~1-2 deg), which is BELOW the servo dead band, so the joint ignores it.
+#
+# Run 2 used g = 2.0 with an escalation multiplier of up to 1.5x, i.e. effective
+# gain 3.0 -- past the marginal boundary and into divergence. The log shows it
+# exactly: joint3_to_joint2 went +3.79, -4.01, +4.01, -4.01, +4.01 ... for 14
+# attempts, sign-flipping every time, pinned at the cap, with the residual
+# GROWING 0.0362 -> 0.0374 -> 0.0729 -> 0.0581 -> 0.0791 -> 0.0853. A 4 deg
+# pitch swing at ~0.28 m reach is ~20 mm of vertical travel; that is what hit
+# the table on the place descent. Tilt improved 4.372 -> 4.189 deg, i.e. nothing.
+#
+# The two failures are not independent, and together they close the door:
+# breaking the dead band needs g well above 1, staying stable needs g below 2,
+# and the dead band for these joints is LARGER than the d being corrected. No
+# gain satisfies both. A stationary joint cannot be nudged by less than its own
+# dead band, full stop -- which is exactly the case TESTS.md:63 anticipated
+# ("dither, dead-zone inversion, or external metrology").
+#
+# What replaces it: feedforward on the STREAMED trajectory rather than a
+# post-hoc nudge -- see JOINT_FF_BIAS_DEG below. During a trajectory the joint
+# is already moving, so the dead band never arms, and the same deterministic d
+# can be aimed past instead of corrected after. Do not re-enable this flag
+# without new evidence that the dead band itself has changed.
+SETTLE_BIAS_ENABLED = False
+
+# PER-JOINT gain, not one global value. Set from Test 1's staircase (2026-07-29),
+# and the first hardware run with the bias live is what forced the distinction.
+#
+# That run biased every joint correctly, with the right signs, and the arm did
+# not move AT ALL: the bias commanded for the grasp was
+# [+1.03, +1.89, +0.51, +1.89, +0.79, +3.06] deg and the residual left at the end
+# of the move was [+1.03, +1.90, +0.51, +1.89, +0.79, +3.06] -- identical. Tilt
+# went 4.442 -> 4.372 deg, i.e. nothing. A gain of 1.0 is INSIDE the dead band
+# for these joints, exactly as Test 1's k=1 column said it would be (pitch joints
+# median |err|/|e| = 1.00, stuck 53% and 58% of the time, moving reliably only at
+# k=2).
+#
+# But a single larger gain is wrong too, because the joints genuinely differ:
+#   index 0 (joint2_to_joint1, base yaw) -- Test 1 median |err|/|e|: k=1 0.07,
+#       k=2 0.94, k=3 1.87. Gain 1.0 is near-perfect and 2.0 OVERSHOOTS badly.
+#   indices 1, 2 (joint3_to_joint2, joint4_to_joint3) -- k=1 1.00 (does not
+#       move), k=2 mostly moves. Gain 2.0.
+#   indices 3, 4, 5 -- NOT swept by Test 1 (it covered joints 0-2 only). Treated
+#       as pitch-like at 2.0 because 3 and 4 are the remaining horizontal-axis
+#       joints and behave like 1-2 in the runs logged so far. This is the one
+#       row here that is inference rather than measurement.
+SETTLE_BIAS_GAIN_PER_JOINT = [1.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+
+# Escalation MULTIPLIER on top of the per-joint gain, by attempt, for the case
+# where even the tuned gain leaves the joint short. Starts at 1.0 so the first
+# attempt is exactly the measured gain and nothing more.
+SETTLE_BIAS_GAIN = [1.0, 1.25, 1.5]  # by attempt; held at the last value after
+SETTLE_MAX_BIAS_RAD = 0.070          # 4.0 deg. Test 1's worst single-joint
+                                     # residual was 2.78 deg, so this allows a
+                                     # full correction plus margin and nothing
+                                     # like a second move.
+
+# Per-joint threshold for APPLYING a bias, once settling has decided to fire.
+# Deliberately NOT SETTLE_TOLERANCE_RAD, and this distinction is the whole fix:
+# that constant is 0.03 rad = 1.72 deg, which is LARGER than the individual
+# errors causing the tilt. In the logged grasp pose the six joint errors were
+# 0.0166 / 0.0285 / 0.0090 / 0.0254 / 0.0152 / 0.0426 rad -- settling fired
+# (joint6output's 0.0426 exceeded the gate) but gating the per-joint bias on the
+# same 0.03 would have biased ONLY joint6output, which is vertical and
+# contributes exactly 0.000 deg of tilt, while skipping all four pitch joints
+# that cause it. The correction would have looked active and fixed nothing.
+#
+# 0.004 rad = 0.23 deg, a bit under 3x the 0.0015 rad readback quantum: small
+# enough to catch every joint that matters, large enough not to chase noise.
+SETTLE_BIAS_MIN_RAD = 0.004
+
+# Speed for the corrective move itself, rather than self.speed (which runs up to
+# 50). Added 2026-07-29: the first run with the bias live produced a visible
+# lurch at the end of every move, and the log says exactly why -- a +1.95 deg
+# correction commanded at speed 50. Before biasing, settle re-sent the identical
+# value and the arm ignored it, so the same code path was felt as nothing at all;
+# making it work is what made it noticeable.
+#
+# Not slower than MIN_SPEED. That floor is there because "10 is below what this
+# arm needs to break static friction" -- and a correction that cannot break
+# friction is the exact failure this whole mechanism exists to fix, so undershoot
+# on speed would quietly reintroduce it. 25 halves the lurch and stays on the
+# right side of that line; a ~2 deg move at 25 is still quick.
+SETTLE_SPEED = MIN_SPEED
+# Joint limits, radians, in JOINT_ORDER. From the URDF -- biasing commands the
+# arm PAST its target, so without clamping a target already near a limit (e.g.
+# joint6output, which KDL likes to peg at -2.4434) could be pushed through it.
+JOINT_LIMITS_RAD = [
+    (-2.9321, 2.9321),   # joint2_to_joint1
+    (-2.4434, 2.4434),   # joint3_to_joint2
+    (-2.6179, 2.6179),   # joint4_to_joint3
+    (-3.6179, 3.6179),   # joint5_to_joint4
+    (-2.7052, 2.7925),   # joint6_to_joint5
+    (-3.1416, 3.1416),   # joint6output_to_joint6
+    (-0.7400, 0.1500),   # gripper_controller
+]
+
+# ============================================================================
+# GRAVITY FEEDFORWARD -- this is the JOINT_FF_BIAS_DEG the SETTLE_BIAS comment
+# above promised and nobody ever wrote. Added 2026-08-02.
+#
+# WHY FEEDFORWARD AND NOT FEEDBACK. Settled above: a stationary joint will not
+# move for a commanded delta smaller than its own dead band, and the dead band
+# on these joints is LARGER than the error being corrected, so no post-hoc
+# nudge works at any gain (SETTLE_BIAS_ENABLED = False, two failed hardware
+# runs). Applying the bias to every STREAMED setpoint sidesteps that entirely:
+# during a trajectory the joint is already moving, so the dead band never arms,
+# and the same deterministic error can be aimed past instead of corrected after.
+#
+# WHY IT IS NOW MEASURABLE. serial_rate_probe.py's POSTURES table used to store
+# gravity moment arms as unsigned magnitudes, which folded the one posture that
+# loads the arm the other way on top of the other five and destroyed the fit
+# (R^2 0.00-0.10). With the sign restored, and with the residual split into the
+# half that reverses with travel direction (friction/dead zone) and the half
+# that does not (gravity), the droop is clean:
+#
+#   test3_full.csv, 2026-08-02, 6 postures x 3 repeats x both directions
+#     joint 1 (joint3_to_joint2, shoulder)  sym = -0.072  -5.47 * arm   R^2 0.93
+#     joint 2 (joint4_to_joint3, elbow)     sym = +0.006  -4.59 * arm   R^2 0.90
+#     joint 3 (joint5_to_joint4)            sym = -0.062 -13.16 * arm   R^2 0.96
+#
+# Joint 3 is the largest single contributor at the grasp pose and had never
+# been measured -- it only entered the sweep once the table was extended past
+# three columns. Joints 0, 4 and 5 have a gravity moment arm of ~0 in every
+# posture AND at the grasp pose (joint 0's axis is vertical; 4 and 5 put the
+# tool essentially on their own axes), so there is nothing to feed forward.
+#
+# WHAT IT IS WORTH. At the IK solution actually chosen for the grasp
+# (pick_place.py:517), the model predicts 1.25 + 0.77 + 0.90 deg of droop,
+# which is 2.92 deg of flange tilt and 8.9 mm of jaw displacement -- 8.6 mm of
+# it straight DOWN. Measured tilt at that pose before any correction was
+# 4.19 deg, so this accounts for 70% of it.
+#
+# THE OTHER 30% IS NOT DROOP. Joints 4 and 5 are gravity-free at the grasp
+# pose, so there is no unmeasured pitch joint left to blame; the remaining
+# ~1.3 deg is a fixed mount/URDF offset, not a load effect, and it does not
+# belong here. See pick_place.py's SAG_PRECOMP_* -- which must be re-measured
+# against this, because it was fitted to cancel the WHOLE 4.19 deg empirically
+# and will now over-correct.
+#
+# Overridable from the environment so the A/B does not cost a rebuild. This
+# file is installed by CMake and launched from the install tree, so flipping a
+# module constant means `colcon build` -- which on the robot also recompiles
+# mycobot_hardware's C++. Setting MYCOBOT_GRAVITY_FF=0 in the launching shell
+# is one restart instead:
+#
+#     MYCOBOT_GRAVITY_FF=0 ros2 launch mycobot_280pi_camera_moveit2 \
+#         real_robot_hardware.launch.py
+#
+# The value is echoed at startup, so the log says which half of the A/B a run
+# actually was rather than leaving it to the label on the mars side.
+GRAVITY_FF_ENABLED = os.environ.get("MYCOBOT_GRAVITY_FF", "1").strip().lower() \
+    not in ("0", "false", "no", "off")
+
+# joint index -> (intercept_deg, deg per metre of signed moment arm).
+# commanded = target + (intercept + slope * arm), because the fit is of
+# residual = target - settled, so settled = target - residual.
+GRAVITY_FF_COEFFS = {
+    1: (-0.072, -5.47),
+    2: (+0.006, -4.59),
+    3: (-0.062, -13.16),
+}
+
+# Hard cap per joint. The largest bias the model produces anywhere in the
+# tested envelope is ~1.6 deg (joint 3 at 'extended'), so 3.0 leaves headroom
+# for poses outside it while making a runaway impossible. A feedforward that
+# has silently grown to 10 deg because the pose left the fitted region is the
+# failure mode this exists to bound.
+GRAVITY_FF_MAX_DEG = 3.0
+
+# URDF chain, joint origins and axes, for the moment-arm calculation. Copied
+# from mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf so
+# the bridge stays dependency-free -- it must run before ROS is up and has no
+# access to the parameter server. (xyz, rpy, axis); axis None = fixed joint.
+#
+# Validated against the same FK used to recompute POSTURES: the signed arms it
+# produces reproduce serial_rate_probe.py's table to within 0.0001 m at all six
+# sweep postures. If the URDF's arm geometry ever changes, these must change
+# with it -- there is no runtime check that they still agree.
+_FK_CHAIN = [
+    ([0.0, 0.0, 0.13956], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0, -0.001], [0.0, 1.5708, -1.5708], [0.0, 0.0, 1.0]),
+    ([-0.1104, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([-0.096, 0.0, 0.06462], [0.0, 0.0, -1.5708], [0.0, 0.0, 1.0]),
+    ([0.0, -0.07318, -0.001], [1.5708, -1.5708, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0456, 0.0], [-1.5708, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0, 0.01], [1.579, 0.0, 2.3562], None),
+    ([0.0, 0.04, 0.0], [-0.0082, 1.5708, 0.0], None),
+]
+
+
+def _mat_mul(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4)]
+            for i in range(4)]
+
+
+def _origin_matrix(xyz, rpy):
+    r, p, y = rpy
+    cr, sr = math.cos(r), math.sin(r)
+    cp, sp = math.cos(p), math.sin(p)
+    cy, sy = math.cos(y), math.sin(y)
+    return [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, xyz[0]],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, xyz[1]],
+            [-sp,     cp * sr,                cp * cr,                xyz[2]],
+            [0.0, 0.0, 0.0, 1.0]]
+
+
+def _axis_rotation(axis, theta):
+    ax, ay, az = axis
+    c, s, t = math.cos(theta), math.sin(theta), 1.0 - math.cos(theta)
+    return [[t * ax * ax + c,      t * ax * ay - s * az, t * ax * az + s * ay, 0.0],
+            [t * ax * ay + s * az, t * ay * ay + c,      t * ay * az - s * ax, 0.0],
+            [t * ax * az - s * ay, t * ay * az + s * ax, t * az * az + c,      0.0],
+            [0.0, 0.0, 0.0, 1.0]]
+
+
+def gravity_moment_arms(positions_rad):
+    """Signed gravity moment arm (metres) about each arm joint's own axis, for
+    a vertical load at the tool: tau = axis . (r x -Z).
+
+    Positive means gravity drives that joint in its POSITIVE direction, so the
+    droop it causes is negative. The sign is the whole point -- taking the
+    magnitude is precisely the bug that hid this effect for two weeks."""
+    transform = [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
+    origins, axes = [], []
+    for index, (xyz, rpy, axis) in enumerate(_FK_CHAIN):
+        transform = _mat_mul(transform, _origin_matrix(xyz, rpy))
+        if axis is None:
+            continue
+        origins.append([transform[i][3] for i in range(3)])
+        axes.append([sum(transform[i][k] * axis[k] for k in range(3))
+                     for i in range(3)])
+        transform = _mat_mul(transform, _axis_rotation(axis, positions_rad[index]))
+    tool = [transform[i][3] for i in range(3)]
+
+    arms = []
+    for origin, axis in zip(origins, axes):
+        rx, ry, rz = (tool[i] - origin[i] for i in range(3))
+        # r x -Z, with -Z = (0, 0, -1): (ry * -1 - 0, 0 - rx * -1, 0)
+        torque = [-ry, rx, 0.0]
+        arms.append(sum(axis[i] * torque[i] for i in range(3)))
+    return arms
+
+
+def gravity_ff_degrees(positions_rad):
+    """The six arm angles in DEGREES, pre-compensated for gravity droop.
+
+    Takes the target the controller asked for and returns what to actually
+    send, so the arm's own sag brings it to the target rather than short of it.
+    Returns the plain conversion untouched when disabled."""
+    degrees = [math.degrees(p) for p in positions_rad[:6]]
+    if not GRAVITY_FF_ENABLED:
+        return degrees
+    arms = gravity_moment_arms(positions_rad)
+    for index, (intercept, slope) in GRAVITY_FF_COEFFS.items():
+        bias = intercept + slope * arms[index]
+        bias = max(-GRAVITY_FF_MAX_DEG, min(GRAVITY_FF_MAX_DEG, bias))
+        biased = degrees[index] + bias
+        # Clamp to the joint's own limit. Biasing commands the arm PAST its
+        # target, so a target already near a limit could otherwise be pushed
+        # through it -- the same hazard SETTLE_MAX_BIAS_RAD guards against.
+        lo, hi = JOINT_LIMITS_RAD[index]
+        degrees[index] = max(math.degrees(lo), min(math.degrees(hi), biased))
+    return degrees
+
 # ASYNC WRITES -- the fix for the 1.8Hz command rate (2026-07-26).
 #
 # pymycobot's send_angles() defaults to has_reply=True, i.e. it BLOCKS until
@@ -712,7 +1028,11 @@ class Bridge:
             last_sent_at = self.state.last_sent_monotonic
 
         t_now = time.monotonic()
-        arm_degrees = [math.degrees(p) for p in positions[:6]]
+        # Gravity pre-compensation goes HERE, on the streamed setpoint, and not
+        # in the settle path -- see GRAVITY_FF_ENABLED. Every command the arm
+        # receives during a trajectory is biased, so the joints are already
+        # moving when the correction arrives and the dead band never arms.
+        arm_degrees = gravity_ff_degrees(positions)
         gripper_value = gripper_rad_to_value(positions[6])
         speed = self._match_speed(positions, last_sent, last_sent_at)
 
@@ -892,10 +1212,43 @@ class Bridge:
         stalled = (previous_error is not None
                    and previous_error - error < SETTLE_MIN_PROGRESS_RAD)
 
-        arm_degrees = [math.degrees(p) for p in command[:6]]
+        # BIAS THE RE-SEND. Sending command[:6] unchanged is what Test 1 proved
+        # useless -- see SETTLE_BIAS_* above. Per joint: aim at command + gain*e,
+        # capped, clamped to the joint's own limit, and only for joints that are
+        # actually short (a joint already inside tolerance must not be nudged).
+        arm_target = list(command[:6])
+        bias_applied = []
+        # Gate on arm_needs_settle, not just the flag: line ~1024 only re-sends the
+        # arm when the ARM is short, so computing a bias during a gripper-only
+        # settle produced a log line full of joint biases that were never sent.
+        # That cost real debugging time -- four "bias[joint2_to_joint1 -0.97deg,
+        # ...]" lines during a gripper release read as the arm being wiggled when
+        # it was untouched.
+        arm_needs_settle = arm_error > SETTLE_TOLERANCE_RAD
+        if SETTLE_BIAS_ENABLED and arm_needs_settle:
+            escalation = SETTLE_BIAS_GAIN[min(attempt - 1, len(SETTLE_BIAS_GAIN) - 1)]
+            for i in range(6):
+                residual = command[i] - measured[i]
+                if abs(residual) <= SETTLE_BIAS_MIN_RAD:
+                    continue
+                gain = SETTLE_BIAS_GAIN_PER_JOINT[i] * escalation
+                bias = max(-SETTLE_MAX_BIAS_RAD,
+                           min(SETTLE_MAX_BIAS_RAD, gain * residual))
+                lo, hi = JOINT_LIMITS_RAD[i]
+                biased = max(lo, min(hi, command[i] + bias))
+                arm_target[i] = biased
+                bias_applied.append(
+                    f"{JOINT_ORDER[i]} {math.degrees(biased - command[i]):+.2f}deg")
+
+        # Same pre-compensation as the streamed path. The settle re-send is a
+        # command for the SAME pose, so it must carry the same bias -- sending
+        # an unbiased target here would ask the arm to give back exactly the
+        # droop the trajectory just cancelled.
+        arm_degrees = gravity_ff_degrees(arm_target)
+        settle_speed = SETTLE_SPEED if bias_applied else self.speed
         try:
-            if arm_error > SETTLE_TOLERANCE_RAD:
-                self._send_angles(arm_degrees, self.speed)
+            if arm_needs_settle:
+                self._send_angles(arm_degrees, settle_speed)
             if gripper_needs_settle:
                 self._set_gripper_value(gripper_rad_to_value(command[6]), self.speed)
         except Exception as exc:
@@ -916,9 +1269,12 @@ class Bridge:
                 which.append(f"arm {arm_error:.4f}")
             if gripper_needs_settle:
                 which.append(f"gripper {gripper_error:.4f} (opening)")
+            bias_note = (" bias[" + ", ".join(bias_applied) + "]"
+                         if bias_applied else " (no bias)")
             print(f"[mycobot_bridge] TIMING settle re-send {attempt}/"
                   f"{SETTLE_MAX_RESENDS}: still short by {', '.join(which)} rad "
-                  f"(> {SETTLE_TOLERANCE_RAD}), re-commanding at speed {self.speed}")
+                  f"(> {SETTLE_TOLERANCE_RAD}), re-commanding at speed "
+                  f"{settle_speed}{bias_note}")
             if gave_up:
                 print(f"[mycobot_bridge] TIMING settle giving up: {error:.4f} rad "
                       f"error stopped improving over {SETTLE_MAX_STALLED} attempts "
@@ -1032,11 +1388,55 @@ class Bridge:
             return
 
         with self.state.lock:
+            # COMPARE AGAINST THE LAST COMMAND ACTUALLY SENT, NOT THE LAST ONE
+            # RECEIVED. Fixed 2026-08-02; the difference is the whole bug.
+            #
+            # This used to compare `positions` against `self.state.command` --
+            # the previous setpoint from JTC -- and then overwrite it on the
+            # very next line. So the test was "did the setpoint move more than
+            # 0.001 rad SINCE THE LAST CONTROL CYCLE", which a slow trajectory
+            # never satisfies, and the difference never accumulates because the
+            # reference moves with it.
+            #
+            # ros2_control runs at 100Hz, so over a 6s trajectory:
+            #
+            #    141 deg move -> 0.00410 rad/cycle   4.1x epsilon  -> forwarded
+            #      8 deg move -> 0.00023 rad/cycle   0.2x epsilon  -> NEVER SENT
+            #
+            # The slowest move that could get through at all was ~34 deg in 6s.
+            # Anything gentler was silently dropped in full: `command_dirty` was
+            # never set, the background loop never wrote, and the arm sat still
+            # while `state.command` walked all the way to the target.
+            #
+            # Confirmed on hardware 2026-08-02. An 8 deg move logged exactly ONE
+            # `TIMING dt=` line for the entire 6s trajectory -- the first cycle,
+            # whose jump from the held pose to the trajectory's first setpoint
+            # was large enough to clear epsilon -- and nothing after it.
+            #
+            # It also broke the end-of-trajectory detector below, for the same
+            # reason: `command_changed_monotonic` is only stamped when `changed`
+            # is true, so during a slow ramp it went stale and
+            # _serial_settle_if_needed concluded the trajectory was over and
+            # started correcting 1s into a 6s move. That is why the log shows
+            # settle re-sends racing a trajectory that was still running.
+            #
+            # THIS IS THE LIKELIEST REASON NO GRASP DESCENT HAS EVER COMPLETED.
+            # A 5cm descent is ~6 deg over ~4s = 0.00026 rad/cycle, 0.3x epsilon
+            # -- squarely inside the dead zone this created.
+            #
+            # Against last_sent the deltas accumulate instead, so a slow ramp is
+            # forwarded as soon as it has moved a real 0.001 rad, and fast moves
+            # behave exactly as before (they cleared the threshold every cycle
+            # either way). The epsilon keeps doing its original job of not
+            # re-sending a genuinely unchanged target.
+            reference = (self.state.last_sent
+                         if self.state.last_sent is not None
+                         else self.state.command)
             changed = (
-                self.state.command is None
+                reference is None
                 or any(
                     abs(a - b) > COMMAND_CHANGE_EPSILON_RAD
-                    for a, b in zip(positions, self.state.command)
+                    for a, b in zip(positions, reference)
                 )
             )
             gripper_moved = (
@@ -1183,6 +1583,12 @@ def main():
           f"max command rate={args.max_command_rate}Hz, "
           f"motion read interval={args.motion_read_interval}s, "
           f"speed={args.min_speed}..{args.speed}")
+    # Say this out loud at startup. An A/B whose two halves are labelled on the
+    # mars side is only as good as whether the robot was actually relaunched,
+    # and "the numbers came out identical" is a much worse way to find out.
+    print(f"[mycobot_bridge] gravity feedforward: "
+          f"{'ENABLED' if GRAVITY_FF_ENABLED else 'DISABLED'} "
+          f"(MYCOBOT_GRAVITY_FF={os.environ.get('MYCOBOT_GRAVITY_FF', '<unset, default on>')})")
 
     # Seed shared state with a real initial read before accepting any
     # connections, so the first read() a client makes doesn't race the

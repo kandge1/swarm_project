@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>swarm_interfaces</name>
+  <version>0.0.1</version>
+  <description>Service definitions shared between the Pi-side vision node and the
+    workstation-side pick-and-place orchestrator. Kept in its own package so both
+    machines build the identical .srv source -- see APRIL_TAGS.md.</description>
+  <maintainer email="rhishi.kandge@gmail.com">Rhishi Kandge</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+
+  <exec_depend>rosidl_default_runtime</exec_depend>
+
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

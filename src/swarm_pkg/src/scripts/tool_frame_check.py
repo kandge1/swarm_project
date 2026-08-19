@@ -146,6 +146,56 @@ def frame_rotation(children, link, values):
     return rotation
 
 
+def frame_transform(children, link, values, relative_to=None):
+    """(rotation, translation) of `link`, given {joint_name: radians}.
+
+    relative_to=None measures from the URDF root; pass a link name to measure
+    from that link instead. Unlike frame_rotation this carries translation too,
+    which is what any "where is the lens relative to the flange" question needs.
+    """
+    chain = chain_to(children, link)
+    if relative_to is not None:
+        base = chain_to(children, relative_to)
+        if [rec["name"] for rec in base] != [rec["name"] for rec in chain[:len(base)]]:
+            raise ValueError("%s is not an ancestor of %s" % (relative_to, link))
+        chain = chain[len(base):]
+
+    rotation = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    translation = [0.0, 0.0, 0.0]
+    for rec in chain:
+        offset = rec["xyz"]
+        translation = [translation[i] + sum(rotation[i][k] * offset[k] for k in range(3))
+                       for i in range(3)]
+        rotation = matmul(rotation, rpy_to_matrix(*rec["rpy"]))
+        if rec["type"] in ("revolute", "continuous"):
+            angle = values.get(rec["name"], 0.0)
+            rotation = matmul(rotation, axis_angle_to_matrix(rec["axis"], angle))
+    return rotation, translation
+
+
+def flange_to_camera(urdf_path=DEFAULT_URDF):
+    """(offset, view_axis) from joint6_flange to the camera lens, in the
+    FLANGE's own frame.
+
+    Every joint between joint6_flange and wrist_camera_optical_frame is fixed,
+    so both are constants -- they do not depend on the arm's configuration, and
+    computing them once is enough.
+
+    This is what turns "point the camera at the zone centre" into a flange
+    target: the lens sits to one side of the flange, so commanding the flange to
+    the zone centre points the CAMERA somewhere else. Note this only affects
+    FRAMING. The block's measured position comes from the tag homography and is
+    unaffected by getting this wrong -- a bad offset loses the tags out of
+    frame, it does not bias the answer. See APRIL_TAGS.md.
+    """
+    _, children = parse_urdf(urdf_path)
+    rotation, offset = frame_transform(
+        children, "wrist_camera_optical_frame", {}, relative_to="joint6_flange")
+    # Optical +Z is the view direction (ROS convention), i.e. the third column.
+    view_axis = [rotation[i][2] for i in range(3)]
+    return offset, view_axis
+
+
 def describe(vector):
     """A world direction in words, so it can be checked against the real arm."""
     x, y, z = vector

@@ -238,21 +238,88 @@ def settle(arm, args, timeout_sec=6.0, stable_reads=4,
 # at the tool: tau = axis . (r x -Z), in metres. It is the number the residual
 # should be proportional to IF the cause is gravity droop.
 #
+# THESE ARE SIGNED, AND THE SIGN IS THE WHOLE MEASUREMENT (fixed 2026-08-02).
+#
+# Until today this table stored |tau|. Five of the six postures put the arm on
+# the same side of the shoulder axis (J2 from 0 to -90 deg) and 'extended' puts
+# it on the OTHER side (J2 = +45), so gravity loads 'extended' the opposite way
+# round. Storing magnitudes folded those two halves on top of each other and
+# regressed the residual against a quantity that is not the physical one.
+#
+# The cost was not a slightly worse fit, it was the entire result:
+#
+#     J2 shoulder, residual vs UNSIGNED arm    R^2 = 0.00 / 0.03
+#     J2 shoulder, residual vs SIGNED arm      R^2 = 0.77 / 0.93
+#     J3 elbow,    residual vs UNSIGNED arm    R^2 = 0.09 / 0.10
+#     J3 elbow,    residual vs SIGNED arm      R^2 = 0.87 / 0.88
+#
+# (test1_full.csv 2026-07-29 / test2_full.csv 2026-08-02, symmetric component,
+# see report_sweep.) The unsigned fit is what made report_sweep print "They
+# DISAGREE ... do not use this slope as a feedforward" on every run, and what
+# put "Sag pre-compensation has expired ... magnitude is a fraction of a degree,
+# inside the scatter" into APRIL_TAGS_DEV.md. Both were artifacts of the abs().
+# Gravity droop is in fact the LARGEST modelable term on the pitch joints, at
+# roughly -5 deg per metre of moment arm.
+#
+# Recomputed by forward kinematics from
+# mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf; the
+# magnitudes are unchanged from the previous table to within 0.0001 m, only the
+# signs are new. Positive means gravity drives the joint in its POSITIVE
+# direction.
+#
 # J1's moment arm is 0.0000 in EVERY posture -- its axis is vertical, so
 # gravity cannot load it at all. That makes joint 0 the control: whatever
 # residual it shows is dead zone, stiction or quantisation with the gravity
 # term provably absent. J5 and J6 are likewise ~zero and are not worth
 # sweeping, which is why the default joint set is 0, 1, 2.
-#   name        angles (deg)                  gravity arm (m)      inertia lever (m)   clearance
-#                                             J1      J2      J3     J1      J2      J3
+# ALL SIX JOINTS ARE TABULATED, not just 0-2 (extended 2026-08-02). Joint 3
+# (joint5_to_joint4) is a pitch joint carrying a gravity arm of -0.119..+0.119 m
+# -- comparable to joint 2's -0.121..+0.203 -- and it had never been measured,
+# because the original table stopped at three columns and the default
+# --sweep-joints stopped with it.
+#
+# That gap matters for more than completeness. pick_place.py's SAG_PRECOMP_*
+# corrects the flange TILT empirically at two hardcoded poses, and flange tilt
+# is the sum of the droop of every pitch joint. Joints 1 and 2 alone account
+# for about 1.4 deg of the ~4.2 deg measured tilt, so a joint-space
+# feedforward built from those two only would fix a third of it and leave
+# SAG_PRECOMP over-correcting the rest. Joint 3 is the missing term.
+#
+# Joints 4 and 5 stay out of the default set: their gravity arm is under
+# 0.0004 m in every posture here (the wrist ends up with the tool essentially
+# on the axis), so there is no load to fit against.
+#
+# Geometry checked before adding joint 3 to the safe set: re-running the
+# clearance search with +/-35 deg perturbations on joints 0-4 rather than 0-2
+# changes the worst-case height past the elbow by less than 0.1 mm at every
+# posture -- rotating the wrist moves little enough that the elbow still sets
+# the minimum. Worst case across all six is 0.075 m, above the 0.060 m floor.
+#
+#   name        angles (deg)                   signed gravity arm (m)                                  inertia lever (m)                              clearance
+#                                              J1       J2       J3       J4       J5       J6       J1      J2      J3      J4      J5      J6
 POSTURES = [
-    ("vertical", [0,   0,  30,   0, 0, -45], (0.0000, 0.0018, 0.0018), (0.0640, 0.3047, 0.1943), 0.249),
-    ("tucked",   [0, -15,  30, -60, 0, -45], (0.0000, 0.1231, 0.0945), (0.1231, 0.2210, 0.1218), 0.245),
-    ("folded",   [0, -90,  60,  90, 0, -45], (0.0000, 0.1428, 0.0324), (0.1428, 0.2478, 0.2051), 0.139),
-    ("reach",    [0, -30,   0,  45, 0, -45], (0.0000, 0.1766, 0.1214), (0.1766, 0.3261, 0.2159), 0.234),
-    ("compact",  [0, -60,  45, -60, 0, -45], (0.0000, 0.2159, 0.1203), (0.2159, 0.2284, 0.1218), 0.194),
-    ("extended", [0,  45,  15,  75, 0, -45], (0.0000, 0.2805, 0.2025), (0.2805, 0.3144, 0.2123), 0.213),
+    ("vertical", [0,   0,  30,   0, 0, -45], (0.0000, +0.0018, +0.0018, -0.0462, -0.0002, +0.0003), (0.0640, 0.3047, 0.1943, 0.1204, 0.0956, 0.0003), 0.249),
+    ("tucked",   [0, -15,  30, -60, 0, -45], (0.0000, -0.1231, -0.0945, -0.1193, +0.0002, +0.0002), (0.1387, 0.2210, 0.1218, 0.1204, 0.0956, 0.0003), 0.245),
+    ("folded",   [0, -90,  60,  90, 0, -45], (0.0000, -0.1428, -0.0324, +0.0156, -0.0003, +0.0002), (0.1565, 0.2478, 0.2051, 0.1204, 0.0956, 0.0003), 0.139),
+    ("reach",    [0, -30,   0,  45, 0, -45], (0.0000, -0.1766, -0.1214, -0.0734, -0.0001, +0.0003), (0.1878, 0.3261, 0.2159, 0.1204, 0.0956, 0.0003), 0.234),
+    ("compact",  [0, -60,  45, -60, 0, -45], (0.0000, -0.2159, -0.1203, -0.0954, +0.0003, +0.0001), (0.2252, 0.2284, 0.1218, 0.1204, 0.0956, 0.0003), 0.194),
+    ("extended", [0,  45,  15,  75, 0, -45], (0.0000, +0.2805, +0.2025, +0.1193, -0.0002, -0.0002), (0.2877, 0.3144, 0.2123, 0.1204, 0.0956, 0.0003), 0.213),
 ]
+
+# Joint 0's inertia lever moved slightly (e.g. tucked 0.1231 -> 0.1387) because
+# the old column reused joint 1's gravity arm for it. For a VERTICAL axis the
+# perpendicular distance to the tool is sqrt(x^2 + y^2), which is not the same
+# horizontal distance as the moment arm about a horizontal axis; these are the
+# recomputed perpendicular distances. It only ever feeds the confound check.
+
+# (posture, joint) -> arm, for report_sweep. Read from POSTURES rather than
+# from the trial dicts: a run loaded from an OLD csv carries the old unsigned
+# arms, and silently fitting those is the bug this whole section exists to
+# undo.
+POSTURE_ARM = {(name, j): grav[j]
+               for name, _a, grav, _lev, _c in POSTURES for j in range(6)}
+POSTURE_LEVER = {(name, j): lever[j]
+                 for name, _a, _g, lever, _c in POSTURES for j in range(6)}
 
 # WHY SIX, AND WHY THESE SIX.
 #
@@ -297,11 +364,23 @@ JOINT_LIMITS_DEG = [
 ]
 JOINT_LIMIT_MARGIN_DEG = 2.0
 
-# How close to the commanded posture counts as "arrived". Droop itself is
-# ~1.3 deg at the most loaded posture and is the thing being measured, so this
-# has to sit above that while still catching the ~29 deg misses seen when a
-# posture move gets cancelled.
-POSTURE_TOLERANCE_DEG = 3.0
+# How close to the commanded posture counts as "arrived". Droop itself is the
+# thing being measured, so this has to sit above it while still catching the
+# ~29 deg misses seen when a posture move gets cancelled.
+#
+# Raised 3.0 -> 5.0 on 2026-07-29. At 3.0 the 'extended' posture failed all 3
+# attempts on every single trial, and always by the same amount: J1 commanded
+# 45.00, settled 48.07, i.e. 3.07 deg -- missing the gate by 0.07 deg. That is
+# not a failed move. 'extended' has the largest J1 gravity moment arm of any
+# posture in the set (0.2805 m, vs 0.0018 for 'vertical'), so it droops the
+# most, and the droop is exactly the signal Test 1 exists to measure. A gate
+# sized off the OLD three-posture set's worst droop (~1.3 deg) was silently
+# excluding the highest-load posture -- and with it the top of the gravity
+# range the six-posture set was constructed to span.
+#
+# 5.0 still rejects the failure this check was added for by a wide margin: the
+# real misses were ~29 deg, from a posture move being cancelled mid-flight.
+POSTURE_TOLERANCE_DEG = 5.0
 POSTURE_ATTEMPTS = 3
 
 # send_angles() silently does nothing often enough to matter -- 7 of 27 trial
@@ -361,7 +440,7 @@ def move_to_posture(arm, args, angles, label):
                   file=sys.stderr)
             continue
         worst = max(abs(settled[i] - angles[i]) for i in range(6))
-        if worst <= POSTURE_TOLERANCE_DEG:
+        if worst <= getattr(args, "posture_tolerance_deg", POSTURE_TOLERANCE_DEG):
             return settled
         # VERIFY, don't assume. Silently accepting a posture the arm never
         # reached is worse than failing: the trial still runs, and gets
@@ -781,10 +860,10 @@ def mode_deadzone_sweep(arm, args):
     print()
     for name, angles, grav, lever, clearance in postures:
         print("[probe]   {:<9} {}".format(name, angles))
-        print("[probe]             gravity arm J1/J2/J3 = {}   inertia lever = {}"
-              "   clearance {:.3f}m"
-              .format("/".join("{:.3f}".format(a) for a in grav),
-                      "/".join("{:.3f}".format(a) for a in lever), clearance))
+        print("[probe]             gravity arm J1..J6 = {}"
+              .format("/".join("{:+.3f}".format(a) for a in grav)))
+        print("[probe]             inertia lever      = {}   clearance {:.3f}m"
+              .format("/".join("{:.3f}".format(a) for a in lever), clearance))
     print()
     print("[probe] THE ARM WILL MOVE THROUGH ALL OF THESE UNATTENDED. Clear the")
     print("[probe] workspace, remove any block or fixture, and make sure the")
@@ -1022,98 +1101,134 @@ def report_sweep(args, results, backlash=None):
 
     # ------------------------------------- 3. WHAT THE RESIDUAL DEPENDS ON
     print()
-    print("[probe] --- 3. Residual vs gravity AND inertia (they are separated "
-          "here, not assumed) ---")
+    print("[probe] --- 3. Residual split into its gravity and friction halves ---")
     groups = {}
     for r in usable:
         groups.setdefault((r["posture"], r["joint"], r["amplitude"] > 0), []).append(r)
 
-    # FIT EACH DIRECTION SEPARATELY -- pooling them cancels the signal.
-    # Gravity torque is fixed in joint coordinates, so its contribution to the
-    # residual does NOT flip when the approach direction flips. Friction, dead
-    # zone and inertial overshoot all act along or against travel, so they DO
-    # flip. Pool the two and the direction-dependent terms cancel while the
-    # gravity term survives at half weight -- a synthetic dataset with a planted
-    # 7.50 deg/m droop fitted back as -0.04 deg/m, R^2 0.000, before this split
-    # was added.
+    # SPLIT BEFORE FITTING. This is the correction that made the whole test
+    # readable (2026-08-02); fitting the raw residual per direction, as this
+    # section used to, cannot separate the two effects and reliably concluded
+    # that gravity was absent.
     #
-    # Fitting separately also gives a free consistency check: the gravity slope
-    # must agree between the two directions, while the intercept must flip sign.
-    # If it does not, the model is wrong, and that is worth knowing.
+    #   residual = target - settled, so "stopped short" is +residual on a +move
+    #   and -residual on a -move.
+    #
+    #   ANTISYMMETRIC  A = (r+ - r-)/2   reverses with travel direction.
+    #       Friction, dead zone, lost motion, inertial overshoot. Everything
+    #       that acts along or against the direction of travel.
+    #   SYMMETRIC      S = (r+ + r-)/2   fixed in joint coordinates.
+    #       Gravity droop, and essentially only gravity droop -- a gravity
+    #       torque does not care which way the joint drove in.
+    #
+    # A static feedforward can cancel S and CANNOT cancel A. Reporting them
+    # separately is therefore the difference between a usable coefficient and
+    # a number that averages a real 5 deg/m droop against a real 1 deg dead
+    # zone and lands near zero.
+    #
+    # On the gravity-free joint 0 this is self-checking: S must come out ~0 and
+    # A must come out at half the measured backlash. It does (2026-08-02:
+    # S = -0.11 deg, A = +0.90 deg, backlash 1.67 deg).
+    sym, anti = {}, {}
+    for (posture, joint, is_pos), items in groups.items():
+        res = sum(x["residual"] for x in items) / len(items)
+        other = groups.get((posture, joint, not is_pos))
+        if not other:
+            continue
+        res_other = sum(x["residual"] for x in other) / len(other)
+        plus, minus = (res, res_other) if is_pos else (res_other, res)
+        sym[(posture, joint)] = 0.5 * (plus + minus)
+        anti[(posture, joint)] = 0.5 * (plus - minus)
+
     for j in sorted({key[1] for key in groups}):
-        slopes = {}
-        for positive in (True, False):
-            rows, ys, detail = [], [], []
-            for (posture, joint, is_pos), items in sorted(groups.items()):
-                if joint != j or is_pos != positive:
-                    continue
-                res = [x["residual"] for x in items]
-                rows.append((items[0]["moment_arm"], items[0]["inertia_lever"]))
-                ys.append(sum(res) / len(res))
-                detail.append("{}:{:+.2f}".format(posture, ys[-1]))
-            if len(ys) < 2:
-                continue
-            label = "approach {}".format("+" if positive else "-")
-            print()
-            print("[probe] JOINT {}  {}   ({} postures)".format(j, label, len(ys)))
-            print("[probe]   {}".format("  ".join(detail)))
+        cells = [(p, jj) for (p, jj) in sym if jj == j]
+        if len(cells) < 2:
+            continue
+        print()
+        print("[probe] JOINT {}  ({} postures with both directions)"
+              .format(j, len(cells)))
+        print("[probe]   {:<10} {:>10} {:>9} {:>9}".format(
+            "posture", "grav_arm", "SYM", "ANTI"))
+        arms, syms = [], []
+        for posture, _ in sorted(cells,
+                                 key=lambda c: POSTURE_ARM.get((c[0], j), 0.0)):
+            arm = POSTURE_ARM[(posture, j)]
+            arms.append(arm)
+            syms.append(sym[(posture, j)])
+            print("[probe]   {:<10} {:>+10.4f} {:>+9.2f} {:>+9.2f}".format(
+                posture, arm, sym[(posture, j)], anti[(posture, j)]))
+        avals = [anti[c] for c in cells]
+        amean = sum(avals) / len(avals)
+        print("[probe]   friction/dead-zone term: {:+.2f} deg mean, {:.2f} deg "
+              "spread ({:.1f} counts)".format(
+                  amean, max(avals) - min(avals),
+                  (max(avals) - min(avals)) / ENCODER_COUNT_DEG))
 
-            grav = [r[0] for r in rows]
-            lever = [r[1] for r in rows]
-            if max(grav) - min(grav) < 1e-4:
-                mean = sum(ys) / len(ys)
-                span = max(ys) - min(ys)
-                print("[probe]   Gravity arm is 0.0000 in every posture -- gravity "
-                      "CANNOT load this joint. Residual {:+.3f} deg mean, {:.3f} "
-                      "deg range = {:.1f} counts.".format(
-                          mean, span, span / ENCODER_COUNT_DEG))
-                fit1 = linear_fit(lever, ys)
-                if fit1 and abs(fit1[2]) > 0.5:
-                    print("[probe]   ...but it tracks the INERTIA lever "
-                          "({:+.2f} deg/m, R^2 {:.2f}). Posture moves the residual "
-                          "through a NON-gravity channel, and this is its size -- "
-                          "the confound the six-posture set exists to expose."
-                          .format(fit1[0], fit1[2]))
-                continue
+        if max(arms) - min(arms) < 1e-4:
+            print("[probe]   Gravity arm is 0.0000 in every posture -- gravity "
+                  "CANNOT load this joint, and the symmetric term is "
+                  "{:+.2f} deg as it must be. This is the control."
+                  .format(sum(syms) / len(syms)))
+            print("[probe]   Its ANTI term is the pure dead-zone floor, and "
+                  "should be about half this joint's backlash.")
+            continue
 
-            fit = multi_fit(rows, ys)
-            if fit is None:
-                print("[probe]   too few postures for a two-variable fit "
-                      "(need 4+).")
-                continue
-            a, b, c, r2 = fit
-            slopes[positive] = b
-            print("[probe]   residual = {:+.3f} {:+.2f}*gravity_arm "
-                  "{:+.2f}*inertia_lever    R^2 = {:.3f}".format(a, b, c, r2))
-            span_g = abs(b) * (max(grav) - min(grav))
-            span_i = abs(c) * (max(lever) - min(lever))
-            total = span_g + span_i + 1e-9
-            print("[probe]   across the tested range: {:.3f} deg from gravity, "
-                  "{:.3f} deg from inertia ({:.0f}% / {:.0f}%)"
-                  .format(span_g, span_i, 100 * span_g / total, 100 * span_i / total))
-            print("[probe]   -> gravity feedforward {:+.2f} deg/m of moment arm; "
-                  "dead-zone bias {:+.3f} deg".format(b, a))
-            if r2 < 0.8:
-                print("[probe]   WARNING: R^2 {:.2f} is weak -- these two terms do "
-                      "not explain the residual well.".format(r2))
+        fit = linear_fit(arms, syms)
+        if fit is None:
+            continue
+        slope, intercept, r2 = fit
+        print("[probe]   GRAVITY: sym_residual = {:+.3f} {:+.2f} * arm     "
+              "R^2 = {:.2f}".format(intercept, slope, r2))
+        if r2 >= 0.7:
+            print("[probe]   -> FEEDFORWARD THIS. Command joint {} to "
+                  "target {:+.2f}*arm(pose) {:+.3f} degrees and the droop "
+                  "cancels. Applies to every pose in the workspace, not just "
+                  "the ones tested.".format(j, slope, intercept))
+        else:
+            print("[probe]   WARNING: R^2 {:.2f} -- the symmetric term is not "
+                  "explained by gravity alone; do not feed this forward yet."
+                  .format(r2))
 
-        if len(slopes) == 2:
-            up, down = slopes[True], slopes[False]
-            spread = abs(up - down)
-            mean = 0.5 * (abs(up) + abs(down))
-            print()
-            print("[probe]   CONSISTENCY: gravity slope {:+.2f} from + approach, "
-                  "{:+.2f} from -.".format(up, down))
-            if mean > 1e-6 and spread / mean < 0.3:
-                print("[probe]   They agree to {:.0f}%, which is what gravity must "
-                      "do -- it is fixed in joint coordinates and cannot care "
-                      "which way you drove in. The model holds."
-                      .format(100 * spread / mean))
-            else:
-                print("[probe]   They DISAGREE. Gravity cannot depend on approach "
-                      "direction, so something direction-dependent is being "
-                      "absorbed into the gravity term. Do not use this slope as "
-                      "a feedforward until that is understood.")
+    # ---------------------------------------------- 4. IS IT REALLY GRAVITY?
+    # The six-posture set was constructed to decorrelate the gravity moment arm
+    # from the inertia lever (corr +0.033 on J1, +0.005 on J2 -- see the note
+    # above POSTURES). That construction pays off here and nowhere else: run
+    # BOTH regressors against the symmetric term and see whether gravity keeps
+    # its coefficient.
+    #
+    # If the inertia lever takes over, the "droop" is really something that
+    # varies with how far the mass sits from the axis rather than with the
+    # torque about it -- an encoder/coupling effect, not a load effect -- and no
+    # gravity feedforward will generalise off the tested postures.
+    print()
+    print("[probe] --- 4. Gravity vs inertia, on the symmetric term only ---")
+    for j in sorted({key[1] for key in groups}):
+        rows, ys = [], []
+        for (posture, joint) in sorted(sym):
+            if joint != j:
+                continue
+            rows.append((POSTURE_ARM[(posture, j)], POSTURE_LEVER[(posture, j)]))
+            ys.append(sym[(posture, j)])
+        if len(ys) < 4:
+            continue
+        grav = [r[0] for r in rows]
+        if max(grav) - min(grav) < 1e-4:
+            continue
+        fit = multi_fit(rows, ys)
+        if fit is None:
+            print("[probe]   JOINT {}: rank deficient -- the two regressors are "
+                  "collinear in these postures.".format(j))
+            continue
+        a, b, c, r2 = fit
+        lever = [r[1] for r in rows]
+        span_g = abs(b) * (max(grav) - min(grav))
+        span_i = abs(c) * (max(lever) - min(lever))
+        total = span_g + span_i + 1e-9
+        print("[probe]   JOINT {}: sym = {:+.3f} {:+.2f}*gravity_arm "
+              "{:+.2f}*inertia_lever   R^2 = {:.2f}".format(j, a, b, c, r2))
+        print("[probe]     across the tested range: {:.2f} deg from gravity, "
+              "{:.2f} deg from inertia ({:.0f}% / {:.0f}%)".format(
+                  span_g, span_i, 100 * span_g / total, 100 * span_i / total))
 
     if failed:
         print()
@@ -1371,12 +1486,16 @@ def main():
                         help="--deadzone: below this residual there is nothing to "
                              "correct, so the test reports that and stops "
                              "(default %(default)s)")
-    parser.add_argument("--sweep-joints", default="0,1,2",
+    parser.add_argument("--sweep-joints", default="0,1,2,3",
                         help="--deadzone-sweep: comma-separated 0-based joints "
                              "(default %(default)s -- joint 0 is the gravity-free "
-                             "control, 1 and 2 are where the load actually varies; "
-                             "joints 4 and 5 have ~zero moment arm in every posture "
-                             "and are not worth sweeping)")
+                             "control, 1, 2 and 3 are the loaded pitch joints whose "
+                             "droop sums to the flange tilt; joints 4 and 5 have "
+                             "~zero moment arm in every posture and are not worth "
+                             "sweeping). Joint 3 was added 2026-08-02: it carries "
+                             "as much gravity arm as joint 2 and had never been "
+                             "measured, which left a third of the flange tilt "
+                             "unmodelled")
     parser.add_argument("--sweep-postures",
                         default=",".join(p[0] for p in POSTURES),
                         help="--deadzone-sweep: comma-separated posture names from "
@@ -1388,6 +1507,14 @@ def main():
     parser.add_argument("--posture-settle-sec", type=float, default=12.0,
                         help="--deadzone-sweep: settle budget for a whole-arm "
                              "posture move (default %(default)s)")
+    parser.add_argument("--posture-tolerance-deg", type=float,
+                        default=POSTURE_TOLERANCE_DEG,
+                        help="--deadzone-sweep: how far a joint may sit from the "
+                             "commanded posture and still count as arrived. Must "
+                             "exceed the DROOP at the most loaded posture, which "
+                             "is the signal being measured, not an error -- too "
+                             "tight and the highest-gravity postures fail every "
+                             "attempt and get skipped (default: %(default)s)")
     parser.add_argument("--repeats", type=int, default=1,
                         help="--deadzone-sweep: trials per (posture, joint). The "
                              "gravity-free joint's own scatter across postures was "

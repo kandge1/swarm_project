@@ -76,13 +76,78 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 # spawn_world.py's output. NOT re-verified by an actual run yet -- watch the
 # first grasp closely.
 SPAWN_HEIGHT_CORRECTION = 0.035  # m, = old spawn_z (0.055) - new spawn_z (0.02)
-PICK_XYZ = (+0.000, +0.250, 0.030 + SPAWN_HEIGHT_CORRECTION)
-PLACE_XYZ = (+0.000, -0.250, 0.040 + SPAWN_HEIGHT_CORRECTION)
+#
+# NO LONGER APPLIED TO PICK_XYZ / PLACE_XYZ (2026-08-03). Everything above is
+# about GAZEBO -- gazebo.launch.py's `ros_gz_sim create -z`, Gazebo's absolute
+# frame, spawn_world.py's printed coordinates. On real hardware there is no
+# spawn offset: the robot is physically where it is, and the mat is physically
+# where it is. Carrying a simulator's bookkeeping delta into a hardware target
+# put the grasp 35 mm too high on top of a table height that was also a
+# simulator's.
+#
+# The symptom was unmistakable once looked at: the jaws closed on the block's
+# top inward corner instead of straddling its middle. Confirmed by measurement
+# -- with the sag held out by hand and the block centred in the jaws, its
+# centre sat 63.5 mm above the mat against the 65 mm commanded. THE ARM WAS
+# ACCURATE TO 1.5 mm; it was simply being told the wrong height.
+#
+# Left defined because annulus_test.py still uses it, and it is still correct
+# THERE -- that script targets Gazebo.
+#
+# ZONE RADIUS: 9 in = 0.2286 m, moved in from 0.250 m on 2026-08-02.
+#
+# This is a PHYSICAL change -- the mats were re-taped closer to the base -- and
+# the reason is reach, not neatness. Everything in this file and in
+# tag_pick_place.py that failed on hardware failed by asking for a flange
+# position a centimetre or two outside the workspace: the detection hover had to
+# drop 0.280 -> 0.240 to reach the zone at all, and the multiview survey has to
+# pull the flange IN from the zone centre because reaching outward is simply not
+# available. Pulling the zone itself in buys that margin back everywhere at once,
+# for free, instead of spending code on working around it.
+#
+# 0.2286 is exact (9 * 0.0254), not rounded, because the tag square, the block
+# database and the print sheets are all dimensioned in inches -- keep the whole
+# chain in one unit system so a 0.4 mm rounding error never has to be chased.
+ZONE_RADIUS_M = 9 * 0.0254   # 0.2286
+
+# THE MAT, IN ROBOT BASE COORDINATES. Measured 2026-08-03.
+#
+# NEGATIVE, and the sign is the whole point. The URDF's g_base origin is the
+# bottom of the robot as modelled -- but the physical robot is not standing on
+# the mat. Its base (the housing the Pi sits in) rests on a 4 mm plate, and
+# THAT sits on the mat. The URDF has no mesh for the plate, so the model's
+# z = 0 floats 4 mm above the surface the blocks actually sit on.
+#
+# Everything the arm is asked to touch lives on the mat, so every such height
+# must be built from this constant rather than from 0. Re-measure it if the
+# robot is remounted or the plate changes.
+MAT_SURFACE_Z = -0.004
+
+# Physical block, measured: 30 mm exactly (1.18 in). NOT the 20 mm cube
+# spawn_world.py drops into Gazebo -- that mismatch is half of why the old
+# grasp height was wrong, the other half being SPAWN_HEIGHT_CORRECTION.
+BLOCK_HEIGHT_M = 0.030
+
+# A block resting on the mat has its CENTRE half its height above the mat.
+# That is all PICK_XYZ.z is, and it is now derived rather than tuned:
+#     -0.004 + 0.015 = +0.011
+# The old value was 0.065 -- 54 mm high, which is why the jaws closed on the
+# block's top corner instead of its middle.
+PICK_XYZ = (+0.000, +ZONE_RADIUS_M, MAT_SURFACE_Z + BLOCK_HEIGHT_M / 2.0)
+# PLACE_XYZ.z is a RESTING SURFACE, not a centre -- a different convention from
+# PICK_XYZ.z, which is a genuine trap when reading the two side by side. main()
+# converts it with `lz = place_surface_z + block_size/2 + GRASP_OFFSET_Z`. For a
+# block set down directly on the mat, the surface IS the mat.
+PLACE_XYZ = (+0.000, -ZONE_RADIUS_M, MAT_SURFACE_Z)
 # APPROACH_HEIGHT is how far above the grasp/place flange target to
 # pre-position for the straight-down descent. It is HARD-CAPPED by the arm's
-# reach, NOT a free choice: at the pick/place radius (0.25m) the flange can
+# reach, NOT a free choice: at a pick/place radius of 0.25m the flange could
 # only reach at all up to z~=0.21 (measured with scripts/reach_probe.py --
 # 0.21 works, 0.215 is already outside the workspace at ANY orientation).
+# The zone has since moved in to 0.2286, so that ceiling is now the CONSERVATIVE
+# side of the truth rather than the tight one; it has NOT been re-measured, so
+# nothing below has been raised to spend the slack. Re-run reach_probe.py at
+# 0.2286 before treating any of these numbers as headroom.
 # The place flange target (0.16) is the higher of the two, so keep
 # 0.16+APPROACH_HEIGHT <= ~0.205. Anything taller puts the hover outside the
 # reachable workspace, where every IK seed legitimately fails to converge
@@ -138,16 +203,217 @@ MAX_HOVER_Z = 0.205
 # far past the deadband stops catching real tracking failures.
 ARM_SETTLE_TOLERANCE = 0.07
 
+# PER-JOINT override, for joints where the global tolerance is the wrong question.
+#
+# 2026-07-29: a run aborted at "Move to pre-grasp" with joint6output_to_joint6 at
+# -0.0712 rad against the 0.07 tolerance -- failing by 0.0012 rad, i.e. 0.07 deg.
+# Every other joint was inside 0.022. Re-running worked. That is not a fluke, it
+# is a joint sitting on the threshold: joint6output carries the largest dead-band
+# residual of the six (+3.06 deg = 0.053 rad in earlier logs, 4.08 deg here), so
+# it will keep landing either side of 0.07 and aborting good runs at random. Test
+# 1's 'extended' posture failed the same way, by 0.07 deg against a 3.0 deg gate.
+#
+# Raising the GLOBAL tolerance to cover it is the wrong fix, because 0.07 rad is
+# already ~1 cm at the fingertips and the pitch joints are exactly where that
+# error becomes the grasp tilt this file spends so much effort on.
+#
+# joint6output_to_joint6 is different in kind, though: it is one of the two
+# VERTICAL-axis joints, so it contributes exactly 0.000 deg of tilt (see the FK
+# decomposition in APRIL_TAGS.md). Its error shows up as gripper YAW, not lean --
+# on a square block that is nearly free, and Stage 3's rectangular blocks care
+# about it only to the extent the jaws must span the short face. So it can be held
+# to a looser standard than the joints that tilt the tool, and this is a real
+# distinction rather than a convenient one.
+#
+# 0.09 rad = 5.2 deg: clears the worst residual seen with margin, still far short
+# of a genuine tracking failure (the aborted run had moved 3.30 rad before
+# stalling, so real failures are not subtle).
+ARM_SETTLE_TOLERANCE_PER_JOINT = {
+    "joint6output_to_joint6": 0.09,
+}
 
-def hover_z(target_z):
-    """Hover height above target_z, clamped to the reachable ceiling."""
+# Mirrors mycobot_bridge.py's SETTLE_QUIET_PERIOD_SEC. Kept in sync BY HAND, the
+# same way GRIPPER_OPEN/CLOSED_RAD already are -- the two files live in different
+# packages and neither currently depends on the other. If you change it there,
+# change it here.
+#
+# This exists because the two halves disagree about when a move is finished:
+# _send_goal_and_wait is satisfied at ARM_SETTLE_TOLERANCE (0.07 rad), while the
+# bridge will not attempt any correction until the command has been UNCHANGED
+# for this long. See settle_pause().
+SETTLE_QUIET_PERIOD_SEC = 1.0
+# Extra time on top, for the settle to actually issue its moves and for the arm
+# to execute them.
+#
+# Raised 1.0 -> 3.0s on 2026-07-29 to let the bridge's escalating settle bias run
+# more than one attempt, then put BACK to 1.0s the same day. The bias it existed
+# to serve is disabled (see mycobot_bridge.py's SETTLE_BIAS_ENABLED: gain 1.0 sits
+# inside the servo dead band, gain 2.0 is the marginal-stability boundary, and
+# nothing in between both moves the joint and converges).
+#
+# Widening the window is not neutral now that there is nothing to escalate. It let
+# the divergent run reach "settle re-send 14/20", and every one of those attempts
+# was a real ~4 deg command to the arm. With the bias off the re-sends are
+# identical values the arm has already ignored, so extra attempts buy nothing and
+# just add dead time to every move. The bridge's own stall detector gives up after
+# SETTLE_MAX_STALLED anyway.
+SETTLE_ACT_MARGIN_SEC = 1.0
+
+
+# THE REACH ENVELOPE IS A CURVE, NOT A NUMBER (derived 2026-08-03).
+#
+# Largest flange radius at which the tool can still point straight down, per
+# flange height. Everything before this treated reach as one scalar --
+# tag_pick_place.MAX_FLANGE_RADIUS_M = 0.245 -- and that number is only true at
+# ONE height. Its own comment records where it came from: "the measured ceiling
+# at DETECT_HOVER_Z's predecessor (0.280)". Read off the table below, 0.245
+# corresponds to a flange z of about 0.220.
+#
+# Applying it at the GRASP height, z ~= 0.151, threw away 34 mm of real reach and
+# caused zone_calibrate.py to reject corners the arm can plainly get to -- before
+# the IK solver was ever asked. The arm is not the limitation there; the constant
+# was.
+#
+# DERIVATION. The tool's approach direction depends only on the SUM
+# joint3_to_joint2 + joint4_to_joint3 + joint5_to_joint4 (verified numerically),
+# and points straight down when that sum is exactly -pi/2. So the vertical-tool
+# workspace is a 2-DOF sweep, not 3: pick two of the pitch joints inside their
+# URDF limits, the third is determined. Swept at 0.25 deg over 1.1M samples,
+# taking max hypot(x, y) per 3 mm band of flange z.
+#
+# VALIDATED AGAINST HARDWARE. reach_probe.py measured, on the real arm at a
+# 0.250 radius, that z = 0.210 is reachable and z = 0.215 is not. This table
+# gives rmax(0.210) = 0.2523 and rmax(0.215) = 0.2490 -- it reproduces that
+# boundary, from the URDF alone, to within the 5 mm probe step.
+#
+# WHAT IT DOES NOT KNOW: joint6output's limit (the wrist has to absorb the fixed
+# world grasp yaw, and at some bearings it runs out -- see zone_calibrate's
+# YAW_RETRIES_DEG), self-collision, and the solver's own convergence. Treat it as
+# ADVISORY and let IK be the authority.
+#
+# AND IT IS NOT SIMPLY AN UPPER BOUND, which an earlier version of this comment
+# claimed. The table is computed with the tool EXACTLY vertical. solve_ik_state
+# allows IK_ORI_XY_TOLERANCE = 0.10 rad (5.73 deg) of tilt, and that slack buys
+# real reach -- measured by re-running the same sweep over the tolerance band:
+#
+#     flange z 0.1508 (grasp) : 0.2792 exact -> 0.2852 tilted   +6.0 mm
+#     flange z 0.1908 (hover) : 0.2637 exact -> 0.2714 tilted   +7.7 mm
+#
+# So for a HOVER, reached by solve_ik_state, the table is conservative by ~6-8 mm.
+# For a GRASP it is not, because cartesian_move_to re-imposes the exact downward
+# quaternion through make_grasp_pose: a target in that band solves at the hover
+# and then the descent has no solution to follow. See ORI_TOLERANCE_REACH_BONUS_M.
+ORI_TOLERANCE_REACH_BONUS_M = 0.006
+#
+# Regenerate if the URDF changes; the sweep is in APRIL_TAGS_DEV.md.
+FLANGE_REACH_ENVELOPE = [
+    (0.090, 0.2867), (0.095, 0.2867), (0.100, 0.2866), (0.105, 0.2865),
+    (0.110, 0.2861), (0.115, 0.2857), (0.120, 0.2852), (0.125, 0.2845),
+    (0.130, 0.2837), (0.135, 0.2828), (0.140, 0.2818), (0.145, 0.2806),
+    (0.150, 0.2793), (0.155, 0.2779), (0.160, 0.2763), (0.165, 0.2746),
+    (0.170, 0.2728), (0.175, 0.2708), (0.180, 0.2687), (0.185, 0.2664),
+    (0.190, 0.2639), (0.195, 0.2613), (0.200, 0.2585), (0.205, 0.2555),
+    (0.210, 0.2523), (0.215, 0.2490), (0.220, 0.2454), (0.225, 0.2416),
+    (0.230, 0.2375), (0.235, 0.2332), (0.240, 0.2285), (0.245, 0.2236),
+    (0.250, 0.2183),
+]
+
+
+# Below this the vertical approach has stopped being one. The descent exists so
+# the jaws come DOWN onto a block rather than in from the side; a 5 mm descent
+# does not do that. Warned about rather than enforced, because refusing the move
+# outright would be worse than a shallow approach at a target the arm can
+# otherwise reach.
+MIN_USEFUL_DESCENT_M = 0.010
+
+# Clamp the hover to this much INSIDE the envelope, not exactly onto it.
+#
+# max_flange_z() returns the height at which the radius lands precisely on the
+# boundary, so clamping to it leaves ~0 mm of margin by construction -- the far
+# pickup corners came out at +0.5 mm. The hover itself would survive that
+# (solve_ik_state has 5.73 deg of tilt to spend, worth ~8 mm there), but the
+# Cartesian RETREAT back up to it re-imposes exact vertical and would be planning
+# a path that ends on the boundary. 3 mm of radius costs about 8 mm of hover
+# height and buys a descent that can actually be reversed.
+HOVER_REACH_CLEARANCE_M = 0.003
+
+
+def max_flange_radius(z):
+    """Largest flange radius with the tool straight down, at flange height z.
+    Linear interpolation between FLANGE_REACH_ENVELOPE samples; clamped at both
+    ends rather than extrapolated."""
+    if z <= FLANGE_REACH_ENVELOPE[0][0]:
+        return FLANGE_REACH_ENVELOPE[0][1]
+    if z >= FLANGE_REACH_ENVELOPE[-1][0]:
+        return FLANGE_REACH_ENVELOPE[-1][1]
+    for (z0, r0), (z1, r1) in zip(FLANGE_REACH_ENVELOPE,
+                                  FLANGE_REACH_ENVELOPE[1:]):
+        if z0 <= z <= z1:
+            return r0 + (r1 - r0) * (z - z0) / (z1 - z0)
+    return FLANGE_REACH_ENVELOPE[-1][1]
+
+
+def max_flange_z(radius):
+    """The inverse: highest flange z at which `radius` is still reachable with
+    the tool down. rmax falls monotonically with z over the whole table, so
+    this is well defined."""
+    if radius >= FLANGE_REACH_ENVELOPE[0][1]:
+        return FLANGE_REACH_ENVELOPE[0][0]
+    if radius <= FLANGE_REACH_ENVELOPE[-1][1]:
+        return FLANGE_REACH_ENVELOPE[-1][0]
+    for (z0, r0), (z1, r1) in zip(FLANGE_REACH_ENVELOPE,
+                                  FLANGE_REACH_ENVELOPE[1:]):
+        if r1 <= radius <= r0:
+            return z0 + (z1 - z0) * (r0 - radius) / (r0 - r1)
+    return FLANGE_REACH_ENVELOPE[-1][0]
+
+
+def hover_z(target_z, radius=None):
+    """Hover height above target_z, clamped to the reachable ceiling.
+
+    radius is the flange radius the hover will sit at. Supplying it clamps the
+    hover to what the arm can actually reach THERE, which matters because the
+    reach envelope shrinks with height: at the far edge of the pick zone the
+    grasp itself is comfortably reachable while a hover 40 mm above it is not.
+    Without this the descent's starting point, not the grasp, is what fails --
+    and it fails as an IK miss at the hover, which reads like a reach problem at
+    the target and is not.
+
+    Only ever LOWERS the hover. Omitting radius keeps the previous behaviour."""
     requested = target_z + APPROACH_HEIGHT
     if requested > MAX_HOVER_Z:
         print(f"[pick_place] hover {requested:.3f} exceeds the reachable "
               f"ceiling {MAX_HOVER_Z:.3f} -- clamping (descent shortens to "
               f"{MAX_HOVER_Z - target_z:.3f}m)")
-        return MAX_HOVER_Z
+        requested = MAX_HOVER_Z
+    if radius is not None:
+        reach_ceiling = max_flange_z(radius + HOVER_REACH_CLEARANCE_M)
+        if requested > reach_ceiling:
+            clamped = max(target_z, reach_ceiling)
+            print(f"[pick_place] hover {requested:.3f} is outside the reach "
+                  f"envelope at radius {radius:.4f} (ceiling "
+                  f"{reach_ceiling:.3f}) -- clamping to {clamped:.3f}, descent "
+                  f"shortens to {clamped - target_z:.3f}m")
+            if clamped - target_z < MIN_USEFUL_DESCENT_M:
+                print(f"[pick_place] WARNING: that leaves essentially no "
+                      f"vertical approach. The arm will arrive at the grasp "
+                      f"pose directly instead of descending onto it, so the "
+                      f"jaws come in from the side and can knock the block. "
+                      f"This target is at the very edge of the envelope.")
+            return clamped
     return requested
+
+
+def hover_z_for(x, y, target_z, block_yaw_deg=0.0):
+    """hover_z at the radius a grasp on (x, y) actually puts the flange at.
+
+    The convenience form, and the one callers should reach for: the radius that
+    matters is the COMPENSATED flange radius, not hypot(x, y), because
+    compensate_for_tip_swing pushes the flange ~12 mm further out than the jaw
+    target. Getting that wrong understates the radius and the clamp does not
+    fire when it should."""
+    cx, cy, _cz = compensate_for_tip_swing(x, y, target_z, block_yaw_deg)
+    return hover_z(target_z, radius=math.hypot(cx, cy))
 
 # Vertical distance from the commanded joint6_flange position down to where
 # the gripper actually grips a block, i.e. flange_target_z = block_center_z +
@@ -157,15 +423,270 @@ def hover_z(target_z):
 # (it's purely gripper/flange geometry) -- re-measure with
 # gripper_offset_probe.py and update this if the gripper or camera-flange
 # geometry changes, not if the block size changes.
-GRASP_OFFSET_Z = 0.09
+#
+# RE-MEASURED ON HARDWARE 2026-08-03: 0.090 was 22 mm too SHORT, and being too
+# short is the dangerous direction -- flange = target + offset, so an
+# undersized offset drives the flange, and the fingertips with it, straight
+# into the mat. It did, three times.
+#
+# The measurement: --grasp-only with the fingertips resting on the mat, read
+# straight off /joint_states. Forward kinematics puts the flange 114.0 mm above
+# the mat in that pose, so flange-to-fingertip is 114 mm with the tips touching
+# and ~112 mm with the 2 mm gap actually observed at the shallowest step.
+#
+# 0.090 evidently described some earlier gripper or was inherited from the
+# Gazebo model; gripper_offset_probe.py's docstring claims it was measured, but
+# the FK says gripper_base alone is already 50 mm below the flange and the
+# fingers are visibly longer than 40 mm.
+#
+# UNCERTAIN TO ABOUT +/-2 mm, and biased deliberately toward the SAFE side (a
+# larger offset holds the arm higher). Re-run the --pick-position ladder to
+# confirm before trusting it for a real grasp.
+#
+# MEASURED DIRECTLY 2026-08-03, third value this session (0.090 -> 0.112 ->
+# 0.147). This one is not inferred, it is subtraction:
+#
+#   flange, from FK at the parked grasp pose : 151.3 mm above the mat
+#   fingertips, by ruler, same pose          :   4.0 mm above the mat
+#   flange-to-fingertip                      : 147.3 mm
+#
+# The two earlier values were both derived from "the tips looked about here"
+# rather than measured against the FK the report now prints, and both were
+# short -- which is the direction that drives the gripper into the bench.
+#
+# It is also large enough to be worth sanity-checking against the photo: the
+# gripper assembly really is ~150 mm from flange to fingertip. gripper_base
+# alone is 50 mm down (FK), and the fingers are the other ~97 mm.
+# 0.147 -> 0.1345 on 2026-08-03, from zone_calibrate.py: the first value measured
+# with a digital caliper at the fingertips rather than inferred.
+#
+# At five waypoints the tips sat HIGHER than the model predicted, every time:
+#
+#     centre +14.0   near-L +16.6   near-R +13.8   far-R +9.3   far-L +9.0 mm
+#
+# mean +12.6, so the offset was 12.6 mm too LARGE and every grasp landed high.
+# 0.1470 - 0.0126 = 0.1344, and the same data read the other way -- achieved
+# flange z minus measured tip height, per point -- gives 0.1330 to 0.1380, mean
+# 0.1345. Two independent reductions of the same measurements agreeing to 0.1 mm.
+#
+# History: 0.090 -> 0.112 -> 0.147 -> 0.1345. The first two were eyeballed and
+# both too SHORT, which drove the gripper into the mat. 0.147 came from
+# subtraction against FK with the tips "resting on" the mat -- better, but it
+# assumed contact it could not verify, and it overshot by 12.6 mm.
+#
+# THE 7.6 mm SPREAD IS REAL AND IS NOT THIS CONSTANT. Near waypoints read ~+15,
+# far ones ~+9: the arm hangs lower when extended. That is post-encoder
+# compliance, invisible to FK, and no single number removes it -- see
+# APRIL_TAGS_DEV.md on the lookup table.
+GRASP_OFFSET_Z = 0.1345
 
-# Cube side length, meters -- matches CUBE_SIZE_1/CUBE_SIZE_2 in
-# spawn_world.py. Used to convert a place SURFACE height into the block-
-# center height the flange must descend to when releasing.
-DEFAULT_BLOCK_SIZE = 0.02
+# Cube side length, meters. Used to convert a place SURFACE height into the
+# block-center height the flange must descend to when releasing.
+#
+# WAS 0.02 to match spawn_world.py's Gazebo cubes. The physical block is 30 mm,
+# so on hardware that under-shot every release by 5 mm. Now shares one constant
+# with PICK_XYZ so the two can never drift apart again -- if the real block
+# changes, BLOCK_HEIGHT_M is the single place to say so.
+DEFAULT_BLOCK_SIZE = BLOCK_HEIGHT_M
 
 GRIPPER_OPEN = 0.15    # matches URDF joint upper limit
 GRIPPER_CLOSED = -0.60  # a bit short of full -0.74 limit, safe close
+
+# ---------------------------------------------------------------------------
+# WHY A LEVEL FLANGE CAN STILL HOLD THE BLOCK AT AN ANGLE
+# ---------------------------------------------------------------------------
+# Recorded 2026-07-29 after the sag fix landed. /joint_states-derived flange tilt
+# was 0.50 deg at the grasp and 0.19 deg at the place -- and the held block was
+# still visibly tilted, more so at the place. Both observations are correct. They
+# measure different things, and the difference is the point:
+#
+#   sag   -> the FLANGE is not vertical. Pose-dependent, visible in
+#            /joint_states, fixed by SAG_PRECOMP_* (4.19 -> 0.50 deg, verified).
+#   this  -> the flange IS vertical and the BLOCK is not. Everything past the
+#            last encoder. Completely invisible to /joint_states, so no amount of
+#            joint-space work can see it, let alone fix it.
+#
+# A theory that was WRONG, written down so it is not re-derived: the gripper is
+# angular, every finger joint being revolute about one axis, and that axis is
+# HORIZONTAL in world at both poses ([-0.025, +0.9997, -0.001] at the grasp),
+# so pad swing would tilt the block degree for degree. It does not. The mimic
+# tags make it a parallelogram linkage --
+#     gripper_left3_to_gripper_left1  mimic gripper_controller x-1.0
+# -- so gripper_left3 turns +theta and the pad turns -theta, netting exactly
+# zero. Confirmed by FK: pad rotation 0.000 deg at every point in the travel
+# (0.135, 0.0, -0.2325, -0.60). The pads translate. They never rotate.
+#
+# What the same check DID turn up, and what to investigate first: at the logged
+# contact point (gripper_controller = -0.2325) the two pad links sit ~69 mm
+# apart, against a 30 mm block. And `effort` reads 0.000 on every line of every
+# log, so gripper_close_until_contact has only jaw POSITION LAG to work with --
+# "CONTACT: jaw trailing its command by 0.0675 rad" is as consistent with the
+# linkage binding as with the block. If contact is firing early, the block is
+# held SLACK, which would explain a tilt that is worse at the place pose than the
+# pick pose: a loose block swings and re-settles during the transit between them.
+# A rigid mount error, by contrast, would be identical at both.
+#
+# THE OTHER CANDIDATE is a real mount offset: the URDF reaches the gripper via
+# two hand-authored right angles,
+#     joint6output_to_camera_flange   rpy = "1.5708 1.5708 0"
+#     camera_flange_to_gripper_base   rpy = "0 1.5708 1.5708"
+# and if the physical mount does not match them, "flange vertical" and "jaws
+# vertical" differ by a constant -- which is exactly the original complaint that
+# the tilt "is always the same, always very consistently that angle, and never
+# goes away".
+#
+# The two are distinguished by one 5-second test: grip a block, then try to move
+# it by hand. If it shifts, the grip is slack (fix the contact detection, not the
+# geometry). If it is rock solid and still tilted, it is the mount, and the
+# constants below correct it.
+#
+# These are a TOOL-FRAME correction, and that frame matters. The error is fixed
+# relative to the gripper, so it must rotate with the gripper; SAG_PRECOMP_* is a
+# world-frame effect and pre-multiplies instead. Applying a tool-frame error in
+# the radial frame would cancel it at one pose and double it at the pose 180 deg
+# opposite -- which is worth knowing, because grasp and place ARE ~180 deg apart
+# here, and that is one candidate explanation for the pick/place asymmetry.
+#
+# MEASURING THEM: put the arm at the grasp pose, then sight the jaw faces against
+# vertical from the front and from the side (phone level app against a jaw face
+# is enough). Adjust the axis that matches the direction of lean; if the tilt
+# doubles instead of vanishing, flip the sign.
+#
+# Both 0.0 = disabled, exactly the behaviour before this was added.
+#
+# SET 2026-08-03 from the first measurement that could actually separate this
+# from droop. Procedure: park at the grasp pose, echo /joint_states, then hold
+# the gripper physically vertical by hand and echo again.
+#
+#   joint3_to_joint2   +1.05 deg      <-- the two pitch joints
+#   joint4_to_joint3   +0.53 deg
+#   everything else    under 0.2 deg
+#
+# = a 1.68 deg tool-frame rotation from the commanded orientation.
+#
+# WHY THIS IS NOT MORE SAG, WHICH IS THE WHOLE POINT. At that same resting
+# pose the joints were already AT their commanded target -- joint3_to_joint2
+# off by -0.12 deg, joint4_to_joint3 by -0.12 deg -- because the bridge's
+# gravity feedforward had removed the droop. And the URDF puts the flange
+# 0.17 deg from straight down at those exact joint values. The arm is doing
+# what it was told; the tool is not where the URDF says it is. That is a fixed
+# geometric offset, not a load effect, and feeding it into GRAVITY_FF_COEFFS
+# would be wrong -- those get scaled by the gravity moment arm, so a constant
+# folded in there would be right at this pose and wrong everywhere else.
+#
+# Being tool-frame, this correction rotates with the gripper and therefore
+# generalises across the workspace on its own. It does NOT need to be
+# specialised per zone, even though it was measured at one pose.
+#
+# Decomposed in the flange's local frame: X -0.37, Y -1.48, plus -0.71 deg of
+# yaw about the tool axis. The yaw term is deliberately dropped -- rotation
+# about the approach axis does not affect whether the jaws point down, it only
+# spins them, and GRIPPER_YAW_DEG already owns that.
+#
+# HOW GOOD ARE THESE NUMBERS. The joint deltas are encoder readings and are
+# solid. What is soft is the "looks vertical to me" judgment that set the
+# reference, from ONE sample. Confirm with a phone level against a jaw face,
+# per the procedure above, before trusting sub-millimetre placement. If the
+# tilt DOUBLES instead of vanishing, flip both signs.
+#
+# STILL UNRESOLVED, and it decides whether this fix can work at all: whether
+# the servo simply has a dead band wider than 1 deg, in which case its resting
+# position is arbitrary within that band and no fixed offset lands reliably.
+# The test is five seconds -- hold the gripper vertical and LET GO. Springs
+# back to sagging => geometric, these constants are right. Stays where you put
+# it => dead band, and this is treating a symptom.
+# ITERATION 2, 2026-08-03. Re-measured at the GRASP pose (--grasp-only) with
+# the first estimate live, and the residual was another 1.85 deg of tool-frame
+# rotation -- local X -1.59, Y -0.94 -- on top of the 1.53 deg already applied.
+#
+#   pose                      total required   conditions
+#   first grasp sample              1.68 deg   nothing applied yet; judging the
+#                                              full 2.6 deg tilt by eye
+#   hover                           2.86 deg   1.53 applied, judging ~0.8
+#   grasp                           2.60 deg   1.53 applied, judging ~1.6
+#
+# The two taken WITH a correction already in place agree to 0.26 deg. The first
+# is the outlier and it is also the least reliable -- eyeballing "vertical" is
+# much harder at 2.6 deg than at 0.8. So this IS a pose-independent tool-frame
+# offset after all, and the earlier conclusion that it was pose-dependent was
+# an artifact of that one bad sample. Fitted here to the grasp, which is where
+# blocks are actually picked.
+#
+# THE DIRECTION IS LESS CERTAIN THAN THE MAGNITUDE. The residual pointed mostly
+# along local X while the first estimate pointed mostly along local Y, so the
+# axis moved as well as the size. Magnitudes are easy to judge by eye,
+# quadrants are not. If the next run leaves a residual that is no smaller,
+# suspect the axis rather than the scale.
+#
+# CONVERGED HERE, 2026-08-03. A third --grasp-only measurement at these values
+# left 0.63 deg of tool-frame rotation, of which 0.34 deg is about the tool's
+# own axis -- yaw, which does not affect whether the jaws point down. The real
+# remaining TILT is 0.54 deg. Residual by iteration: 1.85 -> 0.63.
+#
+# joint3_to_joint2, the joint that dominated every earlier measurement, went
+# from needing +1.58 deg to needing +0.17 deg. It is done.
+#
+# STOPPED DELIBERATELY RATHER THAN ITERATING AGAIN. 0.54 deg is inside the
+# ~0.6 deg run-to-run scatter that J2's free play produces at a single pose, so
+# a fourth pass would be fitting the play rather than the offset -- and it is
+# 0.5 mm of jaw offset against the ~7 mm of J1 backlash still present, so it is
+# not the limiting error anywhere.
+#
+# ONE THING NOT UNDERSTOOD, recorded rather than papered over: the URDF tilt at
+# which the tool reads physically vertical grew from 2.60 to 4.53 deg between
+# iterations 2 and 3, i.e. the apparent offset moved when the command moved,
+# which a genuinely fixed mount error would not do. The physical residual did
+# shrink as intended, so this does not block anything, but it means these
+# constants are an empirical fit and not a measured geometric constant. Re-fit
+# rather than extrapolate if the tool assembly is ever disturbed.
+#
+# WATCH THE IK TOLERANCE IF THIS KEEPS GROWING. The total is now 3.11 deg
+# against IK_ORI_XY_TOLERANCE's 5.73 deg. Inside that window IK is free to
+# return a solution that ignores the request entirely and it would do so
+# silently -- verified NOT to be happening at 1.53 deg (101% of the request
+# reached the arm), but a third iteration of this size would get close enough
+# to the limit to need re-checking rather than assuming.
+#
+# EXPECT A FLOOR AROUND 0.5 deg AND DO NOT CHASE PAST IT. J2's free play is
+# ~2 deg wide and the arm rests wherever in that window its approach left it --
+# measured run-to-run scatter at one pose is ~0.6 deg. No fixed constant can
+# beat that; it is the same free play that makes this correction necessary.
+# ITERATION 3 WAS TRIED AND REVERTED, 2026-08-03. Keep this value.
+#
+# At iteration 2 the residual at the grasp was 0.63 deg, with J2 and J3 reading
+# BIT-IDENTICAL between resting and being held physically vertical -- the two
+# joints this whole investigation started with were finished. What was left was
+# wrist play, and joint5_to_joint4's +0.62 deg looked actionable against the
+# 0.18 deg run-to-run spread ff_verify had measured for it. Adding it took the
+# constants to (-2.50, -2.73), 3.70 deg.
+#
+# IT MADE THINGS WORSE, and the direction of the error is the useful part:
+#
+#   applied 1.53 deg  ->  residual 1.85 deg
+#   applied 3.11 deg  ->  residual 0.63 deg     <-- best
+#   applied 3.70 deg  ->  residual 1.43 deg     <-- and J4 itself went 0.62 -> 2.02
+#
+# WHY THE GATE WAS WRONG, because the same mistake is easy to repeat. J4's
+# residual was measured while IK re-solves the orientation on every run;
+# ff_verify's 0.18 deg spread was measured with FIXED joint angles commanded
+# directly. Those are not the same noise. Every time the commanded orientation
+# changes, IK redistributes the tilt across the wrist joints -- so a residual
+# measured at one commanded orientation does not predict the residual at
+# another, and J4 simply absorbed more of the larger tilt. The iteration scheme
+# is only valid for steps small enough that IK returns essentially the same
+# solution, and 0.6 deg was already past that.
+#
+# It would also have walked into a cliff: the next step implied 5.66 deg against
+# IK_ORI_XY_TOLERANCE's 5.73 deg, where IK is free to discard the request
+# entirely and silently.
+#
+# 3.11 deg is where this stops. Residual 0.63 deg, of which 0.34 is yaw about
+# the tool axis and does not tilt anything -- so 0.54 deg of real tilt, 0.5 mm
+# of jaw offset at the 0.056 m lever, against ~7 mm of J1 backlash still in the
+# system. It is not the limiting error anywhere, and chasing it further means
+# fitting how IK happens to distribute the wrist that run.
+GRIPPER_MOUNT_TILT_X_DEG = -0.51   # about the flange's local X
+GRIPPER_MOUNT_TILT_Y_DEG = -0.63   # about the flange's local Y
 
 # gripper_controller's URDF effort limit is 1000 (an unset-default value, not
 # a real spec), so nothing in sim stops the gripper from driving straight
@@ -252,10 +773,248 @@ GROUP_NAME = "arm_group"
 # the yaw=0 REFERENCE quaternion for gripper_yaw_quat() below -- other
 # scripts (annulus_test.py) import these raw components directly, so leave
 # them as-is and do yaw adjustments via gripper_yaw_quat() instead.
-GRASP_QX = -0.7071
-GRASP_QY = 0.7071
+#
+# EXACT, not 4-decimal (fixed 2026-07-29). 0.7071 is not 1/sqrt(2); the
+# resulting quaternion is not quite a unit quaternion and does not describe
+# quite a straight-down rotation. Measured: the rounded constants asked the
+# flange for a pose 0.5019 deg off vertical, so half a degree of the
+# long-standing grasp tilt was baked into the TARGET before any solver or servo
+# was involved. Costs nothing to make exact.
+#
+# This is NOT the main cause of that tilt -- the other ~3.2 deg is the pitch
+# joints undershooting, see SAG_PRECOMP_RADIAL_DEG below -- but it is the one part
+# that was pure arithmetic.
+GRASP_QX = -math.sqrt(0.5)
+GRASP_QY = math.sqrt(0.5)
 GRASP_QZ = 0.0
 GRASP_QW = 0.0
+
+# GRAVITY SAG PRE-COMPENSATION (2026-07-29). Aim the grasp orientation slightly
+# off vertical so that the arm's own sag brings it back TO vertical.
+#
+# Replaces the corrective-nudge approach in mycobot_bridge.py, which is disabled
+# -- see SETTLE_BIAS_ENABLED there for the algebra. In short: a stationary joint
+# will not move for a command delta smaller than its dead band, and the dead band
+# here is LARGER than the error being corrected, so no after-the-fact nudge can
+# work at any gain. Pre-compensation sidesteps that entirely, because the arm
+# reaches this target as part of a full trajectory -- the joints are already in
+# motion, so the dead band never arms.
+#
+# TWO components, in the arm's own frame at the target, not one:
+#   radial     -- in the vertical plane through the base axis and the target.
+#                 Positive = lean OUTWARD, away from the base.
+#   tangential -- perpendicular to that, about the radial direction.
+#                 Positive = lean along (z_hat x r_hat).
+#
+# The first version of this corrected radial only, and hardware showed why that
+# was not enough. Measured tilt decomposed into the two components (deg):
+#
+#   pose             tilt    radial   tangential
+#   grasp  before    4.189    -3.809     -1.743
+#   place  before    5.049    -4.651     -1.964
+#   grasp  radial-only run 1  2.019    +1.543     -1.301
+#   grasp  radial-only run 3  2.246    +1.615     -1.561
+#   place  radial-only run 1  2.319    -0.572     -2.247
+#   place  radial-only run 3  2.197    -0.510     -2.137
+#
+# Radial went from -3.8/-4.7 to about zero: that part worked. TANGENTIAL was never
+# touched (-1.7 -> -1.3, -2.0 -> -2.2) and is now the dominant residual. It is
+# negative in all eight measurements, so it is exactly as systematic as radial
+# was; correcting one axis and not the other just left the other one behind.
+#
+# This is also why the place pose looks visibly worse than the pick pose, which
+# reads as the tilt "amplifying" through the sequence. It does not amplify: place
+# simply has the larger tangential term (-2.2 vs -1.3) and always did.
+#
+# PAYLOAD. The radial residuals disagree in a way that is physically meaningful,
+# not noise: grasp OVERSHOT (+1.54, wants less pre-comp) while place UNDERSHOT
+# (-0.57, wants more), and the place descent is the one where the gripper is
+# HOLDING A BLOCK. More mass on the end -> more sag -> more pre-compensation
+# needed. So the correction carries a payload term rather than two unrelated
+# per-pose constants, which is both better justified and generalises to any
+# loaded/unloaded move instead of just these two hardcoded poses.
+#
+# Values below solve the four measurements for zero residual, using the measured
+# radial response (1.16x at the grasp pose, 0.89x at the place pose) rather than
+# assuming the commanded degree lands as a degree.
+#
+# Set both EMPTY values to 0.0 to disable entirely and recover prior behaviour.
+#
+# ZEROED 2026-08-02, BECAUSE THE DROOP IS NOW CORRECTED AT SOURCE.
+# The previous values are kept immediately below; restoring them is a
+# copy-paste and nothing else depends on them being zero.
+#
+#   SAG_PRECOMP_RADIAL_DEG = 3.27
+#   SAG_PRECOMP_TANGENTIAL_DEG = 1.30
+#   SAG_PRECOMP_PAYLOAD_RADIAL_DEG = 1.97
+#   SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG = 0.95
+#
+# mycobot_bridge.py now applies a measured gravity feedforward in JOINT space
+# on every streamed setpoint (see GRAVITY_FF_ENABLED there). At this pose that
+# cancels 2.92 deg of the 4.19 deg tilt these constants were fitted to cancel
+# empirically. Leaving both corrections live would over-correct by roughly the
+# amount the feedforward removes, i.e. tilt the jaws ~3 deg the OTHER way.
+#
+# ZEROED RATHER THAN SCALED TO 30%, DELIBERATELY. Two corrections for one
+# effect cannot be tuned at the same time -- any residual could belong to
+# either.
+#
+# BE HONEST ABOUT WHAT THIS TRADES AWAY. These constants were VERIFIED to take
+# the tilt from 4.19 to 0.50 deg at the grasp (see the note above, 2026-07-29).
+# The feedforward is predicted to remove 2.92 of that 4.19 deg, so on tilt
+# ALONE this is very likely a step backwards, to something like 1.3 deg.
+#
+# It is still the right trade, because the two corrections do not fix the same
+# thing:
+#
+#   SAG_PRECOMP_* rotates the TARGET ORIENTATION only. It aims the flange off
+#       vertical so sag brings it back. It never moves the target position, so
+#       the ~8.6 mm the arm sags DOWNWARD at the grasp is completely
+#       uncorrected by it -- and that is the error that makes the jaws close
+#       on nothing. Tilt was never the thing breaking the grasp.
+#   The feedforward corrects the JOINT ANGLES, so it fixes position and
+#       orientation together, at every pose, not at two fitted ones.
+#
+# 1 deg of residual tilt is 1.0 mm of jaw offset over the 0.056 m flange-to-jaw
+# lever. Giving up ~0.8 deg of tilt (0.8 mm) to recover 8.6 mm of height is
+# worth it by an order of magnitude.
+#
+# WHAT THE LEFTOVER PROBABLY IS -- and this is a guess, not a measurement. The
+# feedforward corrects only the SYMMETRIC half of the joint error, the half
+# that does not reverse with travel direction. The ANTISYMMETRIC half
+# (friction, dead zone, lost motion) runs 0.4-0.9 deg per pitch joint and is
+# untouched by any feedforward. That is the right order of magnitude for the
+# missing ~1.3 deg, and unlike a mount offset it depends on which way the arm
+# drove in.
+#
+# NEXT STEP, and it needs the arm: ff_verify.py, run twice with the feedforward
+# toggled. If the remainder is a pose-independent constant, add it as a fixed
+# offset here. If it flips sign with approach direction, it is the
+# antisymmetric term and belongs in the unidirectional-approach work instead.
+# If it still varies with reach, the feedforward coefficients are wrong rather
+# than incomplete.
+# THE TILT CORRECTION IS TWO THINGS AND WAS BEING APPLIED AS ONE (2026-08-04).
+#
+# All 3.11 deg of it lived in GRIPPER_MOUNT_TILT_*, a TOOL-frame rotation. The
+# jaws hold a fixed world yaw, so a tool-frame rotation is world-fixed -- and
+# decomposed against the bearing it comes out as
+#
+#     pick  (0, +0.2286)   +3.10 deg radial
+#     place (0, -0.2286)   -3.10 deg radial
+#
+# It flips. Gravity sag does not: the arm droops outward at every bearing. So the
+# one correction cancelled the sag at the pick and ADDED to it at the place,
+# which is why the gripper hung visibly askew there while looking perfect at the
+# pick.
+#
+# THE SPLIT, from the held-upright measurement at five place waypoints. With A
+# applied, m the genuine tool-frame mount error (flips) and s the radial sag
+# (does not), the pick being correct gives m + s = 3.10, and the place residual
+# is then 2s. Measured: 4.57 deg (spread 2.11) -> s = 2.29, m = 0.81.
+#
+# GRIPPER_MOUNT_TILT_* is scaled to that 0.81 deg, keeping its direction:
+# (-1.96, -2.42) x 0.26 = (-0.51, -0.63).
+#
+# THE PICK IS DELIBERATELY UNCHANGED. 2.29 + 0.81 = 3.10 radial there, exactly
+# what the verified configuration commanded. Only the place moves, from -3.10 to
+# +1.48 -- a swing of 4.58 deg, which is the 4.57 that was measured. The one
+# thing this must not do is break the zone that already works.
+#
+# CONFIDENCE IS IN THE DIRECTION, NOT THE MAGNITUDE. The radius data implies a
+# smaller physical tilt at the place (~1.7 deg) than the held-upright reading
+# (4.57), probably because "upright" by feel overshoots or the radius was taken
+# at the gripper body rather than the fingertips. The sign and the bearing
+# dependence are beyond doubt; s could be 20-50% high. Re-measure at the place.
+SAG_PRECOMP_RADIAL_DEG = 2.29           # empty gripper
+SAG_PRECOMP_TANGENTIAL_DEG = 0.0       # empty gripper
+# Added ON TOP of the above while a block is held.
+SAG_PRECOMP_PAYLOAD_RADIAL_DEG = 0.0
+SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG = 0.0
+
+# HONEST LIMITS OF THIS MODEL, because the goal is ~1 mm and this will not get
+# there on its own:
+#   - It is fitted to TWO positions, both at 0.249 m reach. Reach and height
+#     dependence are entirely unmeasured, so it is not known to hold anywhere
+#     else in the workspace -- and Stage 1 onward grasps at arbitrary positions
+#     inside the zone.
+#     THIS BIT HAS NOW ACTUALLY EXPIRED, 2026-08-02: the zones moved in to
+#     ZONE_RADIUS_M = 0.2286, so no grasp happens at the fitted reach any more.
+#     Direction of the error is known even though the size is not -- less reach
+#     means a shorter gravity lever, so the true sag at 0.2286 is SMALLER than at
+#     0.249 and these constants now OVER-correct. Left unchanged deliberately
+#     rather than scaled by a guessed cos/lever ratio: 2.5 cm is ~10% of reach,
+#     the residuals being corrected are 1-3 deg, so the error introduced is a
+#     fraction of a degree -- smaller than the scatter the fit was made against.
+#     Re-fit from a real run before trusting sub-millimetre placement.
+#   - The payload term is fitted to ONE block mass.
+#   - The flange-to-jaw lever is 0.056 m, so 1 deg of residual tilt is 1.0 mm of
+#     jaw offset, and a 30 mm block tilted 1 deg has its top face 0.5 mm out of
+#     level. Stacking compounds that per course.
+# The scalable answer is to stop modelling and start measuring: the wrist camera
+# is rigid to the flange, so the AprilTag homography taken at hover can report
+# the actual flange tilt in situ, per pose, every time. That needs the camera
+# intrinsics that camera.launch.py's unused camera_info_url hook is already
+# there for. See "Stage 0b.4" in APRIL_TAGS.md.
+
+# ---------------------------------------------------------------------------
+# J1 BACKLASH: UNIDIRECTIONAL FINAL APPROACH (2026-08-03)
+# ---------------------------------------------------------------------------
+# joint2_to_joint1, the base yaw, has 1.75 deg of lost motion -- test3_full.csv,
+# median across six postures, and the largest of any joint by 2-4x (J2 0.44,
+# J3 0.79, J4 0.61). At the 0.2286 m grasp radius that is 7.0 mm of TANGENTIAL
+# error, which dwarfs everything the gravity feedforward removes.
+#
+# IT CANNOT BE FIXED THE WAY THE DROOP WAS. Droop is deterministic given the
+# pose, so it can be aimed past. Lost motion is not: the resting position
+# depends on which direction you arrived from, and on a reversal the joint does
+# not move at all -- 43 of 62 reversing corrections stalled outright in test3.
+# No error signal means no feedback, and no deterministic offset means no
+# feedforward.
+#
+# What IS available is to stop arriving from both sides. Approach from the same
+# direction every time and the lost motion stops being a +/-1.75 deg coin flip
+# and becomes a CONSTANT offset -- and a constant can be calibrated out, either
+# into the target or into GRIPPER_MOUNT_TILT-style compensation. That is the
+# whole trick, and it is why APRIL_TAGS_DEV.md has listed "unidirectional final
+# approach" as the standard fix since the backlash was first measured.
+#
+# THE LEAD MUST EXCEED THE LOST MOTION or the back-off never leaves the slack
+# band and the re-approach measures nothing: 3.0 deg against 1.75 measured.
+#
+# THIS DEPENDS ON THE write_command FIX. Both legs are small joint-space moves
+# (3 deg), which is exactly the class of motion the bridge was silently
+# discarding before 2026-08-02 -- see mycobot_bridge.py's write_command. On a
+# robot without that build these legs do nothing at all.
+J1_UNIDIRECTIONAL_ENABLED = True
+J1_JOINT_NAME = "joint2_to_joint1"
+J1_APPROACH_DIR = +1.0            # always arrive travelling POSITIVE
+J1_APPROACH_LEAD_DEG = 3.0
+J1_APPROACH_SEC = 1.5
+
+# The lost motion the unidirectional approach makes CONSTANT, now removed.
+#
+# Measured by zone_calibrate.py across all five pickup-zone waypoints, 2026-08-03:
+# the flange's achieved bearing sits BELOW its commanded bearing by
+#
+#     centre +1.02   near-L +1.23   near-R +0.97   far-R +1.10   far-L +1.16 deg
+#
+# mean +1.10, spread 0.26. J1 under-travels: it stops short of its target on the
+# positive approach and rests against the same flank of its own slack every time,
+# which is exactly what J1_UNIDIRECTIONAL_ENABLED was built to guarantee. Making
+# it constant was the hard part; subtracting it is arithmetic.
+#
+# AN ANGLE, NOT A DISTANCE, and that is not a detail. The same five samples read
+# +3.69 to +5.35 mm of tangential error -- 36% spread. Divided by radius they
+# read 0.97 to 1.23 deg -- 24%. The error lives at the joint, so a Cartesian
+# correction would only be right at the radius it was fitted at, and the pickup
+# zone spans 200 to 265 mm.
+#
+# ONLY VALID WHERE THE APPROACH DIRECTION IS GUARANTEED, which is why it is
+# applied here and nowhere else: arrive on J1 from the other side and the lost
+# motion lands on the other flank, so this bias would double the error instead of
+# cancelling it.
+J1_RESIDUAL_BIAS_DEG = 1.10
+J1_LIMIT_RAD = (-2.9321, 2.9321)  # from the URDF, same as the bridge's table
 
 CARTESIAN_MAX_STEP = 0.005       # 5mm interpolation resolution
 CARTESIAN_JUMP_THRESHOLD = 0.0   # 0 disables jump-threshold filtering
@@ -477,7 +1236,113 @@ _IK_BEARING_OFFSET = 0.257
 _GRASP_YAW_JOINT_OFFSET = -math.radians(GRIPPER_YAW_DEG)
 
 
-def _bearing_seeds(x, y):
+# ---------------------------------------------------------------------------
+# PER-BLOCK GRASP YAW (added 2026-07-28 for the AprilTag feature)
+# ---------------------------------------------------------------------------
+# Everything above holds the gripper at ONE fixed world yaw for every grasp,
+# which is right when the block is placed by hand to match the jaws. Once a
+# camera reports where the block is AND how it is rotated, the jaws have to
+# turn to meet it, and the yaw becomes per-move rather than per-run.
+#
+# block_yaw_deg is that per-move rotation, in the WORLD frame, and it composes
+# ON TOP of GRIPPER_YAW_DEG. The two are different things and must not be
+# collapsed into one constant:
+#
+#   GRIPPER_YAW_DEG   the tool sits 45 deg askew on its mount. A property of
+#                     the hardware. Fixed forever, same for every grasp.
+#   block_yaw_deg     how far this particular block is rotated on the table.
+#                     Different for every grasp, and 0.0 for every caller that
+#                     predates this feature.
+#
+# Every function below takes block_yaw_deg=0.0 as a default, which reproduces
+# the previous fixed-yaw behaviour EXACTLY -- gripper_yaw_quat(GRIPPER_YAW_DEG
+# + 0.0) is the same quaternion as the GRIPPER_LOCK_Q* globals. That matters:
+# reset_arm.py, annulus_test.py, collision_contacts.py and this script's own
+# main() all keep working unchanged, and the TESTS.md characterization baseline
+# does not move.
+def sag_precomp_angles(holding_block=False):
+    """(radial_deg, tangential_deg) of pre-compensation to apply."""
+    radial = SAG_PRECOMP_RADIAL_DEG
+    tangential = SAG_PRECOMP_TANGENTIAL_DEG
+    if holding_block:
+        radial += SAG_PRECOMP_PAYLOAD_RADIAL_DEG
+        tangential += SAG_PRECOMP_PAYLOAD_TANGENTIAL_DEG
+    return radial, tangential
+
+
+def sag_precomp_quat(x, y, holding_block=False, angles=None):
+    """World-frame rotation that tips the downward approach axis against the
+    arm's gravity sag at target (x, y) -- see SAG_PRECOMP_RADIAL_DEG.
+
+    Pre-multiplied onto the grasp quaternion, so it composes with the block yaw
+    rather than being applied in the already-rotated tool frame.
+
+    Both rotation axes are horizontal and derived from r_hat, the direction from
+    the base axis out to the target:
+      radial     about (r_hat x z_hat) -- swings the tool away from the base.
+      tangential about  r_hat          -- swings it along (z_hat x r_hat).
+    Rodrigues on a = -z_hat confirms both signs: rotating -z_hat about r_hat by
+    +T gives -z_hat*cos(T) + (z_hat x r_hat)*sin(T), i.e. +T of tangential lean.
+
+    Returns identity when there is nothing to do, including for a target on the
+    base axis where r_hat -- and therefore any notion of "outward" -- is undefined.
+    """
+    if angles is None:
+        angles = sag_precomp_angles(holding_block)
+    radial_deg, tangential_deg = angles
+    r = math.hypot(x, y)
+    if r < 1e-6 or (not radial_deg and not tangential_deg):
+        return (0.0, 0.0, 0.0, 1.0)
+    rx, ry = x / r, y / r
+
+    def about(axis, deg):
+        half = math.radians(deg) / 2.0
+        s = math.sin(half)
+        return (axis[0] * s, axis[1] * s, axis[2] * s, math.cos(half))
+
+    # r_hat x z_hat = (ry, -rx, 0) for unit r_hat in the XY plane.
+    q_radial = about((ry, -rx, 0.0), radial_deg)
+    q_tangential = about((rx, ry, 0.0), tangential_deg)
+    return quat_multiply(q_tangential, q_radial)
+
+
+def grasp_quat_for(block_yaw_deg=0.0, x=None, y=None, holding_block=False):
+    """The grasp quaternion for a block rotated block_yaw_deg about world +Z.
+
+    Reads GRIPPER_YAW_DEG at CALL time, not at import time, so --gripper-yaw-deg
+    still takes effect (gripper_yaw_quat's own default argument is bound at def
+    time and would not).
+
+    x, y are the TARGET position. Supplying them enables the gravity sag
+    pre-compensation, which needs to know which way "outward" is. Omitting them
+    (the default) returns the uncompensated orientation, so any caller that does
+    not care about sag -- or any pose where it does not apply -- is unchanged.
+
+    holding_block adds the payload term: a loaded gripper sags measurably more
+    than an empty one, which is the difference between the pick and place descents.
+    """
+    if not block_yaw_deg:
+        base = (GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
+    else:
+        base = gripper_yaw_quat(GRIPPER_YAW_DEG + block_yaw_deg)
+    # Mount tilt is constant in the TOOL frame, so it POST-multiplies -- unlike
+    # the sag correction, which is a world-frame effect and pre-multiplies. See
+    # GRIPPER_MOUNT_TILT_X_DEG for why the frame is the whole question here.
+    for axis, deg in ((0, GRIPPER_MOUNT_TILT_X_DEG), (1, GRIPPER_MOUNT_TILT_Y_DEG)):
+        if not deg:
+            continue
+        half = math.radians(deg) / 2.0
+        v = [0.0, 0.0, 0.0]
+        v[axis] = math.sin(half)
+        base = quat_multiply(base, (v[0], v[1], v[2], math.cos(half)))
+    if x is None or y is None:
+        return base
+    # World-frame correction: pre-multiply, so it composes with the yaw rather
+    # than being applied in the (already rotated) tool frame.
+    return quat_multiply(sag_precomp_quat(x, y, holding_block), base)
+
+
+def _bearing_seeds(x, y, block_yaw_deg=0.0):
     """Seeds whose base rotation actually points at the target.
 
     THIS IS THE FIX for IK converging only about half the time (2026-07-27).
@@ -521,12 +1386,20 @@ def _bearing_seeds(x, y):
                       "joint5_to_joint4": -0.869, "joint6_to_joint5": 0.0}),
     ]
 
+    # The wrist offset must track the yaw the gripper is actually being asked to
+    # hold, not just the mount correction. Seeding joint6output for a straight-
+    # on grasp while solving for a block rotated 40 deg puts KDL 0.7 rad from
+    # the answer -- the same local-solver miss described above, reintroduced by
+    # the back door. Recomputed here rather than read from the module-level
+    # _GRASP_YAW_JOINT_OFFSET so a per-move yaw moves the seeds with it.
+    yaw_joint_offset = -math.radians(GRIPPER_YAW_DEG + block_yaw_deg)
+
     seeds = []
     for base_label, base in candidates:
         for shape_label, shape in shapes:
             seed = dict(shape)
             seed["joint2_to_joint1"] = base
-            seed["joint6output_to_joint6"] = base + _GRASP_YAW_JOINT_OFFSET
+            seed["joint6output_to_joint6"] = base + yaw_joint_offset
             seeds.append((f"{base_label}/{shape_label}", seed))
     return seeds
 
@@ -937,9 +1810,15 @@ class RobotIOClient(Node):
             # -0.48 - (-0.53) evaluates to 0.050000000000000044, which is not
             # <= 0.05. Observed on real hardware 2026-07-26: a grasp reported
             # "per-joint error 0.05, tolerance 0.05" and failed.
+            # Per-joint tolerance where the global one asks the wrong question --
+            # see ARM_SETTLE_TOLERANCE_PER_JOINT. Only applied when it LOOSENS the
+            # gate, so passing a tighter settle_tolerance explicitly (the gripper
+            # calls this with 0.05) is never silently widened.
             reached = all(
                 name in self._joint_positions and
-                abs(self._joint_positions[name] - pos) <= settle_tolerance + 1e-9
+                abs(self._joint_positions[name] - pos) <= max(
+                    settle_tolerance,
+                    ARM_SETTLE_TOLERANCE_PER_JOINT.get(name, 0.0)) + 1e-9
                 for name, pos in target.items()
             )
             for n, p0 in start_positions.items():
@@ -1004,9 +1883,18 @@ class RobotIOClient(Node):
         else:
             verdict = ("the arm DID move but stopped short -- a tracking or joint "
                        "limit problem, not a dead write path.")
+        # Name the per-joint overrides explicitly. Reporting a flat "tolerance
+        # 0.07" while a joint is actually gated at 0.09 sends the next person
+        # chasing the wrong number, which is how the 0.0712-vs-0.07 abort read as
+        # a random fluke rather than a threshold sitting in the wrong place.
+        applied = {n: max(settle_tolerance, ARM_SETTLE_TOLERANCE_PER_JOINT[n])
+                   for n in target
+                   if ARM_SETTLE_TOLERANCE_PER_JOINT.get(n, 0.0) > settle_tolerance}
+        tol_note = (f"{settle_tolerance} rad, overridden {applied}"
+                    if applied else f"{settle_tolerance} rad")
         self.get_logger().error(
             f"{label} goal: ACCEPTED by the controller but /joint_states never "
-            f"converged within {timeout_sec}s (tolerance {settle_tolerance} rad).\n"
+            f"converged within {timeout_sec}s (tolerance {tol_note}).\n"
             f"  per-joint error (current - target): {errors}\n"
             f"  max movement of ANY joint during the whole wait: "
             f"{max_excursion:.4f} rad\n"
@@ -1613,16 +2501,725 @@ def make_orientation_constraint(link_name, frame_id, qx, qy, qz, qw,
     return constraint
 
 
-def make_grasp_pose(x, y, z):
-    """Pose for Cartesian waypoints: position + the fixed downward, fixed-yaw grasp orientation."""
+# URDF arm chain, for reporting where the flange ACTUALLY ended up. Copied from
+# mycobot_280_pi_camera_flange_plus_gripper_unchanged_transforms.urdf; the same
+# table lives in mycobot_bridge.py and ff_verify.py, validated against
+# serial_rate_probe.py's posture set to 5e-5 m. (xyz, rpy, axis).
+_FK_CHAIN = [
+    ([0.0, 0.0, 0.13956], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0, -0.001], [0.0, 1.5708, -1.5708], [0.0, 0.0, 1.0]),
+    ([-0.1104, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+    ([-0.096, 0.0, 0.06462], [0.0, 0.0, -1.5708], [0.0, 0.0, 1.0]),
+    ([0.0, -0.07318, -0.001], [1.5708, -1.5708, 0.0], [0.0, 0.0, 1.0]),
+    ([0.0, 0.0456, 0.0], [-1.5708, 0.0, 0.0], [0.0, 0.0, 1.0]),
+]
+
+
+
+def _mat_mul(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4)]
+            for i in range(4)]
+
+
+def _origin(xyz, rpy):
+    r, p, y = rpy
+    cr, sr, cp, sp, cy, sy = (math.cos(r), math.sin(r), math.cos(p),
+                              math.sin(p), math.cos(y), math.sin(y))
+    return [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, xyz[0]],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, xyz[1]],
+            [-sp, cp * sr, cp * cr, xyz[2]], [0.0, 0.0, 0.0, 1.0]]
+
+
+def _axis_rot(axis, angle):
+    ax, ay, az = axis
+    c, s, u = math.cos(angle), math.sin(angle), 1.0 - math.cos(angle)
+    return [[u * ax * ax + c, u * ax * ay - s * az, u * ax * az + s * ay, 0.0],
+            [u * ax * ay + s * az, u * ay * ay + c, u * ay * az - s * ax, 0.0],
+            [u * ax * az - s * ay, u * ay * az + s * ax, u * az * az + c, 0.0],
+            [0.0, 0.0, 0.0, 1.0]]
+
+def _fk_flange(joint_values):
+    """(position, approach_axis) of the flange for the six arm joints, in
+    HOME_RADIANS order. Pure URDF geometry -- what the MODEL says the arm is
+    doing, which is exactly the thing to compare against a tape measure."""
+    t = [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
+    for (xyz, rpy, axis), angle in zip(_FK_CHAIN, joint_values):
+        r, p, y = rpy
+        cr, sr, cp, sp, cy, sy = (math.cos(r), math.sin(r), math.cos(p),
+                                  math.sin(p), math.cos(y), math.sin(y))
+        o = [[cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, xyz[0]],
+             [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, xyz[1]],
+             [-sp, cp * sr, cp * cr, xyz[2]], [0.0, 0.0, 0.0, 1.0]]
+        t = [[sum(t[i][k] * o[k][j] for k in range(4)) for j in range(4)]
+             for i in range(4)]
+        ax, ay, az = axis
+        c, s, u = math.cos(angle), math.sin(angle), 1.0 - math.cos(angle)
+        rot = [[u * ax * ax + c, u * ax * ay - s * az, u * ax * az + s * ay, 0.0],
+               [u * ax * ay + s * az, u * ay * ay + c, u * ay * az - s * ax, 0.0],
+               [u * ax * az - s * ay, u * ay * az + s * ax, u * az * az + c, 0.0],
+               [0.0, 0.0, 0.0, 1.0]]
+        t = [[sum(t[i][k] * rot[k][j] for k in range(4)) for j in range(4)]
+             for i in range(4)]
+    return ([t[0][3], t[1][3], t[2][3]], [t[0][2], t[1][2], t[2][2]])
+
+
+# The two FIXED joints below the flange. `camera_flange_to_gripper_base` carries
+# a 40 mm LATERAL offset, so the jaws do NOT sit on the flange's own axis --
+# projecting GRASP_OFFSET_Z down that axis puts the tip ~12 mm too far out and
+# was wrong in the first version of this report.
+_FK_TOOL = [
+    ([0.0, 0.0, 0.01], [1.579, 0.0, 2.3562]),
+    ([0.0, 0.04, 0.0], [-0.0082, 1.5708, 0.0]),
+]
+
+
+def _fk_gripper_base(joint_values):
+    """Position of gripper_base, through the real tool chain rather than by
+    projecting along the flange axis."""
+    t = [[1.0 if i == j else 0.0 for j in range(4)] for i in range(4)]
+    chain = [(xyz, rpy, axis) for xyz, rpy, axis in _FK_CHAIN]
+    for (xyz, rpy, axis), angle in zip(chain, joint_values):
+        t = _mat_mul(t, _origin(xyz, rpy))
+        t = _mat_mul(t, _axis_rot(axis, angle))
+    for xyz, rpy in _FK_TOOL:
+        t = _mat_mul(t, _origin(xyz, rpy))
+    return [t[0][3], t[1][3], t[2][3]]
+
+
+# Flange (x, y, z) from FK at the most recent Cartesian descent, so the caller
+# that knows the block's true position can record the pair. A module-level
+# scratch rather than a return value threaded through three layers: every path
+# to a grasp goes through cartesian_move_to, and none of them wants the extra
+# argument. Empty until a descent has happened.
+LAST_FLANGE_FK = []
+
+# {joint_name: radians} of the last joint-space goal move_arm_to COMMANDED, as
+# a dict so a caller can replay it without knowing the trajectory's name order.
+# Empty until a joint-space move has been planned.
+#
+# COMMANDED, NOT ACHIEVED, and that distinction is the whole reason this exists
+# rather than a caller just reading /joint_states after the move. J1 loses a
+# measured 0.94 deg (1.88 deg full backlash) of lost motion in whichever
+# direction it last travelled, and j1_unidirectional_approach cancels it by
+# re-approaching THE COMMANDED TARGET with a J1_RESIDUAL_BIAS_DEG overshoot --
+# see its comment in move_arm_to, which says explicitly that re-approaching the
+# achieved position "would bake in whatever backlash offset the arrival happened
+# to leave, which is the thing being removed".
+#
+# So a pose memory built from ACHIEVED angles would store the arm's arrival
+# error and re-command it as a target, compounding the very error the
+# unidirectional approach removes -- and it would do it silently, because the
+# replay would look beautifully repeatable while sitting a backlash width off.
+# stack_blocks.PoseMemory stores this instead.
+LAST_ARM_GOAL = {}
+
+
+def record_flange_fk(io_client):
+    """Refresh LAST_FLANGE_FK from /joint_states. Returns it, or None.
+
+    Silent, because every arm move calls this and report_reached's four-line
+    block after each of the five survey stills would bury the run. Never raises:
+    a calibration row with no flange is a row that says so, and is strictly
+    better than a run that dies at the end of a successful grasp.
+
+    CALLED FROM BOTH PLANNERS ON PURPOSE. The first version of this global was
+    written only by cartesian_move_to, which made its meaning "the last
+    CARTESIAN pose" while reading as "where the arm is". Under --ik-descent the
+    grasp goes through move_arm_to, so the snapshot taken after it would have
+    been whatever Cartesian move ran last -- empty today, but a hover or a place
+    pose the moment the call graph changes, and a hover is a plausible-looking
+    number that jaw_offset() would consume without complaint. Silent 40 mm.
+    """
+    try:
+        names = list(HOME_RADIANS.keys())
+        current = io_client.current_joint_positions(names)
+        flange, _approach = _fk_flange([current[n] for n in names])
+    except Exception:
+        return None
+    LAST_FLANGE_FK[:] = list(flange)
+    return flange
+
+
+def report_reached(io_client, x, y, z, what="move", block_yaw_deg=0.0,
+                   holding_block=False):
+    """Print where the flange and gripper ACTUALLY are against where they were
+    asked to be, in mm, from /joint_states via forward kinematics.
+
+    (x, y, z) is the FLANGE target as the caller passed it, BEFORE tip-swing
+    compensation -- that is what both call sites hand in. The comparison is
+    made against the compensated value, which is what was really commanded.
+
+    PASS block_yaw_deg AND holding_block, or the numbers below are quietly
+    wrong. This recomputes the commanded point with compensate_for_tip_swing,
+    and both arguments change its answer: the tip swing comes out of
+    grasp_quat_for, which is a function of the yaw, and of whether a payload is
+    tilting the arm. Called with the defaults on a rotated or loaded grasp, the
+    error rows compare the achieved pose against a point that was never
+    commanded -- a plausible-looking few millimetres, in the one line this
+    project quotes as evidence.
+
+    EXISTS BECAUSE THIS QUESTION KEEPS COSTING ROUND TRIPS. Twice now a
+    hardware session has stalled on "the arm is somewhere else and we cannot
+    tell whether the arm missed or the model is wrong" -- once for the grasp
+    height, once for a 25 mm radial shortfall. This does not fix either, but it
+    separates them in one line:
+
+      FK matches the target, tape measure disagrees -> the URDF's geometry (or
+          the point you are measuring from) is wrong; the arm did as it was told.
+      FK also misses the target -> the arm did not reach its commanded joints;
+          look at droop, backlash and the IK position tolerance.
+
+    Note the target passed in is the CALLER's point -- the tip target -- not
+    the tip-swing-compensated flange target, so the tip row is the one to
+    compare against a ruler."""
+    try:
+        names = list(HOME_RADIANS.keys())
+        current = io_client.current_joint_positions(names)
+        values = [current[n] for n in names]
+    except Exception as exc:
+        print(f"[reached] could not read /joint_states: {exc!r}")
+        return
+    flange, _approach = _fk_flange(values)
+    LAST_FLANGE_FK[:] = list(flange)
+    gripper = _fk_gripper_base(values)
+    cx, cy, cz = compensate_for_tip_swing(x, y, z, block_yaw_deg, holding_block)
+    cz = clamp_flange_z(cz, "reported")
+
+    err = [flange[0] - cx, flange[1] - cy, flange[2] - cz]
+    r_have = math.hypot(flange[0], flange[1])
+    r_want = math.hypot(cx, cy)
+    print(f"[reached] {what}")
+    print(f"[reached]   flange   FK ({flange[0]:+.4f}, {flange[1]:+.4f}, "
+          f"{flange[2]:+.4f})  commanded ({cx:+.4f}, {cy:+.4f}, {cz:+.4f})")
+    print(f"[reached]     error dx {1000 * err[0]:+.1f}  dy {1000 * err[1]:+.1f}"
+          f"  dz {1000 * err[2]:+.1f} mm     radius {1000 * r_have:.1f} vs "
+          f"{1000 * r_want:.1f} mm ({1000 * (r_have - r_want):+.1f})")
+    r_grip = math.hypot(gripper[0], gripper[1])
+    print(f"[reached]   gripper  FK ({gripper[0]:+.4f}, {gripper[1]:+.4f}, "
+          f"{gripper[2]:+.4f})   radius {1000 * r_grip:.1f} mm "
+          f"= {r_grip / 0.0254:.2f} in")
+    print(f"[reached]     {1000 * (gripper[2] - MAT_SURFACE_Z):.1f} mm above the mat")
+    # The flange row answers "did the arm do as it was told". The gripper row is
+    # what a tape measure sees. If the first is small and the second disagrees
+    # with a ruler, the URDF is wrong, not the arm.
+    if max(abs(v) for v in err) < 0.005:
+        print(f"[reached]   -> flange within 5 mm of command: the ARM is fine. "
+              f"Any disagreement with a ruler is URDF geometry or the point "
+              f"you are measuring from.")
+    # Returned so a caller that KNOWS where the block really was can log the
+    # flange the jaws succeeded from. That pair is the only direct measurement
+    # of the flange-to-jaw offset there is, and re-deriving it from a printed
+    # log is how the last two calibrations of it got their frame wrong.
+    return tuple(flange)
+
+
+def _quat_rotate_z(q):
+    """The world-frame direction the tool's own +Z axis points, for quaternion
+    q = (x, y, z, w). That axis is the approach direction -- straight down at a
+    nominal grasp."""
+    qx, qy, qz, qw = q
+    return (2.0 * (qx * qz + qw * qy),
+            2.0 * (qy * qz - qw * qx),
+            1.0 - 2.0 * (qx * qx + qy * qy))
+
+
+def mount_tilt_tip_offset(block_yaw_deg=0.0):
+    """World displacement of the JAW TIP caused by GRIPPER_MOUNT_TILT_*.
+
+    THIS IS A REAL BUG THE TILT INTRODUCED, found on hardware 2026-08-03: the
+    block was being gripped off-centre, toward the near face, by about half a
+    block half-width.
+
+    GRIPPER_MOUNT_TILT_* rotates the tool so the jaws hang vertical -- but IK
+    aims the FLANGE at (x, y, z), and the tip sits GRASP_OFFSET_Z below it. Tip
+    the tool and the tip swings on that lever while the flange stays put, and
+    nothing moves the target to compensate. At 3.11 deg over 0.09 m that is
+    4.9 mm, and the measured tip error at the grasp was radial +4.9 mm -- the
+    prediction to the millimetre.
+
+    Returns (dx, dy, dz) the tip moves. SUBTRACT it from the target so the TIP,
+    not the flange, lands where the caller asked. Zero when the tilt is zero,
+    so this is inert if the correction is ever disabled.
+
+    SUPERSEDED by tool_tip_offset(), which does the same thing against the FULL
+    commanded orientation instead of the mount tilt alone. Kept only because the
+    reasoning above is the reasoning for both. Once SAG_PRECOMP_* carries part of
+    the tilt, this function sees only half the rotation and under-compensates by
+    the rest -- so nothing should call it."""
+    if not GRIPPER_MOUNT_TILT_X_DEG and not GRIPPER_MOUNT_TILT_Y_DEG:
+        return (0.0, 0.0, 0.0)
+    if not block_yaw_deg:
+        base = (GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
+    else:
+        base = gripper_yaw_quat(GRIPPER_YAW_DEG + block_yaw_deg)
+    tilted = base
+    for axis, deg in ((0, GRIPPER_MOUNT_TILT_X_DEG), (1, GRIPPER_MOUNT_TILT_Y_DEG)):
+        if not deg:
+            continue
+        half = math.radians(deg) / 2.0
+        v = [0.0, 0.0, 0.0]
+        v[axis] = math.sin(half)
+        tilted = quat_multiply(tilted, (v[0], v[1], v[2], math.cos(half)))
+    plain = _quat_rotate_z(base)
+    swung = _quat_rotate_z(tilted)
+    return tuple(GRASP_OFFSET_Z * (swung[i] - plain[i]) for i in range(3))
+
+
+def tool_tip_offset(x, y, block_yaw_deg=0.0, holding_block=False):
+    """World displacement of the JAW TIP caused by EVERY orientation correction
+    in force at (x, y) -- the tool-frame mount tilt and the world-frame sag
+    pre-compensation alike.
+
+    Same lever argument as mount_tilt_tip_offset above, which this replaces: IK
+    aims the FLANGE, the tip hangs GRASP_OFFSET_Z below it, so any tilt swings
+    the tip while the flange stays put. The difference is that this measures the
+    swing against the orientation actually commanded, so it stays correct however
+    the total is split between the two mechanisms.
+
+    Taking it from grasp_quat_for rather than re-deriving it is the point: there
+    is then exactly one definition of the commanded orientation, and the tip
+    compensation cannot drift out of step with it."""
+    if not block_yaw_deg:
+        plain_q = (GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ,
+                   GRIPPER_LOCK_QW)
+    else:
+        plain_q = gripper_yaw_quat(GRIPPER_YAW_DEG + block_yaw_deg)
+    tilted_q = grasp_quat_for(block_yaw_deg, x, y, holding_block)
+    plain = _quat_rotate_z(plain_q)
+    swung = _quat_rotate_z(tilted_q)
+    return tuple(GRASP_OFFSET_Z * (swung[i] - plain[i]) for i in range(3))
+
+
+# MEASURED FLANGE -> JAW LATERAL OFFSET, world frame, 2026-08-03.
+#
+# At the parked grasp pose the flange was at FK radius 223.0 mm while a ruler
+# put the jaw centreline at 203.2 mm: the jaws hang 19.8 mm INWARD of the
+# flange, and the URDF does not know it (its own tool chain puts gripper_base
+# 3.5 mm OUTWARD instead, so the model is ~23 mm wrong laterally -- the same
+# class of error as the already-documented 180 deg camera flip).
+#
+# WORLD-FRAME, NOT RADIAL, and the distinction decides the place pose. The jaws
+# hold a FIXED world yaw (GRIPPER_YAW_DEG), so the tool frame has a fixed world
+# orientation and a tool-fixed offset is a fixed world vector. That makes the
+# pick harder and the place EASIER, because they sit at opposite bearings:
+#
+#     pick  (0, +0.2286) -> flange must reach y +0.2484   (past MAX_FLANGE_RADIUS_M)
+#     place (0, -0.2286) -> flange only needs y -0.2088
+#
+# THE FRAME IS AN INFERENCE FROM ONE POSE. Measure the jaws at the place pose
+# to settle it: 19.8 mm inward there too in WORLD terms (i.e. jaws at -0.2088)
+# confirms world-fixed; 19.8 mm inward RADIALLY (jaws at -0.2484) means it is
+# radial and this constant is the wrong shape.
+#
+# Set to (0.0, 0.0) to disable and recover the previous behaviour.
+# -0.0198 -> -0.0271 on 2026-08-03. zone_calibrate.py measured the jaw radius by
+# hand at five waypoints and found it SHORT of the target at every one:
+#
+#     centre -6.3   near-L -6.8   near-R -6.8   far-R -8.3   far-L -8.3 mm
+#
+# mean -7.3, spread 1.9. So the jaws hang 7.3 mm further inward than the old
+# value said, and the flange has to be pushed that much further out.
+#
+# NOTE THE FK RADIUS ERROR WAS ONLY -0.3 TO -0.5 mm on the same runs. The arm's
+# encoders put the flange where it was asked to be; it is the TOOL MODEL that is
+# wrong. That is precisely the split FK cannot make and a tape measure can, and
+# the reason the hand columns exist.
+#
+# THE FRAME IS STILL UNRESOLVED. Every waypoint in that survey sits within ~6 deg
+# of +Y, so world-frame and radial are indistinguishable in this data -- the
+# measurement that would separate them is the PLACE zone, at -Y, where the two
+# predictions differ by 2 x 27 mm. Until then this stays world-frame, as before.
+# RESOLVED 2026-08-04, AND IT WAS RADIAL. The place-zone survey was the
+# measurement, exactly as the note above predicted. Flange-to-jaw, measured at
+# ten waypoints across both zones:
+#
+#     read as RADIAL     pick -20.8 mm   place -16.9 mm   <- same sign
+#     read as WORLD +Y   pick -20.0 mm   place +15.9 mm   <- flips
+#
+# A world-frame vector cannot change sign between two poses; a radial one must,
+# in world terms. So the jaws hang inboard along the RADIUS, and modelling that
+# as world +Y pushed the flange the wrong way at the place zone -- inward by
+# ~20 mm instead of outward -- which with the ~19 mm inboard hang put the jaws
+# 39 mm short. That is the "nowhere close" the place survey showed.
+#
+# Split into radial and tangential rather than x and y. The values are chosen so
+# the PICK zone is bit-identical to the verified configuration -- at +Y, r_hat is
+# +Y and t_hat is -X, so these reproduce the old (-0.0003, -0.0271) exactly
+# there. Only the place zone changes, which is the only place the old model was
+# wrong.
+#
+# -0.0271 -> -0.0013 ON 2026-08-06, AND THE RADIAL MODEL ABOVE IS NOT SAFE
+# OUTSIDE THE Y AXIS. Read the next thirty lines before changing either number.
+#
+# Every waypoint behind the -0.0271 sat at bearing +90 or -90 deg. The pick zone
+# then moved to +X, and at bearing ~0 the model was 26 mm wrong -- it pushed the
+# flange 21.5 mm OUTBOARD of the jaw target when the truth wanted ~1 mm inboard.
+# Two confirmed grasps measured it, each with the vision independently verified
+# against a tape-measured block:
+#
+#   run 1  vision error 3.1 mm   flange FK (0.2214, 0.0075)  block at 0.2286
+#   run 2  vision error 0.7 mm   flange FK (0.2240, 0.0052)  block at 0.2286
+#
+# Solving compensate_for_tip_swing for the offsets that put the flange where
+# each grasp actually succeeded:
+#
+#   run 1 -> radial -0.0014   tangential -0.0098
+#   run 2 -> radial -0.0012   tangential -0.0078
+#
+# Two independent grasps agreeing to 0.2 mm radially. Both un-nudged targets
+# would have closed the jaws ~26 mm outboard of the block.
+#
+# THE FRAME IS OPEN AGAIN, and honestly so. Three measurements now exist --
+# world (-0.3, -20.8) at +Y, (+0.3, +16.9) at -Y, (+5.8, -6.4) at +X -- and NO
+# rigid frame fits all three. Not world-fixed (the +X reading is far too small),
+# not radial (it would have to be ~-19 everywhere), not tool-fixed either: the
+# commanded tool yaw is -135 deg at all three poses, within a degree, so
+# tool-fixed and world-fixed are the same hypothesis here and both fail. The
+# +90/-90 pair is 180 deg apart, where every candidate frame is degenerate;
+# +X is the first measurement that breaks the tie, and it breaks the fit.
+#
+# So these values are CALIBRATED AT BEARING ~0, not derived. They are right
+# where the pick zone is and unverified elsewhere. --jaw-radial-offset and
+# --jaw-tangential-offset exist so a pose that disagrees costs a flag, not an
+# edit; the place zone at -Y is the one to watch, since it was landing well
+# under the old numbers and is the pose least like the one these came from.
+# Resolving the frame needs grasps at a third and fourth bearing, which is what
+# the 2b star was always for.
+#
+# -0.0013 -> -0.0199 ON 2026-08-06, SAME DAY, AND THE RADIAL MODEL IS BACK.
+#
+# The -0.0013 above was fitted against a truth that was never measured: every
+# run before this one passed --truth-block-world as "the sheet is at 9 inches",
+# which is an assumption about where a hand-placed piece of paper landed, not an
+# observation of where the block was. Eight grasps with the BLOCK ITSELF taped
+# from the base, five at bearing +90 and three at bearing 0:
+#
+#     +Y   radial -0.0203 (sd 0.0012)   tangential +0.0001 (sd 0.0029)
+#     +X   radial -0.0192 (sd 0.0016)   tangential -0.0088 (sd 0.0000)
+#
+# The radial term agrees to 1.1 mm across a 90 deg change of bearing, which is
+# the thing three previous calibrations could not establish. The frame question
+# is settled and the answer is the one the 2026-08-04 place-zone survey gave:
+# RADIAL. What defeated it twice was the truth column, not the model.
+#
+# Note where -0.0199 sits: much nearer the original -0.0271 than the -0.0013
+# that replaced it. The August 4 survey was closer to right than the fit that
+# overturned it, because it measured against a ruler and the fit did not.
+#
+# TANGENTIAL WAS NEVER A JAW OFFSET AT ALL -- ZEROED 2026-08-07.
+#
+# The old note here read: "+X wants -0.0088 and +Y wants 0.0000, and a radial
+# model cannot have both. -0.0033 is their mean and leaves a 4.5 mm typical miss
+# (7.5 mm worst)." That was the right observation and the wrong conclusion. The
+# two values are 8.8 mm apart, which is ONE J1 BACKLASH WIDTH, and they were
+# measured at bearings 90 deg apart -- i.e. approaching the base yaw from
+# opposite directions. A radial model cannot have both because there was no
+# radial quantity there to model.
+#
+# THE EVIDENCE. move_arm_to defaults unidirectional=False and no call site in
+# tag_pick_place.py ever passed it, so every one of those eight grasps arrived
+# with J1 resting on whichever flank of its slack the previous move left it on.
+# Measured on hardware 2026-08-07 across 73 moves: J1 undershoots by 0.94 deg
+# (sd 0.12) in whichever direction it travelled -- +ve commands land -0.89, -ve
+# land +0.97 -- and the magnitude is the same for a 0.9 deg move as for a 22 deg
+# one, so it is lost motion, not tracking. Three round trips to the IDENTICAL
+# commanded point from opposite sides landed 6.3 / 6.0 / 6.9 mm apart.
+#
+# WITH THE FIX LIVE the direction dependence is gone (same-point spread 0.33 mm,
+# error a constant +0.25 deg) and the -0.0033 push was left standing bare. At
+# bearing 0 it commands flange_y = y + 0.0033, and the jaws duly parked ~3 mm
+# toward world +Y of the block -- sign and magnitude both as predicted, verified
+# at the bench. Zeroing removes exactly that.
+#
+# WHY ZERO AND NOT A SMALL RESIDUAL. About +0.9 mm of tangential error remains,
+# and it belongs to J1_RESIDUAL_BIAS_DEG (the fix over-corrects slightly, 1.10
+# configured against ~0.85 apparent), not here. Folding it into this constant
+# would be the same mistake DESCENT_BIAS_Z made doing GRASP_OFFSET_Z's job and
+# SAG_PRECOMP_* made cancelling the mount tilt: two corrections for one effect
+# cannot be tuned independently afterwards. Leave the joint error at the joint.
+#
+# n=1 at one bearing, so this is a REMOVAL of a term shown to be spurious, not a
+# new fit. --jaw-tangential-offset still works if a pose disagrees. If Saturday's
+# 13-position sweep shows a genuine tangential term surviving the J1 fix, it can
+# be fitted then -- on data where J1 is no longer lying about it.
+# RESTORED 2026-08-11, from -0.0033 -> 0.0 -> -0.0045, and this time it is
+# MEASURED rather than argued.
+#
+# The 2026-08-07 removal above reasoned that the whole tangential term was J1
+# lost motion misattributed. That reasoning was half right: J1 lost motion is
+# real, it is 1.88 deg full backlash, and it was worth 2.58 mm at r=126 on the
+# first correction of every pose. But it is not ALL of it. With the J1 fix live
+# on the pick path and one dead band removed from each reading, the six-position
+# sweep of 2026-08-11 still leaves a tangential error at every single pose:
+#
+#     N +7.4   O +6.4   H +10.2   B +1.9   D -0.1   L +1.2   mm
+#     mean +4.50, sd 4.08, and POSITIVE at every bearing from -88 to +91 deg
+#
+# A term that survives the J1 fix, keeps its sign across 179 deg of bearing, and
+# whose mean is larger than zero by any reading is not backlash.
+#
+# WHY THE TOOL FRAME IS RULED OUT, which is what made this safe to write here.
+# A wrist-rotation carousel at N (yaw 0 / -90 / -180, block untouched, rotation
+# only) put the error in the SAME WORLD DIRECTION at every yaw: at yaw 0 the
+# jaws close along X and the error was perpendicular to them, at yaw -90 they
+# close along Y and the error appeared in the gaps (1.50 / 7.54 -> -3.02 mm).
+# A tool-fixed offset would have rotated with the wrist and moved into world X.
+# It did not. So this belongs in a POSE-frame constant -- which is what this one
+# is, resolved against the bearing to (x, y) in compensate_for_tip_swing -- and
+# NOT in the tool-frame terms (GRIPPER_MOUNT_TILT_*, GRIPPER_YAW_DEG).
+#
+# THIS REMOVES THE MEAN, NOT THE SCATTER. sd 4.08 mm survives, and no single
+# constant can touch it: the residual is +7..+10 mm near bearing 0 and +0..+2 mm
+# off-axis, which is a shape, not an offset. Do not expect 1-2 mm from this
+# change alone -- expect the mean to go to roughly zero and the spread to stay.
+#
+# The 180-deg pair that would have separated the tool-fixed part properly is NOT
+# trusted: its two gaps (15.80 / 5.50) imply a 25.65 mm jaw half-span against
+# 19.52 mm from the same session and 20.31 mm from 2026-08-07, so those two
+# numbers were read to a different reference on the gripper. Re-read them and
+# the tool-fixed component can be pinned to ~0.4 mm; until then it is bounded at
+# about a millimetre by the yaw carousel above, which is why it is being ignored
+# rather than fitted.
+# -0.0045 -> -0.0095 later the same day, once the FIRST clean readings existed.
+#
+# The -0.0045 above was fitted to nudge-derived numbers, which carry one J1 dead
+# band each. With --force-grasp-yaw pinning the jaw axis to world X and the 'm'
+# command finally holding the arm still, the residual was measured properly:
+#
+#     N  r=126 mm   Y -5.0 mm        H  r=229 mm   Y -5.0 mm
+#
+# The same -5.0 mm at two radii 103 mm apart is a CONSTANT, which is what this
+# slot is for, so it is simply added: -0.0045 + -0.0050 = -0.0095.
+#
+# The -0.0045 step itself verified before this was written: it predicted a 5.7 mm
+# residual at H and 5.0 mm was measured, and the J1 dead band predicted 4.7 mm of
+# first-nudge loss at r=229 against 5.0 mm observed. The model is behaving.
+#
+# HONEST LIMIT ON THIS NUMBER: at --force-grasp-yaw 0 the jaws close along X, so
+# X is caliper-grade (repeats to 0.075 mm) but Y is PERPENDICULAR to the jaws and
+# can only be eyeballed -- the gap difference is blind to it. Both -5.0 mm
+# figures are eyeballs, agreeing at two radii, which is why this is applied at
+# all; but confirm it at --force-grasp-yaw 90, where Y becomes the measured axis.
+# -0.0095 (constant) -> A LINE IN REACH, 2026-08-11. This is the first term in
+# the project fitted from caliper-grade data at three reaches with a repeat.
+#
+# Measured at grasp_yaw 90 (jaw axis pinned to world Y by --force-grasp-yaw, so
+# the TANGENTIAL axis is the one the gap difference actually resolves), block
+# taped on the zone centre, all three bearings within 2 deg of zero:
+#
+#     r = 121 mm   tangential residual +6.0 mm
+#     r = 173 mm                       +3.0 mm     (two runs, both -3 -3 exactly)
+#     r = 222 mm                        0.0 mm
+#
+# Equal reach steps (52, 49 mm) produced equal error steps (-3, -3 mm). Least
+# squares gives residual(r) = 13.18 - 59.14*r mm, residuals -0.03 / +0.07 / -0.04
+# mm, zero crossing at 222.8 mm. A constant CANNOT fit this and never could: the
+# earlier "sd 4.08 mm that no constant can touch" was mostly this line, sampled
+# at scattered radii.
+#
+# Solving offset(r) = offset_old - correction(r) at each pose gives
+#     offset(r) = +0.00368 - 0.05930 * r     (metres, r = hypot(x, y))
+# which reproduces all three poses to within 0.10 mm.
+#
+# WHAT IT PROBABLY IS: the correction it supplies grows with reach -- 3.5 mm at
+# r=121, 6.5 at 173, 9.5 at 222 -- which is 1.66, 2.15 and 2.45 deg of arc. Not a
+# constant angle and not a constant length, so it is EMPIRICAL. Do not read either
+# coefficient as a physical dimension and do not "simplify" it to one term; the
+# pair is what fits.
+#
+# TWO LIMITS, BOTH REAL:
+#  1. VALID OVER 121-222 mm ONLY. Extrapolating a 3.4 deg angular term past the
+#     measured span is exactly how a good local fit becomes a bad global one, so
+#     going outside it warns.
+#  2. THE RADIAL AXIS IS NOT FITTED HERE. At grasp_yaw 90 radial is PERPENDICULAR
+#     to the jaws, so the gaps are blind to it and it was eyeballed: +3, +3, 0 mm
+#     at the same three reaches. Suggestive of the same shape, not measured.
+#     Pin the jaw axis with --force-grasp-yaw 0 and re-read to fit it.
+#
+# SIGN CORRECTED 2026-08-11, and the bench caught it, not the arithmetic. The
+# first version of this line was shipped as base -0.02270, slope +0.05940 -- both
+# signs inverted. The residuals were built from CORRECTIONS and then added to the
+# offset as though a correction and an offset pushed the same way. They oppose.
+#
+#     d_correction ~= d_offset:   0.0 -> -0.0045 took H from +10.2 to +5.0
+#                                -0.0045 -> -0.0095 took H from +5.0 to  0.0
+#                                -0.0095 -> -0.01551 took N from -6.0 to -10.0
+#
+# N already needed a NEGATIVE correction, so making the offset more negative drove
+# it further out -- 6.0 mm of error became 10.0 mm. The right relation is
+#     offset_new = offset_old - correction
+#
+# H HID IT. Its correction was already 0.0, so its required offset is -0.0095 on
+# either sign convention and it stayed perfect through the mistake. A term fitted
+# so that it reproduces one pose exactly can still be inverted; only a pose with a
+# NON-ZERO residual tests the sign. That is why the confirmation run mattered and
+# why "H is perfect" was not evidence the line was right.
+JAW_RADIAL_OFFSET_M = -0.0199      # negative = jaws hang INBOARD of the flange
+JAW_TANGENTIAL_OFFSET_M = 0.00368          # base, at zero reach
+JAW_TANGENTIAL_PER_M_REACH = -0.05930      # added per metre of hypot(x, y)
+# The span the line above was measured over. Outside it the term is extrapolated.
+JAW_TANGENTIAL_REACH_RANGE_M = (0.121, 0.222)
+_TANG_REACH_WARNED = []
+
+# TOOL-FIXED LATERAL OFFSET, perpendicular to the jaw closing axis.
+# Measured 2026-08-11 after the bench was stripped and rebuilt -- new tape, mats
+# re-laid, every position re-measured to 1/16 in. Six runs:
+#
+#   pos yaw  bearing   r     correction    radial    tang  |  jaw    PERP
+#    L   90    +89.9  174   (-4.0, +0.0)    -0.01   +4.00  | -0.00  +4.00
+#    O   90     -1.0  170   (-4.0, +0.0)    -4.00   -0.07  | -0.00  +4.00
+#    O    0     -1.0  174   (+0.0, +3.0)    -0.05   +3.00  | +0.00  +3.00
+#    N    0     +0.1  126   (+0.0, +4.0)    +0.01   +4.00  | +0.00  +4.00
+#    O    0     -1.1  177   (+0.0, +4.0)    -0.08   +4.00  | +0.00  +4.00
+#    H    0     -2.0  225   (+0.0, +5.0)    -0.17   +5.00  | +0.00  +5.00
+#
+# In the POSE frame radial swings -4..0 and tangential 0..+4 with no pattern. In
+# the TOOL frame the jaw-axis component is zero everywhere and the perpendicular
+# is +4.00 mm, sd 0.63, across bearings 91 deg apart, two wrist yaws and 101 mm
+# of reach. Rotating the wrist 90 deg rotated the residual 90 deg IN THE WORLD:
+# (0,+4) became (-4,0), and R(+90)*(0,+4) is exactly (-4,0).
+#
+# SO IT IS TOOL-FIXED, and JAW_RADIAL/TANGENTIAL_OFFSET_M -- resolved against the
+# BEARING -- cannot express it at any value. Every earlier attempt to absorb this
+# into a pose-frame constant is why those constants kept moving: fitted at one
+# wrist yaw they look right, and a run at another yaw contradicts them. The
+# 2026-08-11 "tool frame is ruled out" call was made on a single pose read by eye
+# and was simply wrong; two yaws and two bearings settle it.
+#
+# NEGATIVE = the jaws sit on the -p_hat side, so the flange is driven +p_hat.
+JAW_PERP_OFFSET_M = -0.004
+
+
+# RESIDUAL DESCENT BIAS, measured 2026-08-03.
+#
+# The arm stops slightly HIGH of its commanded flange z even with the bridge's
+# gravity feedforward live. report_reached measured +3.7 mm on the grasp run,
+# and the jaws visibly closed ~5 mm above the block's midline -- two independent
+# readings of the same thing, agreeing to about a millimetre.
+#
+# NOT folded into GRASP_OFFSET_Z, which is a rigid tool dimension measured by
+# subtraction and has no business absorbing a control error. This is the arm
+# stopping short, which is the residual of the free play the feedforward cannot
+# reach: joints 2 and 3 give up their last degree or so and the tool rides up.
+#
+# NEGATIVE = aim lower. Applied to the flange target, so it lowers the jaws by
+# the same amount.
+#
+# -0.005 -> -0.007 -> -0.001 on 2026-08-03.
+#
+# THE -0.007 WAS DOING GRASP_OFFSET_Z'S JOB. Both constants lower the commanded
+# flange, so a tool-model error and a control error are indistinguishable by eye
+# -- and the eye is what set -0.005 and -0.007. zone_calibrate.py separated them
+# by measuring each directly:
+#
+#   the ARM's residual, from FK: +0.87 mm mean (dz +0.23 to +1.40)
+#   the TOOL model's error, from a caliper: +12.6 mm
+#
+# This constant's whole justification is the first number, so it is now -0.001.
+# The 12.6 mm went where it belongs, into GRASP_OFFSET_Z.
+#
+# The decomposition checks out. Both constants push the same commanded z, and
+# the sum needed to put the tips on the block midline is 0.1338 m; 0.1345 minus
+# 0.001 is 0.1335, within 0.3 mm. What changed is that each half is now
+# separately measured rather than jointly fitted to one visual impression.
+#
+# Margin improves rather than degrades: commanded 0.1443 against a floor of
+# 0.1355 is 8.8 mm, where -0.007 with the old offset left 2.8 mm.
+DESCENT_BIAS_Z = -0.001
+
+
+def compensate_for_tip_swing(x, y, z, block_yaw_deg=0.0, holding_block=False):
+    """(x, y, z) shifted so the JAW TIP lands on the caller's point, correcting
+    the tilt-induced tip swing, the offset between the flange and where the jaws
+    actually hang, and the arm's residual tendency to stop high.
+
+    Both lateral terms are now RADIAL, resolved against the bearing to (x, y),
+    because that is what they measured as -- see JAW_RADIAL_OFFSET_M. On the
+    base axis, where r_hat is undefined, the lateral terms are simply dropped;
+    nothing in this project grasps there, and the tilt and height terms still
+    apply."""
+    dx, dy, dz = tool_tip_offset(x, y, block_yaw_deg, holding_block)
+    r = math.hypot(x, y)
+    if r > 1e-6:
+        rx, ry = x / r, y / r
+        # THE TANGENTIAL TERM IS A LINE IN REACH, not a constant -- see
+        # JAW_TANGENTIAL_OFFSET_M for the three-reach caliper fit behind it.
+        tangential = JAW_TANGENTIAL_OFFSET_M + JAW_TANGENTIAL_PER_M_REACH * r
+        # AND A TOOL-FIXED TERM, which no pose-frame constant can express. See
+        # JAW_PERP_OFFSET_M. p_hat is perpendicular to the jaw closing axis, so
+        # it rotates with the commanded wrist yaw rather than with the bearing.
+        if JAW_PERP_OFFSET_M:
+            jaw_rad = math.radians(block_yaw_deg)
+            px, py = -math.sin(jaw_rad), math.cos(jaw_rad)
+            dx += JAW_PERP_OFFSET_M * px
+            dy += JAW_PERP_OFFSET_M * py
+        low, high = JAW_TANGENTIAL_REACH_RANGE_M
+        if not low <= r <= high and not _TANG_REACH_WARNED:
+            _TANG_REACH_WARNED.append(True)
+            print(f"[tool] reach {r * 1000:.0f} mm is outside the "
+                  f"{low * 1000:.0f}-{high * 1000:.0f} mm span the tangential "
+                  f"term was measured over, so it is EXTRAPOLATED here "
+                  f"({tangential * 1000:+.2f} mm). It carries a 3.4 deg angular "
+                  f"component, which extrapolates badly -- treat any offset seen "
+                  f"at this reach as unverified until it is measured.")
+        # t_hat = z_hat x r_hat = (-ry, rx)
+        dx += JAW_RADIAL_OFFSET_M * rx + tangential * -ry
+        dy += JAW_RADIAL_OFFSET_M * ry + tangential * rx
+    dz -= DESCENT_BIAS_Z
+    return x - dx, y - dy, z - dz
+
+
+# Never let the fingertips get closer than this to the mat. 5 mm is well under
+# any legitimate target -- a block sitting on the mat is grasped at its centre,
+# BLOCK_HEIGHT_M/2 = 15 mm up -- so this can only ever catch a mistake.
+MIN_TIP_CLEARANCE_M = 0.005
+
+
+def clamp_flange_z(z, what="target"):
+    """Refuse to drive the fingertips into the mat.
+
+    ADDED AFTER DOING EXACTLY THAT, three times, on 2026-08-03. GRASP_OFFSET_Z
+    was 22 mm short, so every commanded flange height put the tips 22 mm lower
+    than intended, and nothing anywhere in the pipeline objected: MoveIt plans
+    against the URDF's kinematic tree, which contains no mat, no table and no
+    floor, so a Cartesian descent into the bench is a perfectly valid plan that
+    reports fraction=1.00.
+
+    The floor is derived, not tuned -- MAT_SURFACE_Z + GRASP_OFFSET_Z is the
+    flange height at which the tips touch the mat, and it moves automatically
+    if either constant is re-measured. A miscalibrated GRASP_OFFSET_Z will
+    still put the grasp at the wrong HEIGHT; what this guarantees is that the
+    failure is a bad grasp rather than the gripper being pressed into the
+    bench."""
+    floor = MAT_SURFACE_Z + GRASP_OFFSET_Z + MIN_TIP_CLEARANCE_M
+    if z >= floor:
+        return z
+    print(f"[safety] {what} flange z={z:.4f} would put the fingertips "
+          f"{1000 * (z - GRASP_OFFSET_Z - MAT_SURFACE_Z):+.1f} mm relative to "
+          f"the mat. Clamping to {floor:.4f} "
+          f"({1000 * MIN_TIP_CLEARANCE_M:.0f} mm clearance).")
+    print(f"[safety] Nothing else will catch this -- the planning scene has no "
+          f"mat in it, so a descent into the bench plans at fraction=1.00.")
+    return floor
+
+
+def make_grasp_pose(x, y, z, block_yaw_deg=0.0, holding_block=False):
+    """Pose for Cartesian waypoints: position + the downward grasp orientation,
+    yawed to meet a block rotated block_yaw_deg (0.0 = the fixed grasp yaw), and
+    tipped against the arm's gravity sag -- see SAG_PRECOMP_RADIAL_DEG."""
     pose = Pose()
-    pose.position.x = x
-    pose.position.y = y
-    pose.position.z = z
-    pose.orientation.x = GRIPPER_LOCK_QX
-    pose.orientation.y = GRIPPER_LOCK_QY
-    pose.orientation.z = GRIPPER_LOCK_QZ
-    pose.orientation.w = GRIPPER_LOCK_QW
+    # Aim the FLANGE wherever puts the JAW TIP on (x, y, z). Without this the
+    # mount tilt swings the tip 4.9 mm off the block -- see
+    # mount_tilt_tip_offset. The orientation still uses the ORIGINAL x, y: they
+    # only pick the radial direction for the sag term, and 5 mm does not move
+    # a bearing enough to matter.
+    px, py, pz = compensate_for_tip_swing(x, y, z, block_yaw_deg, holding_block)
+    pose.position.x = px
+    pose.position.y = py
+    pose.position.z = clamp_flange_z(pz, "grasp-pose")
+    (pose.orientation.x, pose.orientation.y,
+     pose.orientation.z, pose.orientation.w) = grasp_quat_for(
+        block_yaw_deg, x, y, holding_block)
     return pose
 
 
@@ -1649,7 +3246,8 @@ def _is_near_joint_limit(state, margin=0.15):
     return False, None, None, None, None
 
 
-def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
+def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw, block_yaw_deg=0.0,
+                   ori_xy_tolerance=None):
     """Deterministic, downward-orientation IK for an OMPL goal state, using
     constraint-based IK (a small position sphere + orientation window) seeded
     from the robot's current state and then each IK_SEEDS entry in order.
@@ -1676,8 +3274,10 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
     current_state = io_client.current_joint_positions(joint_names)
     # Bearing seeds first: they are the only ones whose base rotation is
     # anywhere near the answer. See _bearing_seeds for the measurements.
+    # block_yaw_deg only shapes the SEEDS here; the orientation actually solved
+    # for is the qx..qw the caller passed, which already carries the yaw.
     seeds = ([("current-state", current_state)]
-             + _bearing_seeds(x, y)
+             + _bearing_seeds(x, y, block_yaw_deg)
              + IK_SEEDS)
 
     # Evaluate EVERY seed and keep the solution closest to where the arm is
@@ -1712,12 +3312,36 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
     # can physically hold -- there is no torque/gravity model anywhere in
     # this project. If a chosen pose still stalls, that is a payload/reach
     # limit to be measured, not an IK bug.
+    # ori_xy_tolerance: how far off the REQUESTED orientation a solution may
+    # sit. Defaults to IK_ORI_XY_TOLERANCE (0.10 rad / 5.7 deg), which is the
+    # right answer for a grasp -- tilt there is error, and the whole project
+    # is trying to drive it out.
+    #
+    # It is the wrong answer for the camera-aiming poses, and this cost a
+    # night to see (hardware 2026-07-31). look_at_quat asks for an orientation
+    # that at the survey pose sits BETWEEN 5.7 and 8.6 deg from anything this
+    # arm can hold. So no seed can converge -- there is no solution inside the
+    # window -- and every still fell through to OMPL constraint sampling,
+    # whose own window is the make_orientation_constraint default of 0.15 rad
+    # (8.6 deg). Sampling then picked ARBITRARILY from that 3 deg band: two
+    # runs of identical code chose poses 0.371 rad apart and got 3 usable
+    # views against 1. Seeding cannot fix that, and adding seeds taken from
+    # poses the arm had physically reached did not (they all still failed).
+    #
+    # Passing the wider window here does not let the arm do anything it was
+    # not already doing -- the fallback was commanding poses in that band
+    # regardless. It makes the choice DETERMINISTIC and least-travel instead
+    # of random, which is what the framing needs to be reproducible.
+    xy_tol = (IK_ORI_XY_TOLERANCE if ori_xy_tolerance is None
+              else ori_xy_tolerance)
+
     best = None
     for label, seed in seeds:
         solution = io_client.compute_ik(
             x, y, z, qx, qy, qz, qw,
             seed_joint_names=joint_names,
             seed_positions=[seed[n] for n in joint_names],
+            xy_tolerance=xy_tol,
         )
         if solution is None:
             print(f"[ik] '{label}' seed: IK did not converge")
@@ -1745,13 +3369,49 @@ def solve_ik_state(io_client, x, y, z, qx, qy, qz, qw):
             best = (travel, label, joint_values)
 
     if best is None:
-        print(f"[ik] All seeds exhausted for ({x:.3f},{y:.3f},{z:.3f}) -- falling back to constraint sampling")
+        # DOES NOT SAY WHAT HAPPENS NEXT, because it does not know. This used to
+        # read "-- falling back to constraint sampling", which is a claim about
+        # the CALLER: move_arm_to falls back only when allow_constraint_sampling
+        # is true, and detect_multiview passes False precisely so a survey still
+        # is either taken from the pose it was planned for or not taken at all.
+        # So on 2026-08-12 every skipped survey still logged a fallback that
+        # never happened, and reading the log cost an hour of chasing a
+        # constraint-sampled pose that was in fact never commanded.
+        print(f"[ik] All seeds exhausted for ({x:.3f},{y:.3f},{z:.3f}) -- no "
+              f"deterministic IK solution; the caller decides what happens next")
         return None
 
     travel, label, joint_values = best
     print(f"[ik] chose '{label}' ({travel:.3f} rad of joint travel): "
           f"{[round(v, 3) for v in joint_values.values()]}")
     return joint_values
+
+
+def settle_pause(io_client, label):
+    """Hold still long enough for mycobot_bridge's biased settle to act.
+
+    Needed because the two mechanisms disagree about when a move is "done".
+    _send_goal_and_wait declares convergence at ARM_SETTLE_TOLERANCE = 0.07 rad,
+    while the bridge's settle needs SETTLE_QUIET_PERIOD_SEC = 1.0 s of
+    UNCHANGED command before it will fire at all. With only the 0.5 s inter-step
+    sleep, the descent was declared converged at 0.0426 rad, the gripper close
+    started 0.5 s later, that changed the command, and the settle timer reset --
+    so the arm's settle never ran even once before the grasp. Measured in the
+    2026-07-29 grasp pose: 3.70 deg of tilt and 10.2 mm of droop still present
+    at the moment the jaws closed, with a correction mechanism that was
+    technically enabled and never got a turn.
+
+    Only worth doing where the final pose accuracy is what matters -- the two
+    descents. Hovers and retreats do not need it and should not pay for it.
+    """
+    wait = SETTLE_QUIET_PERIOD_SEC + SETTLE_ACT_MARGIN_SEC
+    print(f"[settle] holding {wait:.1f}s before {label} so the bridge's biased "
+          "settle can close out the residual")
+    time.sleep(wait)
+    joints = io_client.current_joint_positions(list(HOME_RADIANS.keys()))
+    print("[settle] joints after pause: "
+          f"{[round(math.degrees(v), 2) for v in joints.values()]}")
+    return True
 
 
 def toggle_gripper(io_client):
@@ -1881,16 +3541,139 @@ def go_home(io_client):
     return io_client.arm_execute(joint_trajectory)
 
 
-def move_arm_to(io_client, x, y, z, lock_orientation=True):
+def j1_unidirectional_approach(io_client, joint_trajectory):
+    """Re-approach a trajectory's final joint target with J1 always travelling
+    the same way, so its lost motion is a constant rather than a coin flip.
+
+    Backs J1 off by J1_APPROACH_LEAD_DEG against J1_APPROACH_DIR, then commands
+    the original target again -- so the last thing J1 does is always travel in
+    +J1_APPROACH_DIR, and it always comes to rest against the same flank of its
+    own slack. See J1_UNIDIRECTIONAL_ENABLED for why this is the only available
+    fix.
+
+    BEST EFFORT ON PURPOSE. The back-off leg is itself a reversal, so it is
+    free to stall -- that is the very effect being worked around. If it does,
+    the re-approach is a no-op and the arm is exactly where it would have been
+    anyway, so a failure here must not abort the pick. Logged, never fatal."""
+    if not J1_UNIDIRECTIONAL_ENABLED:
+        return
+    if not joint_trajectory.points:
+        return
+    names = list(joint_trajectory.joint_names)
+    if J1_JOINT_NAME not in names:
+        print(f"[j1] {J1_JOINT_NAME} is not in this trajectory -- skipping the "
+              "unidirectional approach")
+        return
+    index = names.index(J1_JOINT_NAME)
+
+    final = list(joint_trajectory.points[-1].positions)
+    # Overshoot the command by the measured lost motion so the JOINT lands on
+    # target. Applied to the re-approach leg only, and to a copy -- the caller's
+    # trajectory is left alone. The back-off is taken from the biased value so
+    # the final leg still travels a full J1_APPROACH_LEAD_DEG in +J1_APPROACH_DIR.
+    bias = math.radians(J1_RESIDUAL_BIAS_DEG) * J1_APPROACH_DIR
+    final[index] += bias
+    lead = math.radians(J1_APPROACH_LEAD_DEG) * J1_APPROACH_DIR
+    backed = list(final)
+    backed[index] = final[index] - lead
+
+    low, high = J1_LIMIT_RAD
+    if not low <= final[index] <= high:
+        print(f"[j1] the {J1_RESIDUAL_BIAS_DEG:+.2f} deg lost-motion bias would "
+              f"put {J1_JOINT_NAME} at {math.degrees(final[index]):.1f} deg, "
+              f"outside its limit -- skipping")
+        return
+    if not low <= backed[index] <= high:
+        print(f"[j1] backing off {J1_APPROACH_LEAD_DEG:.1f} deg would put "
+              f"{J1_JOINT_NAME} at {math.degrees(backed[index]):.1f} deg, "
+              f"outside its limit -- skipping")
+        return
+
+    print(f"[j1] unidirectional approach: backing off "
+          f"{J1_APPROACH_LEAD_DEG:.1f} deg, then re-approaching "
+          f"{'+' if J1_APPROACH_DIR > 0 else '-'}ve with a "
+          f"{J1_RESIDUAL_BIAS_DEG:+.2f} deg lost-motion bias, so the joint "
+          f"lands ON target instead of consistently short of it")
+    for label, target in (("back off", backed), ("re-approach", final)):
+        leg = type(joint_trajectory)()
+        leg.joint_names = names
+        point = JointTrajectoryPoint()
+        point.positions = list(target)
+        point.velocities = [0.0] * len(target)
+        point.time_from_start.sec = int(J1_APPROACH_SEC)
+        point.time_from_start.nanosec = int((J1_APPROACH_SEC % 1) * 1e9)
+        leg.points = [point]
+        if io_client.arm_execute(leg) is False:
+            print(f"[j1] the '{label}' leg did not converge. Continuing -- the "
+                  "arm is no worse off than without this step, but J1's "
+                  "approach direction is NOT guaranteed for this move.")
+            return
+
+
+def move_arm_to(io_client, x, y, z, lock_orientation=True, block_yaw_deg=0.0,
+                holding_block=False, orientation_override=None,
+                ori_xy_tolerance=None, unidirectional=False,
+                allow_constraint_sampling=True):
     """Joint-space plan to a target position. Uses deterministic seeded IK
-    when possible; falls back to OMPL constraint sampling if all seeds fail."""
+    when possible; falls back to OMPL constraint sampling if all seeds fail.
+
+    block_yaw_deg rotates the jaws about world +Z to meet a block that is not
+    square to the world. 0.0 is the fixed grasp yaw every caller used before
+    the AprilTag feature -- see grasp_quat_for().
+
+    x, y are passed to grasp_quat_for so the sag pre-compensation applies here
+    too, not only to the Cartesian descent. It has to be on BOTH: hover uses this
+    function and the descent uses make_grasp_pose, and if their orientations
+    disagree the "straight down" Cartesian descent has to rotate the wrist while
+    translating, which is exactly the sideways nudge that descent is careful to
+    avoid.
+
+    orientation_override: (qx, qy, qz, qw) to use INSTEAD of grasp_quat_for.
+    For detection hovers, where the requirement is "aim the lens at the zone",
+    not "point the jaws straight down" -- see tag_pick_place.look_at_quat. This
+    is not the same problem as dropping lock_orientation: an unconstrained plan
+    satisfies position alone and OMPL is then free to pick ANY orientation,
+    which on 2026-07-30 produced a mirror-configuration solve with the base
+    swung 180 deg from the target, arm reaching back over itself. A specific
+    orientation, even one that is not straight down, keeps the plan a normal
+    reach instead of an arbitrary one."""
+    if orientation_override is not None:
+        qx, qy, qz, qw = orientation_override
+    else:
+        qx, qy, qz, qw = grasp_quat_for(block_yaw_deg, x, y, holding_block)
+
+    # Same tip-swing compensation as make_grasp_pose, so the hover and the
+    # Cartesian descent below it agree about where the jaws are going. If only
+    # one of them compensated, the "straight down" descent would have to
+    # translate sideways to reconcile them -- the exact sideways nudge that
+    # descent exists to avoid. Skipped for orientation_override callers (the
+    # detection hovers), which are not aiming the jaws at anything.
+    if orientation_override is None:
+        x, y, z = compensate_for_tip_swing(x, y, z, block_yaw_deg,
+                                           holding_block)
+        z = clamp_flange_z(z, "move_arm_to")
+
     ik_state = None
     if lock_orientation:
-        ik_state = solve_ik_state(io_client, x, y, z,
-                                   GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW)
+        ik_state = solve_ik_state(io_client, x, y, z, qx, qy, qz, qw,
+                                  block_yaw_deg=block_yaw_deg,
+                                  ori_xy_tolerance=ori_xy_tolerance)
 
     if ik_state is not None:
         goal_constraints = [make_joint_goal_constraints(ik_state)]
+    elif not allow_constraint_sampling:
+        # Refuse rather than approximate. Constraint sampling satisfies a 4 cm
+        # position sphere, so when a pose is genuinely out of reach it parks the
+        # arm somewhere else entirely and reports success -- 2026-08-05, two
+        # survey stills asked for radius 0.232 m, all 19 seeds failed, and the
+        # sampler put the lens 45 and 65 mm off the zone centre. Both stills
+        # then saw 2 of 4 tags and dragged the fused block position 3 mm off a
+        # KNOWN truth. A caller that only wants the pose it asked for gets
+        # nothing instead of a plausible substitute.
+        print(f"[move_arm_to] No valid IK state for ({x:.4f},{y:.4f},{z:.4f}) "
+              f"and constraint sampling is not allowed here -- refusing rather "
+              f"than reaching an approximate pose")
+        return False
     else:
         print(f"[move_arm_to] No valid IK state found for ({x},{y},{z}), using constraint sampling")
         constraints = Constraints()
@@ -1903,8 +3686,7 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True):
             # OMPL pick any wrist twist -- see GRIPPER_YAW_DEG above.
             constraints.orientation_constraints.append(
                 make_orientation_constraint(
-                    POSE_LINK, PLANNING_FRAME,
-                    GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW,
+                    POSE_LINK, PLANNING_FRAME, qx, qy, qz, qw,
                     z_tolerance=0.15)
             )
         goal_constraints = [constraints]
@@ -1915,10 +3697,26 @@ def move_arm_to(io_client, x, y, z, lock_orientation=True):
         return False
 
     print(f"Executing joint-space move to ({x}, {y}, {z})...")
-    return io_client.arm_execute(joint_trajectory)
+    # The commanded goal, snapshotted BEFORE execution so it is recorded even if
+    # the arm does not converge -- a move that missed still says what was asked
+    # for, and that is the number worth replaying. See LAST_ARM_GOAL.
+    if joint_trajectory.points:
+        LAST_ARM_GOAL.clear()
+        LAST_ARM_GOAL.update(zip(joint_trajectory.joint_names,
+                                 joint_trajectory.points[-1].positions))
+    ok = io_client.arm_execute(joint_trajectory)
+    record_flange_fk(io_client)
+    if ok is not False and unidirectional:
+        # Done HERE rather than as a separate step because this is the only
+        # place the commanded joint target is known. Re-approaching the
+        # ACHIEVED position instead would bake in whatever backlash offset the
+        # arrival happened to leave, which is the thing being removed.
+        j1_unidirectional_approach(io_client, joint_trajectory)
+    return ok
 
 
-def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=False):
+def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=False,
+                      block_yaw_deg=0.0, holding_block=False):
     """Straight-line Cartesian move from the current pose to (x, y, z),
     holding the fixed downward grasp orientation throughout.
 
@@ -1933,13 +3731,19 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
     joint_values = io_client.current_joint_positions(list(HOME_RADIANS.keys()))
     print(f"[cartesian] joints at start: {[round(v, 4) for v in joint_values.values()]}")
 
-    target = make_grasp_pose(x, y, z)
+    target = make_grasp_pose(x, y, z, block_yaw_deg, holding_block)
 
+    # The PATH constraint must carry the same yaw as the target pose. Leave it
+    # at the fixed grasp yaw while descending onto a rotated block and the two
+    # disagree by exactly block_yaw_deg, which shows up as a Cartesian solve
+    # that falls short of min_fraction for no visible reason. Same argument for
+    # the sag pre-compensation: constraint and target must describe the SAME
+    # orientation, or the solve falls short of min_fraction with no visible cause.
     path_constraints = Constraints()
     path_constraints.orientation_constraints.append(
         make_orientation_constraint(
             POSE_LINK, PLANNING_FRAME,
-            GRIPPER_LOCK_QX, GRIPPER_LOCK_QY, GRIPPER_LOCK_QZ, GRIPPER_LOCK_QW,
+            *grasp_quat_for(block_yaw_deg, x, y, holding_block),
             z_tolerance=0.15)
     )
 
@@ -1961,11 +3765,22 @@ def cartesian_move_to(io_client, x, y, z, min_fraction=0.90, allow_fallback=Fals
         if not allow_fallback:
             return False
         print(f"[cartesian] falling back to joint-space move_arm_to for ({x}, {y}, {z})")
-        return move_arm_to(io_client, x, y, z)
+        return move_arm_to(io_client, x, y, z, block_yaw_deg=block_yaw_deg,
+                           holding_block=holding_block)
 
     print(f"Executing Cartesian move to ({x}, {y}, {z}) (fraction={fraction:.2f})...")
 
-    return io_client.arm_execute(solution_msg.joint_trajectory)
+    ok = io_client.arm_execute(solution_msg.joint_trajectory)
+    # fraction=1.00 only says the PLAN reached the target. Report where the arm
+    # actually is, which is a different question and the one that matters.
+    # report_reached updates LAST_FLANGE_FK itself, as does move_arm_to, so the
+    # global is current after every arm move regardless of which planner ran.
+    # Forward the yaw and the payload. make_grasp_pose above built the target
+    # from both, so report_reached has to recompute the commanded point from the
+    # same two or it prints the error against a pose nobody asked for.
+    report_reached(io_client, x, y, z, what="after Cartesian descent",
+                   block_yaw_deg=block_yaw_deg, holding_block=holding_block)
+    return ok
 
 
 def parse_args():
@@ -1994,6 +3809,28 @@ def parse_args():
                         "axis lines up with world +X; add +/-90*n deg to line up with "
                         "+Y instead, or anything in between for a mat that isn't "
                         f"axis-aligned with world (default: {GRIPPER_YAW_DEG})")
+    parser.add_argument("--hover-only", action="store_true",
+                        help="stop after the pre-grasp hover: home, toggle the "
+                             "gripper, move above the pick, and stay there. No "
+                             "descent, no grasp, no place. This is the shortest "
+                             "run that exercises GRIPPER_MOUNT_TILT_* and the "
+                             "grasp orientation")
+    parser.add_argument("--grasp-only", action="store_true",
+                        help="go one step further than --hover-only: descend to "
+                             "the grasp pose and park there with the jaws still "
+                             "open. No close, no place. THIS is the pose to "
+                             "measure GRIPPER_MOUNT_TILT_* at -- the correction "
+                             "measured at the hover came out 1.2 deg larger than "
+                             "the one measured at the grasp, so it is not the "
+                             "pose-independent mount offset it was assumed to "
+                             "be, and fitting it at the hover over-corrects the "
+                             "place where blocks are actually picked up")
+    parser.add_argument("--place-only", action="store_true",
+                        help="run through the grasp and park at the PLACE pose "
+                             "still HOLDING the block, before the release. The "
+                             "only way to measure the payload term: the arm "
+                             "droops measurably more with a block in the jaws, "
+                             "and every other mode measures it empty")
     return parser.parse_args()
 
 
@@ -2076,22 +3913,79 @@ def main():
     steps = [
         ("Return to home pose", lambda: go_home(io_client)),
         ("Toggle gripper (pre-start)", lambda: toggle_gripper(io_client)),
+        # unidirectional=True on the two PRE moves only. They are where J1 does
+        # its large swing and therefore where its slack gets taken up in an
+        # arbitrary direction; the Cartesian descents that follow are nearly
+        # vertical, so J1 barely turns and its approach direction is inherited
+        # from here. Putting it on the descents as well would insert a 3 deg
+        # base rotation into a move whose whole job is not to move sideways.
         ("Move to pre-grasp (above pick)",
-         lambda: move_arm_to(io_client, px, py, hover_z(pz))),
+         lambda: move_arm_to(io_client, px, py, hover_z_for(px, py, pz),
+                             unidirectional=True)),
         ("Descend to grasp pose (Cartesian)",
          lambda: cartesian_move_to(io_client, px, py, pz)),
+        ("Let the settle close out the grasp residual",
+         lambda: settle_pause(io_client, "the grasp")),
         ("Close gripper (grasp, stop on contact)", lambda: gripper_close_until_contact(io_client)),
+        # holding_block=True from here until the release: a loaded gripper sags
+        # measurably more than an empty one, and the place descent is where that
+        # showed up as ~2 deg of extra tilt versus the pick descent.
         ("Retreat after grasp (Cartesian)",
-         lambda: cartesian_move_to(io_client, px, py, hover_z(pz), allow_fallback=True)),
+         lambda: cartesian_move_to(io_client, px, py, hover_z_for(px, py, pz), allow_fallback=True,
+                                   holding_block=True)),
         ("Move to pre-place (above place)",
-         lambda: move_arm_to(io_client, lx, ly, hover_z(lz))),
+         lambda: move_arm_to(io_client, lx, ly, hover_z_for(lx, ly, lz), holding_block=True,
+                             unidirectional=True)),
         ("Descend to place pose (Cartesian)",
-         lambda: cartesian_move_to(io_client, lx, ly, lz)),
+         lambda: cartesian_move_to(io_client, lx, ly, lz, holding_block=True)),
+        ("Let the settle close out the place residual",
+         lambda: settle_pause(io_client, "the release")),
         ("Open gripper (release)", lambda: io_client.gripper_move_to(GRIPPER_OPEN)),
+        # Block released: back to the empty-gripper pre-compensation.
         ("Retreat after release (Cartesian)",
-         lambda: cartesian_move_to(io_client, lx, ly, hover_z(lz), allow_fallback=True)),
+         lambda: cartesian_move_to(io_client, lx, ly, hover_z_for(lx, ly, lz), allow_fallback=True)),
         ("Return to home pose (final)", lambda: go_home(io_client)),
     ]
+
+    if args.hover_only:
+        # GRIPPER_MOUNT_TILT_* is applied to the grasp ORIENTATION, so it only
+        # takes effect on a move that goes through IK. ff_verify.py commands
+        # joint angles directly and therefore cannot exercise it AT ALL -- a
+        # clean ff_verify result says nothing about this constant either way.
+        # "Move to pre-grasp" is the first step that does, and stopping here
+        # means a wrong tilt costs nothing: no descent to drive the jaws into
+        # the mat, no grasp to mangle a block.
+        #
+        # THE CHECK IS NECESSARILY VISUAL. This correction exists to fix a
+        # disagreement between the URDF and the physical mount, so FK and
+        # /joint_states both already believe the jaws are vertical -- neither
+        # can see the error, and neither can confirm the fix. Put a level on a
+        # jaw face, or sight them against a doorframe.
+        steps = steps[:3]
+        print("[pick_place] --hover-only: stopping after the pre-grasp hover. "
+              "Look at the jaws; /joint_states cannot answer this one.")
+    elif args.grasp_only:
+        # Through the Cartesian descent and the settle, stopping before the
+        # gripper closes. Same reasoning as --hover-only, at the pose that
+        # actually matters: the required correction measured 1.68 deg at the
+        # grasp and 2.86 deg at the hover, and a rigid tool-frame offset would
+        # have to be identical at both. It is not, so it is partly
+        # pose-dependent and must be fitted where the block is picked.
+        steps = steps[:5]
+        print("[pick_place] --grasp-only: descending to the grasp pose and "
+              "parking there with the jaws OPEN. No close, no place.")
+    elif args.place_only:
+        # Through the grasp and the transit, stopping at the place descent's
+        # settle -- so the arm is parked at the place pose WITH THE BLOCK STILL
+        # HELD. That is the whole point: SAG_PRECOMP_PAYLOAD_* cannot be
+        # measured by any mode that arrives empty, and the pick/place tilt
+        # asymmetry seen on 2026-08-03 (3.12 deg of flange tilt at the grasp
+        # against 3.94 deg at the place) is exactly the load term.
+        steps = steps[:10]
+        print("[pick_place] --place-only: running the grasp, then parking at "
+              "the place pose STILL HOLDING the block. No release.")
+        print("[pick_place] Put a block at the pick position first, or this "
+              "measures an empty gripper and tells you nothing.")
 
     for name, action in steps:
         print(f"\n=== {name} ===")
@@ -2101,8 +3995,28 @@ def main():
             break
         time.sleep(0.5)
 
-    print("\n=== Final return to home pose ===")
-    go_home(io_client)
+    if args.hover_only or args.grasp_only or args.place_only:
+        # STAY PUT. The point of these modes is to look at the jaws, and
+        # the first version went straight home afterwards -- which left about a
+        # second to judge a 1-2 deg tilt by eye, on the one measurement that
+        # /joint_states cannot make for you.
+        #
+        # Parked here, the same hand measurement that produced
+        # GRIPPER_MOUNT_TILT_* in the first place can be repeated at this pose:
+        #   ros2 topic echo --once /joint_states     # at rest
+        #   (hold the jaws physically vertical)
+        #   ros2 topic echo --once /joint_states     # held
+        # The delta on the pitch joints is the correction still missing, in
+        # encoder units, with no eyeballing of magnitude.
+        print("\n=== Parked at the {} pose ===".format(
+            "place (block still held)" if args.place_only
+            else "grasp" if args.grasp_only else "pre-grasp hover"))
+        print("[pick_place] Arm left in place deliberately. Put a level on a "
+              "jaw face, or repeat the two-echo hand measurement here.")
+        print("[pick_place] Run reset_arm.py when you are done.")
+    else:
+        print("\n=== Final return to home pose ===")
+        go_home(io_client)
 
     print("\nPick-and-place sequence complete.")
     io_client.destroy_node()

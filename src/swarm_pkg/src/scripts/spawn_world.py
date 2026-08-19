@@ -43,7 +43,18 @@ MARKER_SIZE = 1 * INCH
 MARKER_THICKNESS = 0.001
 MARKER_Z = TABLE_TOP_Z + MARKER_THICKNESS / 2
 SQUARE_SIZE = 0.05
-SQUARE_DISTANCE = 0.25
+# MUST track pick_place.ZONE_RADIUS_M. The "left"/"right" square centres below
+# ARE PICK_XYZ / PLACE_XYZ, and pick_place.py is the same script in sim and on
+# hardware -- let these drift apart and the sim spawns blocks where the arm does
+# not aim, which looks like a grasp bug rather than a world-file bug.
+#
+# Duplicated as a literal rather than imported on purpose: this script only needs
+# argparse/pathlib/subprocess and shells out to `ros2 run ros_gz_sim create`,
+# whereas importing pick_place would drag in rclpy and moveit_msgs. Cheap to keep
+# in sync by hand, expensive to make this file depend on a planning stack.
+#
+# 0.250 -> 0.2286 (9 in) on 2026-08-02, when the physical mats moved in for reach.
+SQUARE_DISTANCE = 9 * INCH   # 0.2286
 _half = SQUARE_SIZE / 2
 SQUARE_CENTERS = {
     "front": (SQUARE_DISTANCE, 0.0),

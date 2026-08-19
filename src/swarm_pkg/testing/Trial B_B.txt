@@ -1,0 +1,468 @@
+ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ python3 tag_pick_place.py --skip-pick --any-block     --zone-origin 0.2032 0.0000 0.0 --zone-yaw 180     --note "s1 trialBA run A1 caliper sigma"
+[stage1] jaw offset from the flange: radial -19.9 mm, tangential -3.3 mm  (calibrated at bearing ~0 -- unverified elsewhere)
+[WARN] [1786137533.334790505] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1786137533.334931994] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1786137533.334995854] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137533.335572853] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/block_detections' with type 'std_msgs::msg::dds_::Float64MultiArray_' from USER_DATA '(null)'.
+[WARN] [1786137533.335653590] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1786137534.031695219] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1786137534.031776730] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1786137534.033481202] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1786137534.033992303] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137534.048560422] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137534.048790720] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137534.048822228] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1786137534.049121501] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137534.049183008] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1786137534.146821134] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1786137534.146920786] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1786137534.147223115] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137534.147285332] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1786137534.147671084] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1786137534.147763368] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1786137534.147831622] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1786137534.155231428] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137534.155391758] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1786137535.354130405] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137535.354605766] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1786137535.354725351] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137535.354786043] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1786137535.354803122] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
+[WARN] [1786137535.354839883] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1786137535.355141743] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137535.355190209] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1786137535.355294263] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1786137535.355315963] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1786137535.355335245] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1786137535.355647674] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1786137535.355696230] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1786137535.355767415] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1786137535.355789073] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[stage1] detect hover height 0.2550 m (measured focus floor is ~0.220m lens height; this clears it)
+Executing joint-space move to home pose...
+[arm] target joint positions: {'joint2_to_joint1': 0.0005, 'joint3_to_joint2': -0.0008, 'joint4_to_joint3': -0.0008, 'joint5_to_joint4': 0.0002, 'joint6_to_joint5': 0.0006, 'joint6output_to_joint6': -0.7862}
+[arm] trajectory: 13 waypoints, 4.235s total, ~0.441 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3236, 'joint3_to_joint2': -0.3681, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': 1.0814}  (max movement so far 0.0000 rad)
+[gripper] target joint positions: {'gripper_controller': 0.15}
+[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
+[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
+[stage1] survey: 5 stills, flange re-centred per wrist yaw so the lens is over the zone centre in every one
+
+[multiview] still 1/5 at wrist yaw +90 deg (offset +90) -- flange (0.1633, +0.0001), radius 0.1633 m, lens on the zone centre by model
+[ik] 'current-state' seed: IK did not converge
+[ik] 'bearing+offset/elbow-down' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [0.403, -0.92, 1.032, -1.685, -0.008, -0.382]  (travel 2.251 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [0.403, -0.92, 1.032, -1.685, -0.008, -0.382]  (travel 2.251 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'bearing-offset/elbow-up' seed: IK did not converge
+[ik] 'downward-confirmed' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'home' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'home-wrist-zeroed' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'all-zeros' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'deep-elbow-down' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'home-mirrored' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]  (travel 1.294 rad)
+[ik] chose 'deep-elbow-down' (1.294 rad of joint travel): [0.403, 0.032, -1.032, -0.575, -0.008, -0.382]
+Executing joint-space move to (0.16326321621888168, 7.586915439100953e-05, 0.255)...
+[arm] target joint positions: {'joint2_to_joint1': 0.403, 'joint3_to_joint2': 0.033, 'joint4_to_joint3': -1.0322, 'joint5_to_joint4': -0.5745, 'joint6_to_joint5': -0.0069, 'joint6output_to_joint6': -0.3817}
+[arm] trajectory: 8 waypoints, 2.540s total, ~0.402 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0168, 'joint3_to_joint2': -0.0106, 'joint4_to_joint3': -0.0122, 'joint5_to_joint4': 0.003, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -0.77}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.75 px, 1 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.75 px | 2315 px/m = 0.2380 m from the mat | camera at zone (+0.4, -23.7) mm
+[detect]   [0] zone (+0.0, -1.4) mm  yaw -179.1 deg  25.7 x 25.8 mm  square sym=4
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[multiview]   lens measured 23.7 mm off the zone centre; correcting the remaining stills by (+0.4, -23.7) mm
+[multiview]   top-face parallax: lens 0.2380 m over a 30 mm block, scaling by 0.8740 about the nadir (-6.4 mm at the zone edge)
+
+[multiview] still 2/5 at wrist yaw +60 deg (offset +60) -- flange (0.1691, -0.0037), radius 0.1691 m, lens re-centred by (+0.4, -23.7) mm
+[ik] 'current-state' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [0.34, -0.949, 1.009, -1.608, 0.082, 0.077]  (travel 2.525 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [0.34, -0.949, 1.009, -1.608, 0.082, 0.077]  (travel 2.525 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [0.34, -0.949, 1.009, -1.608, 0.082, 0.077]  (travel 2.525 rad)
+[ik] 'downward-confirmed' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'home' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'home-wrist-zeroed' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'all-zeros' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'deep-elbow-down' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'home-mirrored' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]  (travel 0.483 rad)
+[ik] chose 'home-wrist-zeroed' (0.483 rad of joint travel): [0.34, -0.017, -1.009, -0.522, 0.082, 0.077]
+Executing joint-space move to (0.16905655465495728, -0.0036829086006898437, 0.255)...
+[arm] target joint positions: {'joint2_to_joint1': 0.3392, 'joint3_to_joint2': -0.0159, 'joint4_to_joint3': -1.0084, 'joint5_to_joint4': -0.5211, 'joint6_to_joint5': 0.0822, 'joint6output_to_joint6': 0.0768}
+[arm] trajectory: 4 waypoints, 1.439s total, ~0.326 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.388, 'joint3_to_joint2': 0.0138, 'joint4_to_joint3': -1.0308, 'joint5_to_joint4': -0.5767, 'joint6_to_joint5': 0.0061, 'joint6output_to_joint6': -0.3927}  (max movement so far 0.0000 rad)
+[detect] OK: 2 tag(s), rms 0.56 px, 3 block(s)
+[detect] tags [1, 2] | rms 0.56 px | 2303 px/m = 0.2393 m from the mat | camera at zone (+5.4, -27.2) mm
+[detect]   [0] zone (-3.6, +0.0) mm  yaw +179.7 deg  35.9 x 37.1 mm  circle sym=0
+[detect]   [1] zone (-45.1, -43.9) mm  yaw -91.1 deg  12.2 x 14.4 mm  unknown sym=1
+[detect]   [2] zone (-45.2, +44.5) mm  yaw -91.2 deg  11.8 x 12.3 mm  circle sym=0
+[detect]   tag id 8  orange cube TOP        zone (-3.9, -0.6) mm  57.5 px (7.2 px/module)
+[multiview]   only 2 tag(s); 3 needed to VOTE on a block position. Not fused -- see MULTIVIEW_MIN_TAGS.
+
+[multiview] still 3/5 at wrist yaw +120 deg (offset +120) -- flange (0.1690, -0.0436), radius 0.1745 m, lens re-centred by (+0.4, -23.7) mm
+[ik] 'current-state' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [0.097, -0.94, 0.929, -1.548, 0.084, -1.212]  (travel 2.721 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [0.097, -0.94, 0.929, -1.548, 0.084, -1.212]  (travel 2.721 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [0.097, -0.94, 0.929, -1.548, 0.084, -1.212]  (travel 2.721 rad)
+[ik] 'downward-confirmed' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'home' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'home-wrist-zeroed' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'all-zeros' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'deep-elbow-down' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'home-mirrored' seed: OK -> [0.097, -0.94, 0.929, -1.548, 0.084, -1.212]  (travel 2.721 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]  (travel 1.307 rad)
+[ik] chose 'deep-elbow-down' (1.307 rad of joint travel): [0.097, -0.081, -0.929, -0.55, 0.084, -1.212]
+Executing joint-space move to (0.1689791876445994, -0.04360023548974594, 0.255)...
+[arm] target joint positions: {'joint2_to_joint1': 0.0969, 'joint3_to_joint2': -0.0803, 'joint4_to_joint3': -0.9282, 'joint5_to_joint4': -0.5495, 'joint6_to_joint5': 0.0829, 'joint6output_to_joint6': -1.2113}
+[arm] trajectory: 6 waypoints, 3.048s total, ~0.418 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3573, 'joint3_to_joint2': -0.0138, 'joint4_to_joint3': -1.0308, 'joint5_to_joint4': -0.543, 'joint6_to_joint5': 0.0705, 'joint6output_to_joint6': 0.0628}  (max movement so far 0.0000 rad)
+[detect] OK: 3 tag(s), rms 0.65 px, 2 block(s)
+[detect] tags [0, 1, 3] | rms 0.65 px | 2272 px/m = 0.2425 m from the mat | camera at zone (-4.5, -24.8) mm
+[detect]   [0] zone (-2.2, -0.8) mm  yaw +1.0 deg  36.0 x 37.1 mm  circle sym=0
+[detect]   [1] zone (+44.5, +44.0) mm  yaw -90.1 deg  12.8 x 13.2 mm  circle sym=0
+[detect]   tag id 8  orange cube TOP        zone (-2.5, -1.4) mm  55.3 px (6.9 px/module)
+[multiview]   top-face parallax: lens 0.2425 m over a 30 mm block, scaling by 0.8763 about the nadir (-6.3 mm at the zone edge)
+[multiview]   1 contour(s) carry a TOP tag on a square footprint -- symmetry 4, so the yaw survives fusion
+
+[multiview] still 4/5 at wrist yaw +30 deg (offset +30) -- flange (0.1837, +0.0109), radius 0.1840 m, lens re-centred by (+0.4, -23.7) mm
+[ik] 'current-state' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [0.39, -0.947, 0.841, -1.439, 0.085, 0.65]  (travel 2.866 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [0.39, -0.947, 0.841, -1.439, 0.085, 0.65]  (travel 2.866 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [0.39, -0.947, 0.841, -1.439, 0.085, 0.65]  (travel 2.866 rad)
+[ik] 'downward-confirmed' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'home' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'home-wrist-zeroed' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'all-zeros' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'deep-elbow-down' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'home-mirrored' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]  (travel 1.872 rad)
+[ik] chose 'downward-confirmed-mirrored' (1.872 rad of joint travel): [0.39, -0.168, -0.841, -0.536, 0.085, 0.65]
+Executing joint-space move to (0.183697272910048, 0.010906930566057568, 0.255)...
+[arm] target joint positions: {'joint2_to_joint1': 0.3907, 'joint3_to_joint2': -0.169, 'joint4_to_joint3': -0.8411, 'joint5_to_joint4': -0.5351, 'joint6_to_joint5': 0.0846, 'joint6output_to_joint6': 0.6493}
+[arm] trajectory: 8 waypoints, 4.191s total, ~0.440 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.118, 'joint3_to_joint2': -0.075, 'joint4_to_joint3': -0.9434, 'joint5_to_joint4': -0.5522, 'joint6_to_joint5': 0.0689, 'joint6output_to_joint6': -1.1964}  (max movement so far 0.0000 rad)
+[detect] OK: 3 tag(s), rms 0.70 px, 2 block(s)
+[detect] tags [0, 1, 2] | rms 0.70 px | 2315 px/m = 0.2380 m from the mat | camera at zone (+12.9, -24.4) mm
+[detect]   [0] zone (-3.9, -0.5) mm  yaw +179.9 deg  35.9 x 36.2 mm  circle sym=0
+[detect]   [1] zone (-44.6, +44.3) mm  yaw -90.2 deg  12.9 x 13.8 mm  circle sym=0
+[detect]   tag id 8  orange cube TOP        zone (-4.0, -1.0) mm  56.9 px (7.1 px/module)
+[multiview]   top-face parallax: lens 0.2380 m over a 30 mm block, scaling by 0.8740 about the nadir (-6.4 mm at the zone edge)
+[multiview]   1 contour(s) carry a TOP tag on a square footprint -- symmetry 4, so the yaw survives fusion
+[multiview] 3 usable views, skipping the remaining 1 still(s)
+
+[multiview] 3 usable view(s), tags seen across all of them: [0, 1, 2, 3]
+[multiview]   [0] zone (-1.8, -3.8) mm  yaw +0.6 deg  31.4 x 31.6 mm  square  views=3 spread=1.9 mm/0.7 deg
+[multiview]   [1] zone (+38.4, +35.5) mm  yaw +0.0 deg  11.2 x 11.5 mm  circle  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
+[multiview]   [2] zone (-37.4, +35.6) mm  yaw +0.0 deg  11.3 x 12.1 mm  circle  views=1 spread=0.0 mm/0.0 deg  <-- ONE VIEW ONLY, no cross-check
+[multiview] block tags seen across the stills:
+[multiview]   id 8  orange cube TOP        zone (-3.9, -0.6) mm  best 7.2 px/module
+[stage1] ignoring 11.2 x 11.5 mm at zone (+38.4, +35.5) mm -- outside the 38.1 mm the tags leave clear, so it is the zone's own furniture, not a block
+[identify] contour 0 at zone (-1.8, -3.8) mm is the orange_cube (orange cube TOP, 4 mm away)
+[stage1] block confirmed across 3 views, spread 1.9 mm / 0.7 deg
+
+[stage1] block: 31.4 x 31.6 mm square, zone (-1.8, -3.8) mm, yaw +180.6 deg -> grasp yaw +0.6 deg (symmetry 4)
+
+[stage1] block world position from the tags: (0.2050, 0.0038)
+
+[stage1] grasp target: world (0.2050, 0.0038, 0.1455), yaw +0.6 deg
+[stage1] approach hover 0.1855 m, then a 40 mm straight-down descent
+[stage1] descent height is PICK_XYZ.z + GRASP_OFFSET_Z = 0.1455, the same flange height pick_place.py grasps this block at. Stage 1 measures X, Y and yaw; Z is not measured and is not recomputed.
+
+[confirm] block  UNIDENTIFIED  31.4 x 31.6 mm  square
+[confirm]   zone-local  (-1.8, -3.8) mm      <- raw, straight from the tags
+[confirm]   WORLD       (0.2050, 0.0038) m   r 0.2050 m = 8.07 in, bearing +1.1 deg
+[confirm]   block yaw   +180.6 deg in world  ->  grasp yaw +0.6 deg (symmetry 4)
+[confirm]   flange z    hover 0.1855 -> grasp 0.1455, a 40 mm descent. Z is NOT measured -- it is PICK_XYZ.z + GRASP_OFFSET_Z.
+[confirm] ENTER = go to the hover   'dx dy' mm = nudge   q = abort > 
+
+=== Move over the block ===
+[ik] 'current-state' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 2.784 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 2.784 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 2.784 rad)
+[ik] 'downward-confirmed' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'home' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 2.784 rad)
+[ik] 'home-wrist-zeroed' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'all-zeros' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'deep-elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'home-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 1.035 rad)
+[ik] chose 'deep-elbow-down' (1.035 rad of joint travel): [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]
+Executing joint-space move to (0.21927469043601114, 0.005449613949317145, 0.1843705916235359)...
+[arm] target joint positions: {'joint2_to_joint1': 0.318, 'joint3_to_joint2': -0.3713, 'joint4_to_joint3': -1.3538, 'joint5_to_joint4': 0.1982, 'joint6_to_joint5': 0.0003, 'joint6output_to_joint6': 1.0927}
+[arm] trajectory: 7 waypoints, 2.001s total, ~0.375 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3773, 'joint3_to_joint2': -0.1609, 'joint4_to_joint3': -0.8604, 'joint5_to_joint4': -0.5522, 'joint6_to_joint5': 0.075, 'joint6output_to_joint6': 0.635}  (max movement so far 0.0000 rad)
+[j1] unidirectional approach: backing off 3.0 deg, then re-approaching +ve with a +1.10 deg lost-motion bias, so the joint lands ON target instead of consistently short of it
+[arm] target joint positions: {'joint2_to_joint1': 0.2848, 'joint3_to_joint2': -0.3713, 'joint4_to_joint3': -1.3538, 'joint5_to_joint4': 0.1982, 'joint6_to_joint5': 0.0003, 'joint6output_to_joint6': 1.0927}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3374, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': 1.0783}  (max movement so far 0.0000 rad)
+[arm] target joint positions: {'joint2_to_joint1': 0.3372, 'joint3_to_joint2': -0.3713, 'joint4_to_joint3': -1.3538, 'joint5_to_joint4': 0.1982, 'joint6_to_joint5': 0.0003, 'joint6output_to_joint6': 1.0927}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3374, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': 1.0783}  (max movement so far 0.0000 rad)
+
+[confirm] block  UNIDENTIFIED  31.4 x 31.6 mm  square
+[confirm]   zone-local  (-1.8, -3.8) mm      <- raw, straight from the tags
+[confirm]   WORLD       (0.2050, 0.0038) m   r 0.2050 m = 8.07 in, bearing +1.1 deg
+[confirm]   block yaw   +180.6 deg in world  ->  grasp yaw +0.6 deg (symmetry 4)
+[confirm]   flange z    hover 0.1855 -> grasp 0.1455, a 40 mm descent. Z is NOT measured -- it is PICK_XYZ.z + GRASP_OFFSET_Z.
+[confirm] parked HERE, 40 mm above the grasp height.
+[confirm] LOOK AT THE JAWS. If they are off the block, type the offset you can see:
+[confirm]   'dx dy' in mm, world axes -- +x is world +X, +y is world +Y.
+[confirm]   'dx dy dyaw' also turns the wrist, dyaw in DEGREES.
+[confirm] ENTER = descend and grasp   'dx dy' mm = nudge and re-park   q = abort > 0 -8
+[confirm] re-parking
+
+=== Move over the block ===
+[ik] 'current-state' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [0.28, -1.612, 1.353, -1.268, 0.001, 1.054]  (travel 3.314 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [0.28, -1.612, 1.353, -1.268, 0.001, 1.054]  (travel 3.314 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [0.28, -1.612, 1.353, -1.268, 0.001, 1.054]  (travel 3.314 rad)
+[ik] 'downward-confirmed' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'home' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'home-wrist-zeroed' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'all-zeros' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'deep-elbow-down' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'home-mirrored' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]  (travel 0.045 rad)
+[ik] chose 'home-wrist-zeroed' (0.045 rad of joint travel): [0.28, -0.371, -1.353, 0.197, 0.001, 1.054]
+Executing joint-space move to (0.2194027762222354, -0.003117327628398247, 0.18437354519736626)...
+[arm] target joint positions: {'joint2_to_joint1': 0.2799, 'joint3_to_joint2': -0.3722, 'joint4_to_joint3': -1.3534, 'joint5_to_joint4': 0.1978, 'joint6_to_joint5': 0.0013, 'joint6output_to_joint6': 1.0543}
+[arm] trajectory: 2 waypoints, 0.418s total, ~0.105 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3236, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': 1.0783}  (max movement so far 0.0000 rad)
+[j1] unidirectional approach: backing off 3.0 deg, then re-approaching +ve with a +1.10 deg lost-motion bias, so the joint lands ON target instead of consistently short of it
+[arm] target joint positions: {'joint2_to_joint1': 0.2467, 'joint3_to_joint2': -0.3722, 'joint4_to_joint3': -1.3534, 'joint5_to_joint4': 0.1978, 'joint6_to_joint5': 0.0013, 'joint6output_to_joint6': 1.0543}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3236, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': 1.0783}  (max movement so far 0.0000 rad)
+[arm] target joint positions: {'joint2_to_joint1': 0.2991, 'joint3_to_joint2': -0.3722, 'joint4_to_joint3': -1.3534, 'joint5_to_joint4': 0.1978, 'joint6_to_joint5': 0.0013, 'joint6output_to_joint6': 1.0543}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.2899, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0183, 'joint6output_to_joint6': 1.066}  (max movement so far 0.0000 rad)
+
+[confirm] block  UNIDENTIFIED  31.4 x 31.6 mm  square
+[confirm]   zone-local  (-1.8, -3.8) mm      <- raw, straight from the tags
+[confirm]   WORLD       (0.2050, -0.0042) m   r 0.2050 m = 8.07 in, bearing -1.2 deg
+[confirm]   block yaw   +180.6 deg in world  ->  grasp yaw +0.6 deg (symmetry 4)
+[confirm]   flange z    hover 0.1855 -> grasp 0.1455, a 40 mm descent. Z is NOT measured -- it is PICK_XYZ.z + GRASP_OFFSET_Z.
+[confirm]   nudged by   (+0.0, -8.0) mm of yours, already included in WORLD above
+[confirm] parked HERE, 40 mm above the grasp height.
+[confirm] LOOK AT THE JAWS. If they are off the block, type the offset you can see:
+[confirm]   'dx dy' in mm, world axes -- +x is world +X, +y is world +Y.
+[confirm]   'dx dy dyaw' also turns the wrist, dyaw in DEGREES.
+[confirm] ENTER = descend and grasp   'dx dy' mm = nudge and re-park   q = abort > 0 +8
+[confirm] re-parking
+
+=== Move over the block ===
+[ik] 'current-state' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 3.316 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 3.316 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 3.316 rad)
+[ik] 'downward-confirmed' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'home' seed: IK did not converge
+[ik] 'home-wrist-zeroed' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'all-zeros' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'deep-elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'home-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.054 rad)
+[ik] chose 'home-wrist-zeroed' (0.054 rad of joint travel): [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]
+Executing joint-space move to (0.21927469043601114, 0.005449613949317145, 0.1843705916235359)...
+[arm] target joint positions: {'joint2_to_joint1': 0.3182, 'joint3_to_joint2': -0.371, 'joint4_to_joint3': -1.3549, 'joint5_to_joint4': 0.1986, 'joint6_to_joint5': 0.0005, 'joint6output_to_joint6': 1.0926}
+[arm] trajectory: 2 waypoints, 0.363s total, ~0.091 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.2852, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0168, 'joint6output_to_joint6': 1.0645}  (max movement so far 0.0000 rad)
+[j1] unidirectional approach: backing off 3.0 deg, then re-approaching +ve with a +1.10 deg lost-motion bias, so the joint lands ON target instead of consistently short of it
+[arm] target joint positions: {'joint2_to_joint1': 0.285, 'joint3_to_joint2': -0.371, 'joint4_to_joint3': -1.3549, 'joint5_to_joint4': 0.1986, 'joint6_to_joint5': 0.0005, 'joint6output_to_joint6': 1.0926}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.2852, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0168, 'joint6output_to_joint6': 1.0645}  (max movement so far 0.0000 rad)
+[arm] target joint positions: {'joint2_to_joint1': 0.3374, 'joint3_to_joint2': -0.371, 'joint4_to_joint3': -1.3549, 'joint5_to_joint4': 0.1986, 'joint6_to_joint5': 0.0005, 'joint6output_to_joint6': 1.0926}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3005, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0199, 'joint6output_to_joint6': 1.0737}  (max movement so far 0.0000 rad)
+
+[confirm] block  UNIDENTIFIED  31.4 x 31.6 mm  square
+[confirm]   zone-local  (-1.8, -3.8) mm      <- raw, straight from the tags
+[confirm]   WORLD       (0.2050, 0.0038) m   r 0.2050 m = 8.07 in, bearing +1.1 deg
+[confirm]   block yaw   +180.6 deg in world  ->  grasp yaw +0.6 deg (symmetry 4)
+[confirm]   flange z    hover 0.1855 -> grasp 0.1455, a 40 mm descent. Z is NOT measured -- it is PICK_XYZ.z + GRASP_OFFSET_Z.
+[confirm] parked HERE, 40 mm above the grasp height.
+[confirm] LOOK AT THE JAWS. If they are off the block, type the offset you can see:
+[confirm]   'dx dy' in mm, world axes -- +x is world +X, +y is world +Y.
+[confirm]   'dx dy dyaw' also turns the wrist, dyaw in DEGREES.
+[confirm] ENTER = descend and grasp   'dx dy' mm = nudge and re-park   q = abort > 0 +8
+[confirm] re-parking
+
+=== Move over the block ===
+[ik] 'current-state' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [0.358, -1.613, 1.352, -1.266, 0.001, 1.132]  (travel 3.313 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [0.358, -1.613, 1.352, -1.266, 0.001, 1.132]  (travel 3.313 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [0.358, -1.613, 1.352, -1.266, 0.001, 1.132]  (travel 3.313 rad)
+[ik] 'downward-confirmed' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'home' seed: OK -> [0.358, -1.613, 1.352, -1.266, 0.001, 1.132]  (travel 3.313 rad)
+[ik] 'home-wrist-zeroed' seed: IK did not converge
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'all-zeros' seed: OK -> [0.358, -1.613, 1.352, -1.266, 0.001, 1.132]  (travel 3.313 rad)
+[ik] 'deep-elbow-down' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [0.358, -1.613, 1.352, -1.266, 0.001, 1.132]  (travel 3.313 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]  (travel 0.078 rad)
+[ik] chose 'current-state' (0.078 rad of joint travel): [0.358, -0.372, -1.352, 0.198, 0.001, 1.132]
+Executing joint-space move to (0.21912481577014883, 0.014010327922327022, 0.1843676552702966)...
+[arm] target joint positions: {'joint2_to_joint1': 0.3572, 'joint3_to_joint2': -0.3719, 'joint4_to_joint3': -1.3517, 'joint5_to_joint4': 0.1986, 'joint6_to_joint5': 0.0017, 'joint6output_to_joint6': 1.1328}
+[arm] trajectory: 2 waypoints, 0.467s total, ~0.117 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3236, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': 1.0783}  (max movement so far 0.0000 rad)
+[j1] unidirectional approach: backing off 3.0 deg, then re-approaching +ve with a +1.10 deg lost-motion bias, so the joint lands ON target instead of consistently short of it
+[arm] target joint positions: {'joint2_to_joint1': 0.324, 'joint3_to_joint2': -0.3719, 'joint4_to_joint3': -1.3517, 'joint5_to_joint4': 0.1986, 'joint6_to_joint5': 0.0017, 'joint6output_to_joint6': 1.1328}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3236, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': 1.0783}  (max movement so far 0.0000 rad)
+[arm] target joint positions: {'joint2_to_joint1': 0.3764, 'joint3_to_joint2': -0.3719, 'joint4_to_joint3': -1.3517, 'joint5_to_joint4': 0.1986, 'joint6_to_joint5': 0.0017, 'joint6output_to_joint6': 1.1328}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3419, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0168, 'joint6output_to_joint6': 1.1029}  (max movement so far 0.0000 rad)
+
+[confirm] block  UNIDENTIFIED  31.4 x 31.6 mm  square
+[confirm]   zone-local  (-1.8, -3.8) mm      <- raw, straight from the tags
+[confirm]   WORLD       (0.2050, 0.0118) m   r 0.2053 m = 8.08 in, bearing +3.3 deg
+[confirm]   block yaw   +180.6 deg in world  ->  grasp yaw +0.6 deg (symmetry 4)
+[confirm]   flange z    hover 0.1855 -> grasp 0.1455, a 40 mm descent. Z is NOT measured -- it is PICK_XYZ.z + GRASP_OFFSET_Z.
+[confirm]   nudged by   (+0.0, +8.0) mm of yours, already included in WORLD above
+[confirm] parked HERE, 40 mm above the grasp height.
+[confirm] LOOK AT THE JAWS. If they are off the block, type the offset you can see:
+[confirm]   'dx dy' in mm, world axes -- +x is world +X, +y is world +Y.
+[confirm]   'dx dy dyaw' also turns the wrist, dyaw in DEGREES.
+[confirm] ENTER = descend and grasp   'dx dy' mm = nudge and re-park   q = abort > 0 -8
+[confirm] re-parking
+
+=== Move over the block ===
+[ik] 'current-state' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 3.315 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 3.315 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [0.319, -1.613, 1.355, -1.269, 0.001, 1.093]  (travel 3.315 rad)
+[ik] 'downward-confirmed' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'home' seed: IK did not converge
+[ik] 'home-wrist-zeroed' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'all-zeros' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'deep-elbow-down' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'home-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]  (travel 0.047 rad)
+[ik] chose 'home-wrist-zeroed' (0.047 rad of joint travel): [0.319, -0.37, -1.355, 0.198, 0.001, 1.093]
+Executing joint-space move to (0.21927469043601114, 0.005449613949317145, 0.1843705916235359)...
+[arm] target joint positions: {'joint2_to_joint1': 0.3179, 'joint3_to_joint2': -0.3707, 'joint4_to_joint3': -1.3545, 'joint5_to_joint4': 0.1987, 'joint6_to_joint5': 0.0005, 'joint6output_to_joint6': 1.0928}
+[arm] trajectory: 2 waypoints, 0.404s total, ~0.101 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3588, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': 1.1182}  (max movement so far 0.0000 rad)
+[j1] unidirectional approach: backing off 3.0 deg, then re-approaching +ve with a +1.10 deg lost-motion bias, so the joint lands ON target instead of consistently short of it
+[arm] target joint positions: {'joint2_to_joint1': 0.2848, 'joint3_to_joint2': -0.3707, 'joint4_to_joint3': -1.3545, 'joint5_to_joint4': 0.1987, 'joint6_to_joint5': 0.0005, 'joint6output_to_joint6': 1.0928}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3588, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': 1.1182}  (max movement so far 0.0000 rad)
+[arm] target joint positions: {'joint2_to_joint1': 0.3371, 'joint3_to_joint2': -0.3707, 'joint4_to_joint3': -1.3545, 'joint5_to_joint4': 0.1987, 'joint6_to_joint5': 0.0005, 'joint6output_to_joint6': 1.0928}
+[arm] trajectory: 1 waypoints, 1.500s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.3267, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0168, 'joint6output_to_joint6': 1.1029}  (max movement so far 0.0000 rad)
+
+[confirm] block  UNIDENTIFIED  31.4 x 31.6 mm  square
+[confirm]   zone-local  (-1.8, -3.8) mm      <- raw, straight from the tags
+[confirm]   WORLD       (0.2050, 0.0038) m   r 0.2050 m = 8.07 in, bearing +1.1 deg
+[confirm]   block yaw   +180.6 deg in world  ->  grasp yaw +0.6 deg (symmetry 4)
+[confirm]   flange z    hover 0.1855 -> grasp 0.1455, a 40 mm descent. Z is NOT measured -- it is PICK_XYZ.z + GRASP_OFFSET_Z.
+[confirm] parked HERE, 40 mm above the grasp height.
+[confirm] LOOK AT THE JAWS. If they are off the block, type the offset you can see:
+[confirm]   'dx dy' in mm, world axes -- +x is world +X, +y is world +Y.
+[confirm]   'dx dy dyaw' also turns the wrist, dyaw in DEGREES.
+[confirm] ENTER = descend and grasp   'dx dy' mm = nudge and re-park   q = abort > 
+
+[stage1] --skip-pick: parked over the block, measured, recorded. Total correction you dialled in: (+0.0, +0.0) mm, +0.0 deg.
+[stage1] Nothing descended. The block is exactly where it was, so move the ZONE and run the next position.
+
+=== Returning home ===
+Executing joint-space move to home pose...
+[arm] target joint positions: {'joint2_to_joint1': -0.0008, 'joint3_to_joint2': 0.0005, 'joint4_to_joint3': 0.0008, 'joint5_to_joint4': -0.0009, 'joint6_to_joint5': -0.0006, 'joint6output_to_joint6': -0.7853}
+[arm] trajectory: 13 waypoints, 4.276s total, ~0.442 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.322, 'joint3_to_joint2': -0.3588, 'joint4_to_joint3': -1.3514, 'joint5_to_joint4': 0.1794, 'joint6_to_joint5': 0.0152, 'joint6output_to_joint6': 1.1029}  (max movement so far 0.0000 rad)
+
+STAGE 1 COMPLETE
+Confirm the grasp VISUALLY. arm_group_controller reports 'Goal reached, success!' from elapsed time alone -- there is no constraints: block in ros2_controllers.yaml, so ROS logs are not evidence of physical motion on this setup.
+ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ 
+
