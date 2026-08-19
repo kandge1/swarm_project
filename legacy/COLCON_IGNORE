@@ -1,0 +1,12 @@
+Stops `colcon build` from descending into legacy/.
+
+legacy/ws/src/control/ is a dead ROS2 python package (an AGV diff-drive
+teleop/setpoint controller from an earlier project, maintainer cameron)
+kept only for reference. Without this marker colcon discovers it as a
+6th workspace package named "control" and builds it on every plain
+`colcon build` -- see GitHub issue #22, where a fresh-arm build reported
+"Starting >>> control" for a package that isn't in src/ at all, which is
+exactly as confusing as it sounds.
+
+Do not delete this file. If you ever need to build something in here,
+move it into src/ rather than removing the marker.

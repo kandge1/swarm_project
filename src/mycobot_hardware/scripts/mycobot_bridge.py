@@ -92,7 +92,11 @@ GRIPPER_OPEN_RAD = 0.15
 GRIPPER_CLOSED_RAD = -0.60
 
 DEFAULT_SOCKET_PATH = "/tmp/mycobot_hardware_bridge.sock"
-DEFAULT_SERIAL_PORT = "/dev/ttyAMA0"  # UNVERIFIED -- confirm on real hardware
+# Verified on the real arm: ttyAMA0 @ 1000000 is what the 280 Pi answers on.
+# Not /dev/serial0 -- on a Pi 4 that symlinks to the mini UART (ttyS0) unless
+# Bluetooth is disabled, and opening the wrong port fails silently rather than
+# raising: writes go nowhere and reads return stale angles.
+DEFAULT_SERIAL_PORT = "/dev/ttyAMA0"
 DEFAULT_BAUD_RATE = 1000000
 DEFAULT_SPEED = 50  # 0-100, pymycobot's joint/gripper move speed -- see
                     # SPEED_100_RAD_PER_SEC below; this is now an UPPER BOUND,

@@ -206,6 +206,11 @@ Troubleshooting below for the `libbackward.so` fix that was needed first).
 cd ~/swarm_project
 source /opt/ros/galactic/setup.bash
 
+# On a robot you have not built on before, confirm the prerequisites first --
+# this is the difference between one actionable message and the CMake stack
+# traces in issue #22. Read-only; installs and builds nothing.
+./pi_setup/preflight_check.sh
+
 # Set DDS environment (must be done before ros2_control starts)
 # NOTE: cyclonedds_galactic.xml, not cyclonedds.xml -- the config was split
 # per-distro (see cyclone_dds_integration_log.md); cyclonedds.xml is a stale
@@ -504,10 +509,12 @@ python3 zone_view.py /tmp/zone.png --method otsu --write /tmp/annotated.png
 │       └── srv/DetectBlock.srv
 │
 ├── pi_setup/                    # Robot-side install (Ubuntu 20.04/Galactic)
-│   ├── install_pi_galactic.sh
+│   ├── install_pi_galactic.sh   # One-shot installer for a fresh arm
+│   ├── preflight_check.sh       # Run before colcon build; explains failures
 │   └── requirements.txt
 │
 ├── legacy/                      # Old code (keep for reference)
+│   └── COLCON_IGNORE            # Keeps the dead 'control' pkg out of builds
 ├── build/                       # Build artifacts (auto-generated)
 ├── install/                     # Installed packages (source this)
 ├── log/                         # Build logs (auto-generated)
@@ -551,6 +558,61 @@ python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
 ---
 
 ## Troubleshooting
+
+### Fresh arm: `colcon build` fails (GitHub issue #22)
+
+Run this first on any new robot. It checks every prerequisite in one pass and
+prints the exact fix for each, instead of letting CMake report the same
+problems as stack traces:
+
+```bash
+cd ~/swarm_project
+./pi_setup/preflight_check.sh
+```
+
+Issue #22 was three separate problems stacked on top of each other, all of
+which this script now catches up front:
+
+**1. `Could not find ... "ament_cmake"` / `ros2: command not found`**
+
+ROS was never sourced in that shell. Sourcing is per-terminal and does not
+persist across new terminals or reboots:
+
+```bash
+source /opt/ros/galactic/setup.bash   # on the robot
+source /opt/ros/jazzy/setup.bash      # on mars
+```
+
+Never source `/opt/ros/noetic` (the vendor image's ROS1) in the same shell.
+
+**2. `Could not find ... "hardware_interface"`, `Package 'controller_manager' not found`**
+
+ros2_control is not part of the stock Elephant Robotics image, and
+`mycobot_hardware` cannot build without it. The fresh arm had never had the
+installer run on it:
+
+```bash
+./pi_setup/install_pi_galactic.sh
+```
+
+That installs MoveIt2, ros2_control, the camera stack, and pymycobot. Expect
+it to take a while on a Pi 4.
+
+**3. `Starting >>> control` for a package that isn't in `src/`**
+
+`legacy/ws/src/control/` is a dead AGV package kept for reference. colcon used
+to discover it as a workspace package, so every plain `colcon build` tried to
+build it and its failures were interleaved with real ones. `legacy/COLCON_IGNORE`
+now stops that. If an older checkout already built it, clear the leftovers
+(they are not rebuilt, but stay visible to `ros2 pkg list`):
+
+```bash
+rm -rf build/control install/control
+```
+
+Note that `colcon build` aborts *all* in-flight packages when any one of them
+fails, so a single missing dependency reads like the whole workspace is broken.
+`3 packages aborted` means "did not finish", not "also failed".
 
 ### Packages not found
 ```bash

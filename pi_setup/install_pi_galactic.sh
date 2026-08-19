@@ -151,22 +151,32 @@ cat <<SUMMARY
      (mycobot_hardware/MyCobotSystem) bridging to a pymycobot-based Python
      process (mycobot_bridge.py) over a Unix domain socket. Known gaps,
      read before trusting it against the physical arm:
-       - Serial port/baud rate in mycobot_bridge.py are UNVERIFIED guesses
-         for this exact unit -- confirm against the real onboard UART.
        - Gripper contact detection (pick_place.py's
          gripper_close_until_contact) CANNOT work as-is: pymycobot's
          gripper API has no effort/force reading at all.
-       - This package has not yet been colcon-built on real Galactic --
-         only structurally checked against docs and a scratch Jazzy build
-         on the dev machine. Expect to debug real compiler errors here.
+       - Joint velocity is always reported as 0.0 -- pymycobot exposes no
+         velocity reading. A placeholder, not a bug; controllers here only
+         rely on position tracking.
+     Since confirmed on real hardware: mycobot_hardware builds clean on
+     Galactic and mycobot_bridge.py talks to the arm at /dev/ttyAMA0 @
+     1000000 baud. Note that is ttyAMA0, NOT /dev/serial0 -- on a Pi 4
+     /dev/serial0 points at the mini UART unless Bluetooth is disabled, so
+     a script hardcoding serial0 may open a port the arm is not on and
+     silently read back stale angles.
      See WORKFLOW.md's "Real Hardware Workflow" section for the full story.
 
   4. Next steps:
-       cd ~/swarm/swarm_project
+       cd ~/swarm_project
        source /opt/ros/galactic/setup.bash
+       ./pi_setup/preflight_check.sh     # confirms this install actually took
        colcon build
        source install/setup.bash
        ros2 launch mycobot_280pi_camera_moveit2 real_robot.launch.py
+
+     Run preflight_check.sh before colcon build on a robot you have not built
+     on before. It reports a missing ROS source or a missing apt package as a
+     one-line fix; colcon reports the same two things as CMake stack traces
+     that name neither cause (GitHub issue #22).
 
   5. Gazebo/Isaac Sim were intentionally skipped -- dev-workstation-only,
      and this Pi needs to run everything standalone without them.
