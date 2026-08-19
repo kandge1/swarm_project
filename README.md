@@ -16,7 +16,88 @@ unverified or known-fragile, it says so.
 
 ---
 
-## 1. What you need
+## 1. Get the code (git and GitHub)
+
+New to git? Read **[git_user_guide.md](git_user_guide.md)** first — it covers
+everything below plus the branch naming this project uses. This section is just
+enough to get the code onto both machines.
+
+You need a GitHub account, and **push access to this repo**: ask the repo owner
+to add you as a collaborator. Do this before your first lab session; nothing
+below works without it.
+
+### 1a. Tell git who you are (once per machine)
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+### 1b. Set up authentication (once per machine)
+
+GitHub does not accept your account password from the command line. Use an SSH
+key — it works the same on your laptop and on the robot, and you never type it
+again.
+
+```bash
+ssh-keygen -t ed25519 -C "you@example.com"     # press ENTER at every prompt
+cat ~/.ssh/id_ed25519.pub                       # copy the whole line
+```
+
+Paste that into GitHub → **Settings → SSH and GPG keys → New SSH key**. Then
+check it worked:
+
+```bash
+ssh -T git@github.com
+# "Hi <username>! You've successfully authenticated" — the "does not provide
+# shell access" part that follows is normal, not an error.
+```
+
+**Do this on both machines.** Each one needs its own key; a key is tied to the
+computer it was made on, so do not copy the private key around.
+
+### 1c. Clone, on each machine
+
+**The two machines use different paths.** Every command in this project's docs
+assumes these exact locations:
+
+```bash
+# On the ROBOT
+git clone git@github.com:kandge1/swarm_project.git ~/swarm_project
+cd ~/swarm_project
+
+# On the WORKSTATION
+mkdir -p ~/swarm
+git clone git@github.com:kandge1/swarm_project.git ~/swarm/swarm_project
+cd ~/swarm/swarm_project
+```
+
+### 1d. Check out the right branch — do not skip this
+
+A fresh clone puts you on `main`, which is **59 commits behind** the arm's real
+work. Nothing in this README will match what you see. Switch immediately:
+
+```bash
+git checkout mycobot_main
+git log --oneline -3        # newest commit should mention april_tags / stacking
+```
+
+| Branch | What it is |
+|---|---|
+| `mycobot_main` | **The arm. Start here.** |
+| `myagv_main` | The AGV line — a different robot, not this guide |
+| `main` | Long out of date. Do not build from it |
+
+Then make your own branch before changing anything — see
+[git_user_guide.md](git_user_guide.md):
+
+```bash
+git checkout -b feature/your_thing
+```
+
+---
+
+## 2. What you need
 
 ### Hardware
 | Item | Notes |
@@ -43,7 +124,7 @@ per motion, then the Pi's controller runs it in real time.
 
 ---
 
-## 2. What is NOT on the stock Elephant Robotics image
+## 3. What is NOT on the stock Elephant Robotics image
 
 The vendor image ships ROS2 Galactic and ROS1 Noetic and almost nothing this
 project needs. Installing these is most of the bring-up:
@@ -64,7 +145,7 @@ pass. It does **not** touch the ROS1 Noetic install.
 
 ---
 
-## 3. Install — the robot
+## 4. Install — the robot
 
 ```bash
 git clone <this-repo> ~/swarm_project
@@ -101,41 +182,37 @@ this first.
 
 ---
 
-## 4. Install — the workstation
+## 5. Install — the workstation
 
-There is no scripted installer for this side yet (see [Known gaps](#9-known-gaps)).
-Run:
+Start from a fresh **Ubuntu 24.04**. The script installs ROS2 Jazzy itself, so
+you do not need ROS beforehand.
 
 ```bash
-# ROS2 Jazzy — standard upstream instructions, then:
-sudo apt install -y \
-    ros-jazzy-desktop python3-colcon-common-extensions python3-rosdep python3-argcomplete
-
-sudo apt install -y \
-    ros-jazzy-moveit ros-jazzy-moveit-planners ros-jazzy-moveit-ros-planning \
-    ros-jazzy-moveit-ros-move-group ros-jazzy-moveit-ros-visualization \
-    ros-jazzy-moveit-kinematics ros-jazzy-moveit-configs-utils \
-    ros-jazzy-ros2-control ros-jazzy-ros2-controllers ros-jazzy-controller-manager \
-    ros-jazzy-joint-state-broadcaster ros-jazzy-joint-trajectory-controller \
-    ros-jazzy-rviz2 ros-jazzy-xacro ros-jazzy-robot-state-publisher ros-jazzy-tf2-ros \
-    ros-jazzy-rmw-cyclonedds-cpp ros-jazzy-cv-bridge python3-opencv
-
-python3 -m pip install --user pillow    # only for printing april tag sheets
-
 git clone <this-repo> ~/swarm/swarm_project
 cd ~/swarm/swarm_project
-source /opt/ros/jazzy/setup.bash
+
+./workstation_setup/install_workstation_jazzy.sh
+
+# then, in a NEW terminal so ROS2 is on your PATH:
+cd ~/swarm/swarm_project
 colcon build --packages-skip mycobot_hardware
 source install/setup.bash
 ```
+
+It installs ROS2 Jazzy, MoveIt2, ros2_control, RViz2, Cyclone DDS, OpenCV and
+the colcon/rosdep tooling, adds `source /opt/ros/jazzy/setup.bash` to your
+`.bashrc`, and finishes by running `preflight_check.sh` against the result. It
+is safe to re-run.
+
+Deliberately **not** installed: Gazebo, Isaac Sim, Docker and the NVIDIA stack
+(none are needed to fly the real arm), `moveit_py` (nothing imports it), and
+`pymycobot` (drives the arm's serial port, which only exists on the robot).
 
 **Always `--packages-skip mycobot_hardware` here.** It is a Galactic-only
 ros2_control plugin; Galactic and Jazzy disagree on the `read()`/`write()`
 signature. It failing on the workstation is expected, not a regression.
 
----
-
-## 5. Network — the step that breaks silently
+## 6. Network — the step that breaks silently
 
 Campus Wi-Fi blocks UDP multicast, so DDS discovery uses a **hardcoded list of
 peer IPs**. On new hardware those IPs are wrong, and nothing reports it: each
@@ -192,7 +269,7 @@ Both machines need the same `ROS_DOMAIN_ID`.
 
 ---
 
-## 6. Print and place the mats
+## 7. Print and place the mats
 
 Each zone is a **101.6 mm** square of white paper with four **25.4 mm** AprilTags
 (36h11) at its corners — ids 0-3 for pickup, 4-7 for place. Pre-generated sheets
@@ -217,9 +294,9 @@ covering a corner tag.
 
 ---
 
-## 7. Run the colour stack
+## 8. Run the colour stack
 
-Four terminals. Every one needs the DDS environment from §5b.
+Four terminals. Every one needs the DDS environment from §6b.
 
 **Terminal 1 — robot: hardware**
 ```bash
@@ -292,14 +369,14 @@ pick sees the first block gone.
 
 ---
 
-## 8. When it fails
+## 9. When it fails
 
 | Symptom | Cause |
 |---|---|
 | `Findament_cmake.cmake` missing / `ros2: command not found` | ROS not sourced in this terminal |
 | `Findhardware_interface.cmake` missing | `install_pi_galactic.sh` never run |
 | `Starting >>> control` for a package not in `src/` | Stale checkout — `legacy/COLCON_IGNORE` fixes it |
-| Workstation sees no robot nodes, everything looks fine locally | Peer IPs wrong, or `swarm_network` not rebuilt after editing them (§5) |
+| Workstation sees no robot nodes, everything looks fine locally | Peer IPs wrong, or `swarm_network` not rebuilt after editing them (§6) |
 | Arm reports identical angles regardless of command | Wrong serial port — `/dev/ttyAMA0`, not `/dev/serial0` |
 | `Goal reached, success!` but the arm never moved | Multi-waypoint trajectory issue — see WORKFLOW.md |
 | Survey rejects every sighting | Framing plus a missing zone tag. Try `--pickup-yaw -93`. One undetected tag halves the trust radius |
@@ -314,12 +391,10 @@ Full troubleshooting, including the DDS verification procedure, is in
 
 ---
 
-## 9. Known gaps
+## 10. Known gaps
 
 Read these before promising anyone a demo:
 
-- **No workstation installer script.** §4 is a manual copy-paste. The robot side
-  is scripted; this side is not.
 - **Peer IPs are hardcoded and must be edited by hand** on every new pair of
   machines. This is the most common bring-up failure.
 - **Gripper contact detection does not work.** pymycobot exposes no force or
@@ -338,10 +413,11 @@ level 0 centred and level 1 square on top, zero nudges (2026-08-12).
 
 ---
 
-## 10. Where to read next
+## 11. Where to read next
 
 | Document | What's in it |
 |---|---|
+| [git_user_guide.md](git_user_guide.md) | Git and GitHub from scratch, and our branch naming |
 | [WORKFLOW.md](WORKFLOW.md) | Every workflow in detail, all troubleshooting, project structure |
 | [dev_logs/APRIL_TAGS.md](dev_logs/APRIL_TAGS.md) | Vision design, measured numbers, usable area |
 | [dev_logs/PROJECT_CONTEXT.md](dev_logs/PROJECT_CONTEXT.md) | What the system is, and why it is built this way |

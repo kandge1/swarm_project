@@ -513,6 +513,9 @@ python3 zone_view.py /tmp/zone.png --method otsu --write /tmp/annotated.png
 │   ├── preflight_check.sh       # Run before colcon build; explains failures
 │   └── requirements.txt
 │
+├── workstation_setup/           # Workstation install (Ubuntu 24.04/Jazzy)
+│   └── install_workstation_jazzy.sh
+│
 ├── legacy/                      # Old code (keep for reference)
 │   └── COLCON_IGNORE            # Keeps the dead 'control' pkg out of builds
 ├── build/                       # Build artifacts (auto-generated)

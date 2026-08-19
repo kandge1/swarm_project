@@ -10,7 +10,7 @@
 #
 # pillow is deliberately absent: only print_zone_tags.py / print_block_tags.py
 # need it, those generate printable sheets, and printing happens on the
-# workstation rather than the robot. See README.md section 4.
+# workstation rather than the robot. See README.md section 5.
 
 pymycobot>=3.6.1
 packaging
