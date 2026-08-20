@@ -2,18 +2,18 @@
 <CycloneDDS>
   <Domain>
     <General>
-      <!-- For mars (Jazzy, newer Cyclone DDS) ONLY -- the robot (Galactic,
+      <!-- For mars (Jazzy, newer Cyclone DDS) ONLY - the robot (Galactic,
            Cyclone DDS 0.22.6) uses cyclonedds_galactic.xml instead, see that
            file's comment for why they can't share one config.
 
            false, not spdp: AllowMulticast=spdp still depends on multicast
-           actually working for SPDP announcements, including on loopback --
+           actually working for SPDP announcements, including on loopback -
            and on this campus Wi-Fi that turned out to be unreliable even
            for same-host discovery (confirmed: a fresh `ros2 node list` on
            mars could not see mars's own already-running move_group with
            spdp set). Disabling multicast entirely and explicitly listing
-           127.0.0.1 as a peer forces ALL discovery -- same-host and
-           cross-host alike -- through the same static unicast mechanism,
+           127.0.0.1 as a peer forces ALL discovery - same-host and
+           cross-host alike - through the same static unicast mechanism,
            so it no longer depends on multicast working anywhere, ever.
            Confirmed working on mars: ros2 node list immediately showed
            move_group/rviz after this change. -->
@@ -38,7 +38,7 @@
     <Discovery>
       <Peers>
         <Peer address="127.0.0.1"/>
-        <Peer address="172.30.11.51"/>
+        <Peer address="172.30.11.42"/>
         <Peer address="172.27.80.139"/>
       </Peers>
     </Discovery>

@@ -115,6 +115,54 @@ else
     warn "Build here with: colcon build --packages-skip mycobot_hardware"
 fi
 
+# ─── 2b. DDS ENVIRONMENT ──────────────────────────────────────────────────────
+# A CYCLONEDDS_URI pointing at a file that is not there is worse than one that
+# is unset: Cyclone refuses to create a domain and EVERY ROS2 process in the
+# shell dies in rmw_create_node, controller spawners included. The usual cause
+# is exporting it before `source install/setup.bash`, so the
+# `$(ros2 pkg prefix swarm_network)` substitution came back empty and left
+# file:///share/... behind.
+step "2b. DDS environment"
+
+if [[ -z "${CYCLONEDDS_URI:-}" ]]; then
+    note "CYCLONEDDS_URI unset (fine for a local-only session; set it before cross-machine work)."
+else
+    dds_path="${CYCLONEDDS_URI#file://}"
+    if [[ -f "$dds_path" ]]; then
+        note "CYCLONEDDS_URI -> $dds_path"
+        case "$dds_path" in
+            *cyclonedds.xml)
+                bad "that is the STALE pre-split config, not valid for either distro."
+                echo "         Use cyclonedds_${ROS_DISTRO}.xml instead." ;;
+            *cyclonedds_${ROS_DISTRO}.xml)
+                note "and it is the right file for $ROS_DISTRO." ;;
+            *)
+                warn "expected cyclonedds_${ROS_DISTRO}.xml for this distro." ;;
+        esac
+    else
+        bad "CYCLONEDDS_URI points at a file that does not exist:"
+        echo "         $CYCLONEDDS_URI"
+        if [[ "$dds_path" == /share/* ]]; then
+            echo "         The path starts at /share, so \$(ros2 pkg prefix swarm_network)"
+            echo "         expanded to NOTHING. You exported this before sourcing the"
+            echo "         workspace. Every ROS2 node in this shell will die in"
+            echo "         rmw_create_node until it is fixed. In this order:"
+            echo "             colcon build --packages-select swarm_network"
+            echo "             source install/setup.bash"
+            echo "             export CYCLONEDDS_URI=file://\$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_${ROS_DISTRO}.xml"
+            echo "         If that export lives in ~/.bashrc, it runs before the"
+            echo "         workspace is sourced there too -- move it after, or"
+            echo "         hardcode the full path."
+        fi
+    fi
+fi
+
+# Cross-machine work needs both ends on the same domain.
+if [[ -n "${RMW_IMPLEMENTATION:-}" && "$RMW_IMPLEMENTATION" != "rmw_cyclonedds_cpp" ]]; then
+    warn "RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION (expected rmw_cyclonedds_cpp)."
+fi
+
+
 # ─── 3. PYMYCOBOT ─────────────────────────────────────────────────────────────
 # Not a rosdep/apt dependency -- pip only, via pi_setup/requirements.txt --
 # so nothing in the build catches its absence. It fails at runtime instead.

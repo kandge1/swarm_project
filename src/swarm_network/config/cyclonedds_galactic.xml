@@ -2,12 +2,12 @@
 <CycloneDDS>
   <Domain>
     <General>
-      <!-- For the robot (Galactic, Cyclone DDS 0.22.6) ONLY -- mars
+      <!-- For the robot (Galactic, Cyclone DDS 0.22.6) ONLY - mars
            (Jazzy, newer Cyclone DDS) uses cyclonedds_jazzy.xml instead.
 
            spdp, not false, and NO 127.0.0.1 peer: unlike Jazzy's Cyclone
            DDS, adding 127.0.0.1 as an explicit static peer on this older
-           Galactic build made same-host discovery WORSE, not better --
+           Galactic build made same-host discovery WORSE, not better -
            confirmed: controller spawners went from occasionally succeeding
            to failing 100% of the time (5/5 retries) with "empty node name
            returned by the RMW layer" once 127.0.0.1 was added. Likely this
@@ -16,17 +16,17 @@
            only, never for data) is the best known option here: it isn't
            fully reliable for same-host discovery either (this Galactic
            Cyclone DDS build has a documented, unfixed upstream discovery-
-           timing race -- see the retrying_spawner wrapper in
+           timing race - see the retrying_spawner wrapper in
            real_robot_hardware.launch.py, which is the actual mitigation),
            but it's strictly better than 127.0.0.1 here. Cross-host
            discovery (mars<->robot) still goes through the static Peers
-           list below regardless -- the campus Wi-Fi blocks multicast for
+           list below regardless - the campus Wi-Fi blocks multicast for
            that regardless of this setting. -->
       <AllowMulticast>spdp</AllowMulticast>
     </General>
     <Discovery>
       <Peers>
-        <Peer address="172.30.11.51"/>
+        <Peer address="172.30.11.42"/>
         <Peer address="172.27.80.139"/>
       </Peers>
     </Discovery>

@@ -211,6 +211,14 @@ source /opt/ros/galactic/setup.bash
 # traces in issue #22. Read-only; installs and builds nothing.
 ./pi_setup/preflight_check.sh
 
+# BUILD AND SOURCE BEFORE exporting CYCLONEDDS_URI: that export runs
+# `ros2 pkg prefix swarm_network`, which resolves to nothing until
+# swarm_network is built AND sourced, leaving file:///share/... -- a path that
+# does not exist. Every ROS2 process in the shell then dies in
+# rmw_create_node. swarm_network is in this build list for the same reason.
+colcon build --packages-select swarm_network mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
+source install/setup.bash
+
 # Set DDS environment (must be done before ros2_control starts)
 # NOTE: cyclonedds_galactic.xml, not cyclonedds.xml -- the config was split
 # per-distro (see cyclone_dds_integration_log.md); cyclonedds.xml is a stale
@@ -224,8 +232,9 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
 export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
 
-colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
-source install/setup.bash
+# Confirm the URI resolved to a real file before launching anything.
+[ -f "${CYCLONEDDS_URI#file://}" ] && echo "DDS config OK" || echo "BROKEN: $CYCLONEDDS_URI"
+
 ros2 launch mycobot_280pi_camera_moveit2 real_robot.launch.py
 ```
 
@@ -284,19 +293,32 @@ that plugin, only `ros2_control_node` does, and that stays on the robot).
 ```bash
 cd ~/swarm_project
 source /opt/ros/galactic/setup.bash
-# DDS env already in .bashrc -- skip these exports if so. If .bashrc still
-# says cyclonedds.xml (no _galactic suffix), fix it there too -- see the note
-# in Terminal 1 of the split-terminal walkthrough above.
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
 
+# BUILD AND SOURCE FIRST. The CYCLONEDDS_URI export below runs
+# `ros2 pkg prefix swarm_network`, which cannot resolve until swarm_network is
+# both built and sourced. Export it too early and the substitution comes back
+# EMPTY, giving file:///share/... -- a path that does not exist. Cyclone then
+# refuses to create a domain and EVERY ROS2 process in that shell dies,
+# including all three controller spawners. See "CYCLONEDDS_URI is empty" under
+# Troubleshooting; this ordering is the whole fix.
+#
 # swarm_network MUST be in this list: CYCLONEDDS_URI points at the install
 # tree, so a `git pull` that changes a peer IP has no effect until it is
 # rebuilt -- the robot keeps announcing to mars's old address and mars sees
 # zero publishers while everything looks healthy locally.
 colcon build --packages-select swarm_network mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
 source install/setup.bash
+
+# NOW the DDS env, and it must be set before ros2_control starts.
+# Already in .bashrc? Skip these -- but confirm it says cyclonedds_galactic.xml,
+# not the stale suffix-less cyclonedds.xml.
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
+
+# One second of checking beats ten minutes of rmw_create_node stack traces.
+[ -f "${CYCLONEDDS_URI#file://}" ] && echo "DDS config OK" || echo "BROKEN: $CYCLONEDDS_URI"
+
 ros2 launch mycobot_280pi_camera_moveit2 real_robot_hardware.launch.py
 ```
 
@@ -742,6 +764,72 @@ alongside the existing one. Never pass a keyword this probe has not confirmed.
   no-op on Jazzy/Gazebo, where trajectories already come back properly
   timed. If this resurfaces, check whether `/plan_kinematic_path`'s
   response has all-zero `time_from_start` again.
+
+### CYCLONEDDS_URI is empty: `can't open configuration file file:///share/...`
+
+Every ROS2 process in the shell dies at startup, controller spawners included:
+
+```
+can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
+[ERROR] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
+terminate called after throwing an instance of 'rclcpp::exceptions::RCLError'
+[retrying_spawner] attempt 1 for joint_state_broadcaster failed, retrying in 2s...
+```
+
+**The path starting at `/share` is the tell.** `$(ros2 pkg prefix swarm_network)`
+expanded to nothing, so `file://` + `` + `/share/...` is what got exported. It
+happens when the export runs **before** `source install/setup.bash` — the
+package is not on the search path yet, `ros2 pkg prefix` prints
+`Package not found` to stderr, and the empty stdout goes straight into the
+variable. Nothing fails loudly, and the poisoned value then breaks every node
+launched from that shell.
+
+Nothing is actually broken. Fix the order, in one shell:
+
+```bash
+colcon build --packages-select swarm_network
+source install/setup.bash
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
+[ -f "${CYCLONEDDS_URI#file://}" ] && echo "DDS config OK" || echo "BROKEN: $CYCLONEDDS_URI"
+```
+
+`./pi_setup/preflight_check.sh` now checks this and names the cause. **If the
+export lives in `~/.bashrc`**, it runs there before the workspace is sourced
+too — move it after the `source install/setup.bash` line in `.bashrc`, or
+hardcode the absolute path.
+
+### RViz's "Plan and Execute" button does not move the real arm
+
+Planning succeeds, execution is rejected instantly:
+
+```
+[arm_group_controller]: Time between points 0 and 1 is not strictly increasing,
+it is 0.000000 and 0.000000 respectively
+[move_group]: Goal was rejected by server
+[move_group_interface]: MoveGroupInterface::execute() failed or timeout reached
+```
+
+**Expected on Galactic, not a regression.** `ompl_planning.yaml`'s
+`response_adapters` were removed (Fix 5) to resolve a Galactic/Jazzy type
+conflict, and that also removed time parameterization — so on this distro OMPL
+returns a geometrically valid path with **every `time_from_start` at zero**. The
+joint trajectory controller requires strictly increasing times and refuses it.
+
+`pick_place.py`'s `plan_motion()` carries the `_ensure_monotonic_timing()`
+safety net that recomputes the timing (Fix 6), which is why **the Python scripts
+move the arm and the RViz button does not** — RViz talks to `move_group`
+directly and never passes through that code.
+
+So on the real arm, drive it with the scripts:
+
+```bash
+python3 ~/swarm_project/src/swarm_pkg/src/scripts/reset_arm.py
+python3 ~/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
+```
+
+Use RViz to **visualize and to plan**, not to execute. Restoring the button
+means giving Galactic back a working time-parameterization response adapter, or
+having `move_group` apply one — neither is done.
 
 ### DDS discovery verification (campus network)
 **Test that the workstation and robot can see each other over DDS:**

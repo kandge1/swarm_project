@@ -304,14 +304,14 @@ cd ~/swarm_project && source /opt/ros/galactic/setup.bash
 source install/setup.bash
 ros2 launch mycobot_280pi_camera_moveit2 real_robot_hardware.launch.py
 ```
-Wait till you see three yellow lines with the names of  the controllers 
-arm_group_controller
-joint_states_broadcaster
-gripper_controller and a lone below them saying
+Wait till you see three yellow lines with the names of the controllers being configured and initalized like the following
 
-all controllers configured and ready
+[spawner_joint_state_broadcaster]: Configured and started joint_state_broadcaster
+[spawner_arm_group_controller]: Configured and started arm_group_controller
+[spawner_gripper_group_controller]: Configured and started gripper_group_controller
+[INFO] [bash-6]: process has finished cleanly [pid 17329]
 
-DO NOT start Terminal 2 on a workstation before Terminal 1 states that all controllers are configured and ready. Doing so forces method calls from controllers that aren't configured and induces import and construction failures into the controllers and thus not letting them initialize properly. 
+DO NOT start Terminal 2 on a workstation before Terminal 1 states that all controllers are configured and ready and the last "process has finished cleanly" is published in terminal 1. Doing so forces method calls from controllers that aren't configured and induces import/construction/initialization failures into the controllers and thus not letting them initialize properly. 
 
 **Terminal 2 — workstation: planning + RViz**
 ```bash
@@ -377,6 +377,8 @@ pick sees the first block gone.
 | `Findhardware_interface.cmake` missing | `install_pi_galactic.sh` never run |
 | `Starting >>> control` for a package not in `src/` | Stale checkout — `legacy/COLCON_IGNORE` fixes it |
 | Workstation sees no robot nodes, everything looks fine locally | Peer IPs wrong, or `swarm_network` not rebuilt after editing them (§6) |
+| `can't open configuration file file:///share/...`, every node dies | `CYCLONEDDS_URI` exported before `source install/setup.bash`; build and source first |
+| RViz plans fine but Execute is rejected, `Time between points ... not strictly increasing` | Expected on Galactic. Drive the arm with the Python scripts, not RViz's button |
 | Arm reports identical angles regardless of command | Wrong serial port — `/dev/ttyAMA0`, not `/dev/serial0` |
 | `send_angles() got an unexpected keyword argument '_async'`, arm never moves | pymycobot 3.7.0 dropped `_async`. Fixed 2026-08-19 — `git pull` and relaunch |
 | `Goal reached, success!` but the arm never moved | Multi-waypoint trajectory issue — see WORKFLOW.md |
