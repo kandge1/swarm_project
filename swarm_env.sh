@@ -54,9 +54,20 @@ _swarm_env() {   # a function so locals do not leak into the user's shell
     fi
 
     ros_setup="/opt/ros/${distro}/setup.bash"
-    # nounset off across ROS's setup.bash: its line 8 reads
-    # $AMENT_TRACE_SETUP_FILES with no default and `set -u` makes that fatal.
+
+    # nounset has to come OFF across ROS's setup.bash: its line 8 reads
+    # $AMENT_TRACE_SETUP_FILES with no default, and `set -u` makes that fatal.
+    #
+    # RESTORE IT, do not just switch it on afterwards. This script is SOURCED,
+    # so `set -u` here lands in the user's interactive shell -- where nounset is
+    # normally OFF and must stay off. bash-completion uses ${!ref} indirect
+    # expansion internally, which under nounset makes every Tab press print
+    #     bash: !ref: unbound variable
+    # and complete nothing. That is a bug this script caused on 2026-08-20.
+    _swarm_had_u=0
+    case "$-" in *u*) _swarm_had_u=1 ;; esac
     set +u
+
     # shellcheck disable=SC1090
     . "$ros_setup"
 
@@ -67,10 +78,12 @@ _swarm_env() {   # a function so locals do not leak into the user's shell
     else
         echo "[swarm_env] WARNING: $ws/install/setup.bash not found -- build first:"
         echo "               cd $ws && colcon build"
-        set -u 2>/dev/null || true
+        [ "$_swarm_had_u" = 1 ] && set -u
+        unset _swarm_had_u
         return 1
     fi
-    set -u 2>/dev/null || true
+    [ "$_swarm_had_u" = 1 ] && set -u
+    unset _swarm_had_u
 
     # 3. DDS. The config filename is per-distro: Galactic and Jazzy ship
     # different Cyclone versions that need different settings, and the stale

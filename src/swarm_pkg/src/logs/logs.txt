@@ -1,25 +1,43 @@
-er@er:~/swarm_project$ echo "$ROS_DOMAIN_ID / $RMW_IMPLEMENTATION" 
- / 
-er@er:~/swarm_project$ ros2 service list | grep detect_block
-ros2: command not found
-er@er:~/swarm_project$ 
+er@er:~$ cd ~/swarm_project && git pull
+Already up to date.
+er@er:~/swarm_project$ source swarm_env.sh
+[swarm_env] ROS2 galactic  |  workspace /home/er/swarm_project
+[swarm_env] ROS_DOMAIN_ID=42  RMW=rmw_cyclonedds_cpp
+[swarm_env] CYCLONEDDS_URI -> /home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml
+[swarm_env] peers: 172.30.11.42 172.27.80.139 
+[swarm_env] this machine: 172.30.11.42 
+[swarm_env] ready. If this machine's IP is not in the peer list above,
+            edit src/swarm_network/config/*.xml and rebuild swarm_network.
+er@er:~/swarm_project$ python3 src/swarm_pkg/src/scripts/block_detector_node.py --ros-args -p method:=colour
+1787266573.283126 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
+1787266573.283213 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
 
-in the same terminal
+>>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+This error state is being overwritten:
 
-er@er:~/swarm_project$ python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py     --ros-args -p method:=colour
-[INFO] [1787264462.702525169] [block_detector]: frame dump off; start with --ros-args -p frame_dump_dir:=/tmp/frames to record what the camera sees
-[INFO] [1787264462.813722336] [block_detector]: block_detector up: reading /dev/video0 directly, serving /detect_block
-[INFO] [1787264462.815961017] [block_detector]: tag_size=0.0254 m, default zone_size=0.1016 m, method=colour
-[INFO] [1787264462.818057755] [block_detector]: method=colour: segmenting by SATURATION (mat is white, blocks are painted), colour named by nearest hue prototype. Colour travels on the block_detections topic, not in the service response -- see detection_wire.py schema 3.
-^C^Cer@er:~/swarm_project$ ^C
-er@er:~/swarm_project$ echo "$ROS_DOMAIN_ID / $RMW_IMPLEMENTATION" 
- / 
-er@er:~/swarm_project$ ros2 service list | grep detect_block
+  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.5/src/serdata.cpp:354'
 
-accidentally found: running this in an ssh terminal from mars onto the robot
+with this new error message:
 
-er@er:~$ ros2 service list | grep detect_block
-1787265262.972555 [42]       ros2: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
-1787265262.972702 [42]       ros2: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
-er@er:~$ 
+  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.5/src/serdata.cpp:354'
+
+rcutils_reset_error() should be called after error handling to avoid this.
+<<<
+
+>>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+This error state is being overwritten:
+
+  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.5/src/serdata.cpp:354'
+
+with this new error message:
+
+  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.5/src/serdata.cpp:354'
+
+rcutils_reset_error() should be called after error handling to avoid this.
+<<<
+[INFO] [1787266573.591332067] [block_detector]: frame dump off; start with --ros-args -p frame_dump_dir:=/tmp/frames to record what the camera sees
+[INFO] [1787266573.706916454] [block_detector]: block_detector up: reading /dev/video0 directly, serving /detect_block
+[INFO] [1787266573.709147009] [block_detector]: tag_size=0.0254 m, default zone_size=0.1016 m, method=colour
+[INFO] [1787266573.711587432] [block_detector]: method=colour: segmenting by SATURATION (mat is white, blocks are painted), colour named by nearest hue prototype. Colour travels on the block_detections topic, not in the service response -- see detection_wire.py schema 3.
+
 
