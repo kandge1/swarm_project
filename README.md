@@ -218,7 +218,7 @@ Campus Wi-Fi blocks UDP multicast, so DDS discovery uses a **hardcoded list of
 peer IPs**. On new hardware those IPs are wrong, and nothing reports it: each
 machine looks perfectly healthy alone and simply never sees the other.
 
-### 5a. Put your two IPs in the config
+### 6a. Put your two IPs in the config
 
 ```bash
 hostname -I     # run on BOTH machines, note both addresses
@@ -243,7 +243,26 @@ Then **rebuild `swarm_network` on both machines.** `CYCLONEDDS_URI` points into
 colcon build --packages-select swarm_network && source install/setup.bash
 ```
 
-### 5b. Environment, every terminal (or once in `.bashrc`)
+### 6b. Environment, every terminal
+
+```bash
+source ~/swarm_project/swarm_env.sh          # on the robot
+source ~/swarm/swarm_project/swarm_env.sh    # on the workstation
+```
+
+One command, every terminal, both machines. It sources ROS2, then the
+workspace, then sets the DDS variables — **that order matters**, because
+`CYCLONEDDS_URI` is built from `ros2 pkg prefix swarm_network` and resolves to
+nothing until the workspace is sourced. It prints the peer list and this
+machine's IP, so a wrong address shows up straight away.
+
+**Every terminal needs it, including ones that run a plain `python3 script.py`.**
+A ROS2 node started without it joins the default domain, works perfectly, logs
+nothing wrong, and is simply invisible to the other machine.
+
+<details>
+<summary>What it does by hand, if you would rather set it yourself</summary>
+
 
 The filename differs per machine — Galactic and Jazzy need different Cyclone
 settings. A bare `cyclonedds.xml` is a stale pre-split file and is not valid
@@ -262,6 +281,8 @@ export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_networ
 ```
 
 Both machines need the same `ROS_DOMAIN_ID`.
+
+</details>
 
 > **Nothing over ~1400 bytes crosses this link.** `MaxMessageSize` is deliberately
 > small to survive the Wi-Fi hop. That is why no camera image ever crosses the
@@ -296,12 +317,13 @@ covering a corner tag.
 
 ## 8. Run the colour stack
 
-Four terminals. Every one needs the DDS environment from §6b.
+Four terminals. **Every one starts with `swarm_env.sh`** — including Terminal 3,
+which runs a plain `python3` script. Skip it there and the detector runs fine on
+the wrong DDS domain, invisible to the workstation.
 
 **Terminal 1 — robot: hardware**
 ```bash
-cd ~/swarm_project && source /opt/ros/galactic/setup.bash
-source install/setup.bash
+cd ~/swarm_project && source swarm_env.sh
 ros2 launch mycobot_280pi_camera_moveit2 real_robot_hardware.launch.py
 ```
 Wait till you see three yellow lines with the names of the controllers being configured and initalized like the following
@@ -315,14 +337,13 @@ DO NOT start Terminal 2 on a workstation before Terminal 1 states that all contr
 
 **Terminal 2 — workstation: planning + RViz**
 ```bash
-cd ~/swarm/swarm_project && source /opt/ros/jazzy/setup.bash
-source install/setup.bash
+cd ~/swarm/swarm_project && source swarm_env.sh
 ros2 launch mycobot_280pi_camera_moveit2 real_robot_planning.launch.py
 ```
 
 **Terminal 3 — robot: the colour detector**
 ```bash
-source ~/swarm_project/install/setup.bash
+source ~/swarm_project/swarm_env.sh
 python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py \
     --ros-args -p method:=colour
 ```
@@ -332,7 +353,7 @@ silently falling back. **Do not also launch `camera.launch.py`** — this node o
 
 **Terminal 4 — workstation: verify, then stack**
 ```bash
-source ~/swarm/swarm_project/install/setup.bash
+source ~/swarm/swarm_project/swarm_env.sh
 cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
 
 # Discovery actually working? Do this before blaming MoveIt.
@@ -384,6 +405,7 @@ pick sees the first block gone.
 | `Goal reached, success!` but the arm never moved | Multi-waypoint trajectory issue — see WORKFLOW.md |
 | Survey rejects every sighting | Framing plus a missing zone tag. Try `--pickup-yaw -93`. One undetected tag halves the trust radius |
 | Every position off by a constant factor | The mats were printed at the wrong scale |
+| `/detect_block never appeared in 15s`, but `/joint_states` works | Detector started without the DDS env (it's a bare `python3`, easy to miss), or stale `swarm_interfaces` on the robot |
 | A white block is never found | Colour mode segments by saturation; white on white has none. Use tags for it |
 
 **`--zone-yaw` applies to both zones, and the two mats sit ~180° apart** (pickup
@@ -420,6 +442,7 @@ level 0 centred and level 1 square on top, zero nudges (2026-08-12).
 
 | Document | What's in it |
 |---|---|
+| [swarm_env.sh](swarm_env.sh) | `source` in every terminal: ROS + workspace + DDS, in the right order |
 | [git_user_guide.md](git_user_guide.md) | Git and GitHub from scratch, and our branch naming |
 | [WORKFLOW.md](WORKFLOW.md) | Every workflow in detail, all troubleshooting, project structure |
 | [dev_logs/APRIL_TAGS.md](dev_logs/APRIL_TAGS.md) | Vision design, measured numbers, usable area |

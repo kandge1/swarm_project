@@ -1,547 +1,62 @@
-first set with 
+ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ python3 stack_blocks.py --by-colour --survey-only
+[stack] no --stack given; using the colour default: red blue
+[stack] per-level step from the blocks themselves: red 25.4 mm, blue 30.5 mm
+[stack] stacking bottom-first: red -> blue
+[stack]   level 0  red  release flange z 0.1455  (set down, no drop -- it lands on the mat)
+[stack]   level 1  blue  release flange z 0.1739  (3.0 mm of drop)
+[stack] NOTE: the stack step (0.0254, 0.0305) differs from pick_place.BLOCK_HEIGHT_M 0.0300. The stack uses these; GRASP_OFFSET_Z, the parks and the parallax correction are all referenced to the constant.
+[joint_states] no data after 6s (0 publisher(s) visible) -- recreating the subscription to force a fresh DDS match (attempt 1)
+[WARN] [1787263653.595853724] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787263653.595905679] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787263653.596226484] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787263653.616804845] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787263653.616843491] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787263653.618118642] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.618197765] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787263653.618214272] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787263653.618311277] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.626096854] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.626112360] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1787263653.626120926] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1787263653.626135262] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1787263653.626434073] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.626464888] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1787263653.636942622] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.636982354] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1787263653.637006976] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
+[WARN] [1787263653.637028210] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787263653.637060557] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.637071333] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1787263653.637222158] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1787263653.637276014] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1787263653.637285485] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787263653.637311683] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.637319751] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1787263653.637338455] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1787263653.637348578] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1787263653.637368524] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.637509419] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.637525096] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1787263653.637593753] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787263653.637613955] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[joint_states] recovered after 1 subscription recreate(s)
+[detect] /detect_block never appeared in 15s.
+         Is block_detector_node.py running ON THE PI?
+         Remember `ros2 node list` does not show the robot's nodes from mars even when they are up (PROJECT_CONTEXT.md) -- check with `ros2 service list | grep detect_block` instead.
+[memory] 0 pose(s) held; 0 hit / 0 miss over 0 lookup(s), 0 replayed. Replay saves IK and planning latency, not arm motion.
 
-cd ~/swarm_project && git pull
-colcon build --packages-select mycobot_hardware && source install/setup.bash
-ros2 launch mycobot_280pi_camera_moveit2 real_robot.launch.py
+=== Returning home ===
+Executing joint-space move to home pose...
+[arm] target joint positions: {'joint2_to_joint1': -0.0002, 'joint3_to_joint2': -0.001, 'joint4_to_joint3': -0.0001, 'joint5_to_joint4': -0.0, 'joint6_to_joint5': -0.0003, 'joint6output_to_joint6': -0.7844}
+[arm] trajectory: 4 waypoints, 2.041s total, ~0.378 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0138, 'joint3_to_joint2': -0.0014, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': 0.003, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -0.0138}  (max movement so far 0.0000 rad)
+ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ 
 
-I can't get movements planned in RVIZ to move the actual robot like I could with real_robot.launch.py
+@er:~/swarm_project$ python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py \
+>     --ros-args -p method:=colour
+[INFO] [1787261898.128466611] [block_detector]: frame dump off; start with --ros-args -p frame_dump_dir:=/tmp/frames to record what the camera sees
+[INFO] [1787261898.243565269] [block_detector]: block_detector up: reading /dev/video0 directly, serving /detect_block
+[INFO] [1787261898.246286632] [block_detector]: tag_size=0.0254 m, default zone_size=0.1016 m, method=colour
+[INFO] [1787261898.248459463] [block_detector]: method=colour: segmenting by SATURATION (mat is white, blocks are painted), colour named by nearest hue prototype. Colour travels on the block_detections topic, not in the service response -- see detection_wire.py schema 3.
 
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=63.6Hz (last read 16ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=57.3Hz (last read 19ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=59.1Hz (last read 26ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=56.7Hz (last read 20ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=51.5Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=55.8Hz (last read 16ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=55.4Hz (last read 14ms) -- this is the real ceiling on commands/sec reaching the arm
-[rviz2-5] [INFO] [1787166086.077587884] [move_group_interface]: MoveGroup action client/server ready
-[move_group-4] [INFO] [1787166086.093451033] [moveit_move_group_default_capabilities.move_action_capability]: Received request
-[move_group-4] [INFO] [1787166086.095567236] [moveit_move_group_default_capabilities.move_action_capability]: executing..
-[move_group-4] [INFO] [1787166086.117131903] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
-[move_group-4] [INFO] [1787166086.118061088] [moveit_move_group_capabilities_base.move_group_capability]: Using planning pipeline 'ompl'
-[move_group-4] [INFO] [1787166086.203162181] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'arm_group' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
-[move_group-4] [INFO] [1787166086.337821773] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=50.6Hz (last read 20ms) -- this is the real ceiling on commands/sec reaching the arm
-[rviz2-5] [INFO] [1787166086.594067403] [move_group_interface]: Planning request accepted
-[rviz2-5] [INFO] [1787166086.711567458] [move_group_interface]: Planning request complete!
-[rviz2-5] [INFO] [1787166086.816961717] [move_group_interface]: time taken to generate plan: 0.099445 seconds
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=56.8Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=57.7Hz (last read 14ms) -- this is the real ceiling on commands/sec reaching the arm
-[move_group-4] [INFO] [1787166088.542071031] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
-[move_group-4] [INFO] [1787166088.549164346] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
-[move_group-4] [INFO] [1787166088.549441975] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
-[move_group-4] [INFO] [1787166088.550421513] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.01
-[move_group-4] [INFO] [1787166088.557081142] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
-[move_group-4] [INFO] [1787166088.557421994] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
-[move_group-4] [INFO] [1787166088.558964272] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to arm_group_controller
-[ros2_control_node-3] [INFO] [1787166088.567139809] [arm_group_controller]: Received new action goal
-[ros2_control_node-3] [ERROR] [1787166088.567645642] [arm_group_controller]: Time between points 0 and 1 is not strictly increasing, it is 0.000000 and 0.000000 respectively
-[move_group-4] [INFO] [1787166088.569330087] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: arm_group_controller started execution
-[move_group-4] [WARN] [1787166088.570442938] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request rejected
-[move_group-4] [ERROR] [1787166088.571650179] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal was rejected by server
-[move_group-4] [ERROR] [1787166088.572236901] [moveit_ros.trajectory_execution_manager]: Failed to send trajectory part 1 of 1 to controller arm_group_controller
-[move_group-4] [INFO] [1787166088.572407901] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status ABORTED ...
-[move_group-4] [INFO] [1787166088.589673901] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: ABORTED
-[rviz2-5] [INFO] [1787166088.960783735] [move_group_interface]: Execute request accepted
-[rviz2-5] [INFO] [1787166089.066240901] [move_group_interface]: Execute request aborted
-[rviz2-5] [ERROR] [1787166089.167537975] [move_group_interface]: MoveGroupInterface::execute() failed or timeout reached
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=48.1Hz (last read 30ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=58.9Hz (last read 34ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=59.9Hz (last read 25ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=54.5Hz (last read 16ms) -- this is the real ceiling on commands/sec reaching the arm
-
-
-
-Now, second set, I can't get the usual workflow for split compute hardware working from WORKFLOW.md
-
-er@er:~/swarm_project$ cd ~/swarm_project
-er@er:~/swarm_project$ source /opt/ros/galactic/setup.bash
-er@er:~/swarm_project$ # DDS env already in .bashrc -- skip these exports if so. If .bashrc still
-er@er:~/swarm_project$ # says cyclonedds.xml (no _galactic suffix), fix it there too -- see the note
-er@er:~/swarm_project$ # in Terminal 1 of the split-terminal walkthrough above.
-er@er:~/swarm_project$ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-er@er:~/swarm_project$ export ROS_DOMAIN_ID=42
-er@er:~/swarm_project$ export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
-Package not found
-er@er:~/swarm_project$ 
-er@er:~/swarm_project$ # swarm_network MUST be in this list: CYCLONEDDS_URI points at the install
-er@er:~/swarm_project$ # tree, so a `git pull` that changes a peer IP has no effect until it is
-er@er:~/swarm_project$ # rebuilt -- the robot keeps announcing to mars's old address and mars sees
-er@er:~/swarm_project$ # zero publishers while everything looks healthy locally.
-er@er:~/swarm_project$ colcon build --packages-select swarm_network mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
-Starting >>> mycobot_description
-Starting >>> mycobot_hardware
-Starting >>> swarm_network                                                              
-Finished <<< swarm_network [2.71s]                                                                                                
-Finished <<< mycobot_hardware [3.23s]                                                           
-Finished <<< mycobot_description [6.78s]          
-Starting >>> mycobot_280pi_camera_moveit2
-Finished <<< mycobot_280pi_camera_moveit2 [0.79s]                  
-
-Summary: 4 packages finished [8.90s]
-er@er:~/swarm_project$ source install/setup.bash
-er@er:~/swarm_project$ ros2 launch mycobot_280pi_camera_moveit2 real_robot_hardware.launch.py
-[INFO] [launch]: All log files can be found below /home/er/.ros/log/2026-08-20-16-50-59-236912-er-4469
-[INFO] [launch]: Default logging verbosity is set to INFO
-[INFO] [mycobot_bridge.py-1]: process started with pid [4472]
-[INFO] [robot_state_publisher-2]: process started with pid [4474]
-[INFO] [ros2_control_node-3]: process started with pid [4476]
-[ros2_control_node-3] 1787259061.069818 [42] ros2_contr: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[ros2_control_node-3] [ERROR] [1787259061.069986509] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[ros2_control_node-3] 
-[ros2_control_node-3] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[ros2_control_node-3] This error state is being overwritten:
-[ros2_control_node-3] 
-[ros2_control_node-3]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[ros2_control_node-3] 
-[ros2_control_node-3] with this new error message:
-[ros2_control_node-3] 
-[ros2_control_node-3]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[ros2_control_node-3] 
-[ros2_control_node-3] rcutils_reset_error() should be called after error handling to avoid this.
-[ros2_control_node-3] <<<
-[ros2_control_node-3] [ERROR] [1787259061.070510523] [rcl]: Failed to fini publisher for node: 1
-[ros2_control_node-3] terminate called after throwing an instance of 'rclcpp::exceptions::RCLError'
-[ros2_control_node-3]   what():  failed to initialize rcl node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[robot_state_publisher-2] 1787259061.082475 [42] robot_stat: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[robot_state_publisher-2] [ERROR] [1787259061.082697918] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[robot_state_publisher-2] 
-[robot_state_publisher-2] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[robot_state_publisher-2] This error state is being overwritten:
-[robot_state_publisher-2] 
-[robot_state_publisher-2]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[robot_state_publisher-2] 
-[robot_state_publisher-2] with this new error message:
-[robot_state_publisher-2] 
-[robot_state_publisher-2]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[robot_state_publisher-2] 
-[robot_state_publisher-2] rcutils_reset_error() should be called after error handling to avoid this.
-[robot_state_publisher-2] <<<
-[robot_state_publisher-2] [ERROR] [1787259061.083267357] [rcl]: Failed to fini publisher for node: 1
-[robot_state_publisher-2] terminate called after throwing an instance of 'rclcpp::exceptions::RCLError'
-[robot_state_publisher-2]   what():  failed to initialize rcl node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[ERROR] [ros2_control_node-3]: process has died [pid 4476, exit code -6, cmd '/opt/ros/galactic/lib/controller_manager/ros2_control_node --ros-args --params-file /tmp/launch_params_z4eqbzll --params-file /home/er/swarm_project/install/mycobot_280pi_camera_moveit2/share/mycobot_280pi_camera_moveit2/config/ros2_controllers.yaml'].
-[ERROR] [robot_state_publisher-2]: process has died [pid 4474, exit code -6, cmd '/opt/ros/galactic/lib/robot_state_publisher/robot_state_publisher --ros-args --params-file /tmp/launch_params_qjzkkr7g'].
-[mycobot_bridge.py-1] [mycobot_bridge] connecting to /dev/ttyAMA0 @ 1000000...
-[INFO] [bash-4]: process started with pid [4509]
-[mycobot_bridge.py-1] [mycobot_bridge] connected.
-[mycobot_bridge.py-1] [mycobot_bridge] read timeout capped at 0.06s per attempt (pymycobot's Linux default is 0.5s)
-[mycobot_bridge.py-1] [mycobot_bridge] arm writes=sync (blocking) -- this pymycobot's send_angles takes no _async argument. Expect 0.5-1.5s per write; see DEFAULT_ASYNC_WRITES.
-[mycobot_bridge.py-1] [mycobot_bridge] gripper writes=sync (blocking) -- this pymycobot's set_gripper_value takes no _async argument
-[mycobot_bridge.py-1] [mycobot_bridge] writes=async, max command rate=30.0Hz, motion read interval=1.5s, speed=25..50
-[mycobot_bridge.py-1] [mycobot_bridge] gravity feedforward: ENABLED (MYCOBOT_GRAVITY_FF=<unset, default on>)
-[mycobot_bridge.py-1] [mycobot_bridge] serial loop starting
-[mycobot_bridge.py-1] [mycobot_bridge] listening on /tmp/mycobot_hardware_bridge.sock
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=86.8Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=88.4Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-4] 1787259066.649446 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-4] [ERROR] [1787259066.649590763] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-4] 
-[bash-4] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-4] This error state is being overwritten:
-[bash-4] 
-[bash-4]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-4] 
-[bash-4] with this new error message:
-[bash-4] 
-[bash-4]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-4] 
-[bash-4] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-4] <<<
-[bash-4] [ERROR] [1787259066.649698688] [rcl]: Failed to fini publisher for node: 1
-[bash-4] Traceback (most recent call last):
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-4]     ret = main()
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-4]     node = Node('spawner_' + controller_name)
-[bash-4]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-4]     self.__node = _rclpy.Node(
-[bash-4] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[bash-4] [retrying_spawner] attempt 1 for joint_state_broadcaster failed, retrying in 2s...
-[INFO] [bash-5]: process started with pid [4538]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=80.0Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=86.2Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=84.9Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-5] 1787259069.696766 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-5] [ERROR] [1787259069.696996307] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-5] 
-[bash-5] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-5] This error state is being overwritten:
-[bash-5] 
-[bash-5]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-5] 
-[bash-5] with this new error message:
-[bash-5] 
-[bash-5]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-5] 
-[bash-5] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-5] <<<
-[bash-5] [ERROR] [1787259069.697115435] [rcl]: Failed to fini publisher for node: 1
-[bash-5] Traceback (most recent call last):
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-5]     ret = main()
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-5]     node = Node('spawner_' + controller_name)
-[bash-5]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-5]     self.__node = _rclpy.Node(
-[bash-5] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[bash-5] [retrying_spawner] attempt 1 for arm_group_controller failed, retrying in 2s...
-[INFO] [bash-6]: process started with pid [4567]
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=69.3Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=84.5Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-4] 1787259072.330819 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-4] [ERROR] [1787259072.330992853] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-4] 
-[bash-4] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-4] This error state is being overwritten:
-[bash-4] 
-[bash-4]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-4] 
-[bash-4] with this new error message:
-[bash-4] 
-[bash-4]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-4] 
-[bash-4] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-4] <<<
-[bash-4] [ERROR] [1787259072.331123019] [rcl]: Failed to fini publisher for node: 1
-[bash-4] Traceback (most recent call last):
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-4]     ret = main()
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-4]     node = Node('spawner_' + controller_name)
-[bash-4]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-4]     self.__node = _rclpy.Node(
-[bash-4] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=76.9Hz (last read 33ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-4] [retrying_spawner] attempt 2 for joint_state_broadcaster failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=68.9Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-6] 1787259073.543278 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-6] [ERROR] [1787259073.543625654] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-6] 
-[bash-6] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-6] This error state is being overwritten:
-[bash-6] 
-[bash-6]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-6] 
-[bash-6] with this new error message:
-[bash-6] 
-[bash-6]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-6] 
-[bash-6] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-6] <<<
-[bash-6] [ERROR] [1787259073.543863486] [rcl]: Failed to fini publisher for node: 1
-[bash-6] Traceback (most recent call last):
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-6]     ret = main()
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-6]     node = Node('spawner_' + controller_name)
-[bash-6]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-6]     self.__node = _rclpy.Node(
-[bash-6] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[bash-6] [retrying_spawner] attempt 1 for gripper_group_controller failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=73.5Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-5] 1787259075.467558 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-5] [ERROR] [1787259075.467752100] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-5] 
-[bash-5] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-5] This error state is being overwritten:
-[bash-5] 
-[bash-5]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-5] 
-[bash-5] with this new error message:
-[bash-5] 
-[bash-5]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-5] 
-[bash-5] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-5] <<<
-[bash-5] [ERROR] [1787259075.467876581] [rcl]: Failed to fini publisher for node: 1
-[bash-5] Traceback (most recent call last):
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-5]     ret = main()
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-5]     node = Node('spawner_' + controller_name)
-[bash-5]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-5]     self.__node = _rclpy.Node(
-[bash-5] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=83.3Hz (last read 41ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-5] [retrying_spawner] attempt 2 for arm_group_controller failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=80.7Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=84.0Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-4] 1787259077.939701 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-4] [ERROR] [1787259077.939898266] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-4] 
-[bash-4] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-4] This error state is being overwritten:
-[bash-4] 
-[bash-4]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-4] 
-[bash-4] with this new error message:
-[bash-4] 
-[bash-4]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-4] 
-[bash-4] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-4] <<<
-[bash-4] [ERROR] [1787259077.940027598] [rcl]: Failed to fini publisher for node: 1
-[bash-4] Traceback (most recent call last):
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-4]     ret = main()
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-4]     node = Node('spawner_' + controller_name)
-[bash-4]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-4]     self.__node = _rclpy.Node(
-[bash-4] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[bash-4] [retrying_spawner] attempt 3 for joint_state_broadcaster failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=60.7Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-6] 1787259079.296167 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-6] [ERROR] [1787259079.296339907] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-6] 
-[bash-6] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-6] This error state is being overwritten:
-[bash-6] 
-[bash-6]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-6] 
-[bash-6] with this new error message:
-[bash-6] 
-[bash-6]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-6] 
-[bash-6] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-6] <<<
-[bash-6] [ERROR] [1787259079.296469868] [rcl]: Failed to fini publisher for node: 1
-[bash-6] Traceback (most recent call last):
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-6]     ret = main()
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-6]     node = Node('spawner_' + controller_name)
-[bash-6]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-6]     self.__node = _rclpy.Node(
-[bash-6] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=78.9Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-6] [retrying_spawner] attempt 2 for gripper_group_controller failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=85.9Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-5] 1787259081.140204 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-5] [ERROR] [1787259081.140380586] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-5] 
-[bash-5] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-5] This error state is being overwritten:
-[bash-5] 
-[bash-5]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-5] 
-[bash-5] with this new error message:
-[bash-5] 
-[bash-5]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-5] 
-[bash-5] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-5] <<<
-[bash-5] [ERROR] [1787259081.140495974] [rcl]: Failed to fini publisher for node: 1
-[bash-5] Traceback (most recent call last):
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-5]     ret = main()
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-5]     node = Node('spawner_' + controller_name)
-[bash-5]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-5]     self.__node = _rclpy.Node(
-[bash-5] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[bash-5] [retrying_spawner] attempt 3 for arm_group_controller failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=74.5Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=82.4Hz (last read 21ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=83.3Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-4] 1787259083.589076 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-4] [ERROR] [1787259083.589433950] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-4] 
-[bash-4] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-4] This error state is being overwritten:
-[bash-4] 
-[bash-4]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-4] 
-[bash-4] with this new error message:
-[bash-4] 
-[bash-4]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-4] 
-[bash-4] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-4] <<<
-[bash-4] [ERROR] [1787259083.589650115] [rcl]: Failed to fini publisher for node: 1
-[bash-4] Traceback (most recent call last):
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-4]     ret = main()
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-4]     node = Node('spawner_' + controller_name)
-[bash-4]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-4]     self.__node = _rclpy.Node(
-[bash-4] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[bash-4] [retrying_spawner] attempt 4 for joint_state_broadcaster failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=68.8Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-6] 1787259084.908186 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-6] [ERROR] [1787259084.908365720] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-6] 
-[bash-6] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-6] This error state is being overwritten:
-[bash-6] 
-[bash-6]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-6] 
-[bash-6] with this new error message:
-[bash-6] 
-[bash-6]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-6] 
-[bash-6] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-6] <<<
-[bash-6] [ERROR] [1787259084.908476571] [rcl]: Failed to fini publisher for node: 1
-[bash-6] Traceback (most recent call last):
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-6]     ret = main()
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-6]     node = Node('spawner_' + controller_name)
-[bash-6]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-6]     self.__node = _rclpy.Node(
-[bash-6] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[bash-6] [retrying_spawner] attempt 3 for gripper_group_controller failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=76.1Hz (last read 19ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=84.9Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-5] 1787259086.842053 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-5] [ERROR] [1787259086.842211866] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-5] 
-[bash-5] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-5] This error state is being overwritten:
-[bash-5] 
-[bash-5]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-5] 
-[bash-5] with this new error message:
-[bash-5] 
-[bash-5]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-5] 
-[bash-5] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-5] <<<
-[bash-5] [ERROR] [1787259086.842340495] [rcl]: Failed to fini publisher for node: 1
-[bash-5] Traceback (most recent call last):
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-5]     ret = main()
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-5]     node = Node('spawner_' + controller_name)
-[bash-5]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-5]     self.__node = _rclpy.Node(
-[bash-5] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[bash-5] [retrying_spawner] attempt 4 for arm_group_controller failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=74.5Hz (last read 20ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=85.4Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-4] 1787259089.243994 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-4] [ERROR] [1787259089.244298730] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-4] 
-[bash-4] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-4] This error state is being overwritten:
-[bash-4] 
-[bash-4]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-4] 
-[bash-4] with this new error message:
-[bash-4] 
-[bash-4]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-4] 
-[bash-4] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-4] <<<
-[bash-4] [ERROR] [1787259089.244468414] [rcl]: Failed to fini publisher for node: 1
-[bash-4] Traceback (most recent call last):
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-4]     ret = main()
-[bash-4]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-4]     node = Node('spawner_' + controller_name)
-[bash-4]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-4]     self.__node = _rclpy.Node(
-[bash-4] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=63.1Hz (last read 35ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-4] [retrying_spawner] attempt 5 for joint_state_broadcaster failed, retrying in 2s...
-[bash-6] 1787259090.605877 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-6] [ERROR] [1787259090.606042674] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-6] 
-[bash-6] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-6] This error state is being overwritten:
-[bash-6] 
-[bash-6]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-6] 
-[bash-6] with this new error message:
-[bash-6] 
-[bash-6]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-6] 
-[bash-6] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-6] <<<
-[bash-6] [ERROR] [1787259090.606179395] [rcl]: Failed to fini publisher for node: 1
-[bash-6] Traceback (most recent call last):
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-6]     ret = main()
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-6]     node = Node('spawner_' + controller_name)
-[bash-6]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-6]     self.__node = _rclpy.Node(
-[bash-6] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=80.3Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-6] [retrying_spawner] attempt 4 for gripper_group_controller failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=79.6Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[ERROR] [bash-4]: process has died [pid 4509, exit code 1, cmd 'bash -c for i in 1 2 3 4 5; do ros2 run controller_manager spawner joint_state_broadcaster && exit 0; echo "[retrying_spawner] attempt $i for joint_state_broadcaster failed, retrying in 2s..."; sleep 2; done; exit 1'].
-[bash-5] 1787259092.482580 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-5] [ERROR] [1787259092.482744727] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-5] 
-[bash-5] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-5] This error state is being overwritten:
-[bash-5] 
-[bash-5]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-5] 
-[bash-5] with this new error message:
-[bash-5] 
-[bash-5]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-5] 
-[bash-5] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-5] <<<
-[bash-5] [ERROR] [1787259092.482856429] [rcl]: Failed to fini publisher for node: 1
-[bash-5] Traceback (most recent call last):
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-5]     ret = main()
-[bash-5]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-5]     node = Node('spawner_' + controller_name)
-[bash-5]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-5]     self.__node = _rclpy.Node(
-[bash-5] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=84.4Hz (last read 12ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-5] [retrying_spawner] attempt 5 for arm_group_controller failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=81.4Hz (last read 10ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=89.0Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[ERROR] [bash-5]: process has died [pid 4538, exit code 1, cmd 'bash -c for i in 1 2 3 4 5; do ros2 run controller_manager spawner arm_group_controller && exit 0; echo "[retrying_spawner] attempt $i for arm_group_controller failed, retrying in 2s..."; sleep 2; done; exit 1'].
-[bash-6] 1787259095.444031 [42]    python3: can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
-[bash-6] [ERROR] [1787259095.444231981] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
-[bash-6] 
-[bash-6] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-[bash-6] This error state is being overwritten:
-[bash-6] 
-[bash-6]   'error not set, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:261'
-[bash-6] 
-[bash-6] with this new error message:
-[bash-6] 
-[bash-6]   'rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413'
-[bash-6] 
-[bash-6] rcutils_reset_error() should be called after error handling to avoid this.
-[bash-6] <<<
-[bash-6] [ERROR] [1787259095.444339851] [rcl]: Failed to fini publisher for node: 1
-[bash-6] Traceback (most recent call last):
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner", line 20, in <module>
-[bash-6]     ret = main()
-[bash-6]   File "/opt/ros/galactic/lib/controller_manager/spawner.py", line 160, in main
-[bash-6]     node = Node('spawner_' + controller_name)
-[bash-6]   File "/opt/ros/galactic/lib/python3.8/site-packages/rclpy/node.py", line 174, in __init__
-[bash-6]     self.__node = _rclpy.Node(
-[bash-6] rclpy._rclpy_pybind11.RCLError: error creating node: rcl node's rmw handle is invalid, at /tmp/binarydeb/ros-galactic-rcl-3.1.3/src/rcl/node.c:413
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=83.8Hz (last read 11ms) -- this is the real ceiling on commands/sec reaching the arm
-[bash-6] [retrying_spawner] attempt 5 for gripper_group_controller failed, retrying in 2s...
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=60.3Hz (last read 16ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=59.3Hz (last read 16ms) -- this is the real ceiling on commands/sec reaching the arm
-[ERROR] [bash-6]: process has died [pid 4567, exit code 1, cmd 'bash -c for i in 1 2 3 4 5; do ros2 run controller_manager spawner gripper_group_controller && exit 0; echo "[retrying_spawner] attempt $i for gripper_group_controller failed, retrying in 2s..."; sleep 2; done; exit 1'].
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=60.5Hz (last read 16ms) -- this is the real ceiling on commands/sec reaching the arm
-[mycobot_bridge.py-1] [mycobot_bridge] TIMING loop_rate=59.1Hz (last read 16ms) -- this is the real ceiling on commands/sec reaching the arm
-
-
-
-now third set none of the controllers launch anymore and I can't even get it to the point the first set was with RVIZ
-
-what broke:?
-
-my ip address is 
-
-172.27.80.139 
-
-robot ip address is
-
-172.30.11.42
