@@ -1,43 +1,671 @@
-er@er:~$ cd ~/swarm_project && git pull
-Already up to date.
-er@er:~/swarm_project$ source swarm_env.sh
-[swarm_env] ROS2 galactic  |  workspace /home/er/swarm_project
-[swarm_env] ROS_DOMAIN_ID=42  RMW=rmw_cyclonedds_cpp
-[swarm_env] CYCLONEDDS_URI -> /home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml
-[swarm_env] peers: 172.30.11.42 172.27.80.139 
-[swarm_env] this machine: 172.30.11.42 
-[swarm_env] ready. If this machine's IP is not in the peer list above,
-            edit src/swarm_network/config/*.xml and rebuild swarm_network.
-er@er:~/swarm_project$ python3 src/swarm_pkg/src/scripts/block_detector_node.py --ros-args -p method:=colour
-1787266573.283126 [42]    python3: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
-1787266573.283213 [42]    python3: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
+ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ python3 stack_blocks.py --by-colour --survey-only
+[stack] no --stack given; using the colour default: red blue
+[stack] per-level step from the blocks themselves: red 25.4 mm, blue 30.5 mm
+[stack] stacking bottom-first: red -> blue
+[stack]   level 0  red  release flange z 0.1455  (set down, no drop -- it lands on the mat)
+[stack]   level 1  blue  release flange z 0.1739  (3.0 mm of drop)
+[stack] NOTE: the stack step (0.0254, 0.0305) differs from pick_place.BLOCK_HEIGHT_M 0.0300. The stack uses these; GRASP_OFFSET_Z, the parks and the parallax correction are all referenced to the constant.
+[WARN] [1787267385.594551457] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787267385.594636293] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787267385.594656448] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267385.594676795] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787267385.736065166] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787267385.736139201] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787267385.736160121] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267385.736692035] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/block_detections' with type 'std_msgs::msg::dds_::Float64MultiArray_' from USER_DATA '(null)'.
+[WARN] [1787267385.736732974] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787267390.220149823] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787267390.220240910] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787267390.222522068] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787267390.225663600] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787267390.225735736] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787267390.226275932] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.226354751] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1787267390.226387220] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
+[WARN] [1787267390.226419237] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
+[WARN] [1787267390.226447492] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
+[WARN] [1787267390.226545692] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.226598094] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1787267390.231679428] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.232002883] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787267390.232117903] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.232139397] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1787267390.233679496] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1787267390.233770329] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1787267390.233796964] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787267390.233906074] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.233945940] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
+[WARN] [1787267390.233968739] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
+[WARN] [1787267390.234040444] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
+[WARN] [1787267390.234266430] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.234342010] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
+[WARN] [1787267390.234394664] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
+[WARN] [1787267390.234411164] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
+[WARN] [1787267390.234468415] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.234819766] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.234865509] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[WARN] [1787267390.235155981] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.235448690] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
+[WARN] [1787267390.235501461] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
+[stack] reset to (0.0, 0.0, 0.0, 0.0, 0.0, -45.0)
+[arm] target joint positions: {'joint2_to_joint1': 0.0, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': 0.0, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -0.7854}
+[arm] trajectory: 1 waypoints, 3.000s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0152, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': 0.0045, 'joint6_to_joint5': -0.0215, 'joint6output_to_joint6': -0.7378}  (max movement so far 0.0000 rad)
+[explore] coarse sweep J1 -135..+135 step 15, watching for pickup and place, stopping 2 stop(s) after the last one is passed
 
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
+[arm] target joint positions: {'joint2_to_joint1': -2.3562, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 3.000s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0152, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': 0.0045, 'joint6_to_joint5': -0.0215, 'joint6output_to_joint6': -0.7378}  (max movement so far 0.0000 rad)
+[detect] OK: 2 tag(s), rms 0.34 px, 1 block(s)
+[detect] tags [0, 1] | rms 0.34 px | 1450 px/m = 0.3800 m from the mat | camera at zone (-69.4, -162.7) mm
+[detect]   [0] zone (+29.7, +0.2) mm  yaw +45.2 deg  32.0 x 44.1 mm  rect sym=2
+[detect]   [0] colour blue (0.71)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 131 (range 0-255), focus 964 | 2 AprilTag(s) of OTHER ids visible: zone tag 0, zone tag 1 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1  -135.0  pickup tags [0, 1] rms 0.34 px
+[arm] target joint positions: {'joint2_to_joint1': -2.0944, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -2.3408, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0014, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] OK: 3 tag(s), rms 0.64 px, 2 block(s)
+[detect] tags [0, 1, 3] | rms 0.64 px | 1427 px/m = 0.3862 m from the mat | camera at zone (-37.8, -132.1) mm
+[detect]   [0] zone (-15.6, +22.6) mm  yaw +7.3 deg  39.8 x 41.6 mm  square sym=4
+[detect]   [1] zone (+30.1, -14.2) mm  yaw +32.3 deg  30.3 x 46.1 mm  rect sym=2
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.67)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 134 (range 0-254), focus 637 | 3 AprilTag(s) of OTHER ids visible: zone tag 0, zone tag 1, zone tag 3 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1  -120.0  pickup tags [0, 1, 3] rms 0.64 px
+[arm] target joint positions: {'joint2_to_joint1': -1.8326, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -2.1061, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': -0.0014, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.64 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.64 px | 1410 px/m = 0.3908 m from the mat | camera at zone (-11.2, -91.2) mm
+[detect]   [0] zone (-16.4, +21.8) mm  yaw +8.4 deg  38.3 x 40.4 mm  square sym=4
+[detect]   [1] zone (+29.0, -15.6) mm  yaw +28.8 deg  30.6 x 44.5 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.62)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 141 (range 0-254), focus 410 | 4 AprilTag(s) of OTHER ids visible: zone tag 0, zone tag 1, zone tag 2, zone tag 3 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1  -105.0  pickup tags [0, 1, 2, 3] rms 0.64 px
+[arm] target joint positions: {'joint2_to_joint1': -1.5708, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.8514, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': -0.003, 'joint6output_to_joint6': -2.3361}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.71 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.71 px | 1404 px/m = 0.3925 m from the mat | camera at zone (+4.7, -42.4) mm
+[detect]   [0] zone (-16.9, +21.0) mm  yaw +7.3 deg  35.9 x 39.6 mm  square sym=4
+[detect]   [1] zone (+28.0, -15.0) mm  yaw +0.2 deg  33.6 x 40.2 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.62)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 141 (range 0-254), focus 344 | 4 AprilTag(s) of OTHER ids visible: zone tag 0, zone tag 1, zone tag 2, zone tag 3 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -90.0  pickup tags [0, 1, 2, 3] rms 0.71 px
+[arm] target joint positions: {'joint2_to_joint1': -1.309, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.5876, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': -0.0061, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.63 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.63 px | 1408 px/m = 0.3913 m from the mat | camera at zone (+7.4, +8.7) mm
+[detect]   [0] zone (+28.1, -18.0) mm  yaw +11.8 deg  32.6 x 40.5 mm  unknown sym=1
+[detect]   [1] zone (-17.1, +19.9) mm  yaw -176.0 deg  33.7 x 38.9 mm  rect sym=2
+[detect]   [0] colour blue (0.62)
+[detect]   [1] colour red (1.00)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 139 (range 1-254), focus 373 | 4 AprilTag(s) of OTHER ids visible: zone tag 0, zone tag 1, zone tag 2, zone tag 3 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -75.0  pickup tags [0, 1, 2, 3] rms 0.63 px
+[arm] target joint positions: {'joint2_to_joint1': -1.0472, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.3437, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': -0.0045, 'joint6output_to_joint6': -2.3361}  (max movement so far 0.0000 rad)
+[detect] OK: 2 tag(s), rms 0.36 px, 2 block(s)
+[detect] tags [2, 3] | rms 0.36 px | 1415 px/m = 0.3894 m from the mat | camera at zone (-5.2, +63.6) mm
+[detect]   [0] zone (+29.9, -20.0) mm  yaw +153.4 deg  32.3 x 44.1 mm  unknown sym=1
+[detect]   [1] zone (-16.7, +17.3) mm  yaw -177.1 deg  34.0 x 39.0 mm  rect sym=2
+[detect]   [0] colour blue (0.62)
+[detect]   [1] colour red (1.00)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 140 (range 1-255), focus 439 | 2 AprilTag(s) of OTHER ids visible: zone tag 2, zone tag 3 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -60.0  pickup tags [2, 3] rms 0.36 px
+[arm] target joint positions: {'joint2_to_joint1': -0.7854, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.0615, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0014, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] OK: 2 tag(s), rms 0.19 px, 2 block(s)
+[detect] tags [2, 3] | rms 0.19 px | 1454 px/m = 0.3789 m from the mat | camera at zone (-27.4, +107.9) mm
+[detect]   [0] zone (-16.4, +15.7) mm  yaw -177.8 deg  34.3 x 39.9 mm  rect sym=2
+[detect]   [1] zone (+20.8, -10.8) mm  yaw +37.4 deg  14.4 x 22.7 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.86)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 137 (range 1-255), focus 467 | 2 AprilTag(s) of OTHER ids visible: zone tag 2, zone tag 3 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -45.0  pickup tags [2, 3] rms 0.19 px
+[arm] target joint positions: {'joint2_to_joint1': -0.5236, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -0.796, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': -0.0075, 'joint6output_to_joint6': -2.3361}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 1 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else.
+[detect] tags [3] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 133 (range 1-255), focus 388 | 1 AprilTag(s) of OTHER ids visible: zone tag 3 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -30.0  nothing in view
+[arm] target joint positions: {'joint2_to_joint1': -0.2618, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -0.5414, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': -0.0061, 'joint6output_to_joint6': -2.3361}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 131 (range 0-254), focus 294 | NO AprilTag of any id anywhere in the frame
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 131 (range 0-254), focus 293 | NO AprilTag of any id anywhere in the frame
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -15.0  nothing in view
+[arm] target joint positions: {'joint2_to_joint1': 0.0, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -0.2791, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': -0.0061, 'joint6output_to_joint6': -2.3361}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 131 (range 0-254), focus 317 | NO AprilTag of any id anywhere in the frame
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 0 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 131 (range 0-254), focus 318 | NO AprilTag of any id anywhere in the frame
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1    +0.0  nothing in view
+[arm] target joint positions: {'joint2_to_joint1': 0.2618, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0152, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': -0.0014, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 139 (range 1-254), focus 392 | 1 AprilTag(s) of OTHER ids visible: zone tag 4 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 1 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else.
+[detect] tags [4] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +15.0  nothing in view
+[arm] target joint positions: {'joint2_to_joint1': 0.5236, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.247, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0045, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 141 (range 1-254), focus 440 | 1 AprilTag(s) of OTHER ids visible: zone tag 4 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] FAIL: saw 1 of zone's 4 tags [4, 5, 6, 7], need 2. Check framing, focus and lighting before suspecting anything else.
+[detect] tags [4] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +30.0  nothing in view
+[arm] target joint positions: {'joint2_to_joint1': 0.7854, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.5123, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0106, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 140 (range 3-255), focus 574 | 2 AprilTag(s) of OTHER ids visible: zone tag 4, zone tag 5 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] OK: 2 tag(s), rms 0.34 px, 0 block(s)
+[detect] tags [4, 5] | rms 0.34 px | 1491 px/m = 0.3696 m from the mat | camera at zone (-118.2, -121.5) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +45.0  place tags [4, 5] rms 0.34 px
+[arm] target joint positions: {'joint2_to_joint1': 1.0472, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.7653, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 136 (range 2-255), focus 680 | 3 AprilTag(s) of OTHER ids visible: zone tag 4, zone tag 5, zone tag 7 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] OK: 3 tag(s), rms 0.46 px, 0 block(s)
+[detect] tags [4, 5, 7] | rms 0.46 px | 1439 px/m = 0.3828 m from the mat | camera at zone (-73.0, -96.1) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +60.0  place tags [4, 5, 7] rms 0.46 px
+[arm] target joint positions: {'joint2_to_joint1': 1.309, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.0324, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 131 (range 2-255), focus 643 | 4 AprilTag(s) of OTHER ids visible: zone tag 4, zone tag 5, zone tag 6, zone tag 7 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] OK: 4 tag(s), rms 0.54 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.54 px | 1417 px/m = 0.3889 m from the mat | camera at zone (-37.9, -59.5) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +75.0  place tags [4, 5, 6, 7] rms 0.54 px
+[arm] target joint positions: {'joint2_to_joint1': 1.5708, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.2931, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 134 (range 2-255), focus 535 | 4 AprilTag(s) of OTHER ids visible: zone tag 4, zone tag 5, zone tag 6, zone tag 7 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] OK: 4 tag(s), rms 0.68 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.68 px | 1421 px/m = 0.3877 m from the mat | camera at zone (-13.3, -13.5) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +90.0  place tags [4, 5, 6, 7] rms 0.68 px
+[arm] target joint positions: {'joint2_to_joint1': 1.8326, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.5615, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 133 (range 1-255), focus 495 | 3 AprilTag(s) of OTHER ids visible: zone tag 5, zone tag 6, zone tag 7 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] OK: 3 tag(s), rms 0.71 px, 0 block(s)
+[detect] tags [5, 6, 7] | rms 0.71 px | 1444 px/m = 0.3814 m from the mat | camera at zone (-2.3, +34.8) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1  +105.0  place tags [5, 6, 7] rms 0.71 px
+[arm] target joint positions: {'joint2_to_joint1': 2.0944, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.8162, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0122, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 129 (range 1-255), focus 517 | 2 AprilTag(s) of OTHER ids visible: zone tag 6, zone tag 7 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] OK: 2 tag(s), rms 0.53 px, 0 block(s)
+[detect] tags [6, 7] | rms 0.53 px | 1493 px/m = 0.3691 m from the mat | camera at zone (-4.3, +86.5) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1  +120.0  place tags [6, 7] rms 0.53 px
+[arm] target joint positions: {'joint2_to_joint1': 2.3562, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2392, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 2.0831, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] FAIL: saw 0 of zone's 4 tags [0, 1, 2, 3], need 2. Check framing, focus and lighting before suspecting anything else. | frame 640x480, mean 127 (range 1-254), focus 593 | 2 AprilTag(s) of OTHER ids visible: zone tag 6, zone tag 7 -- the camera CAN see tags, so this is a zone/id mismatch, not an image problem
+[detect] tags [] | rms 0.00 px | 0 px/m = nan m from the mat | camera at zone (+0.0, +0.0) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[detect] OK: 2 tag(s), rms 0.42 px, 0 block(s)
+[detect] tags [6, 7] | rms 0.42 px | 1544 px/m = 0.3568 m from the mat | camera at zone (-18.8, +134.4) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1  +135.0  place tags [6, 7] rms 0.42 px
+[explore] pickup coarse yaw: coarse yaw solved at -88.2 deg over 7 view(s), residual 1.0 mm -- coarse origins recomputed with it rather than with an assumed 0 deg.
 
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.5/src/serdata.cpp:354'
+[explore] pickup coarse best: J1 -75.0 with 4 tag(s) -- refining +-12.5 deg around it
 
-with this new error message:
+[explore] pickup fine arc: coarse radius 0.1899 m (median of 7, MAD 0 mm); pitch -71.0 aims the axis at 0.1961 (+6 mm off the mat centre) -> using pitch -71.9, axis 0.1900
+[arm] target joint positions: {'joint2_to_joint1': -1.5272, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 3.000s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 2.3393, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2378, 'joint6_to_joint5': 0.0138, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.73 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.73 px | 1408 px/m = 0.3914 m from the mat | camera at zone (+1.7, -29.1) mm
+[detect]   [0] zone (-17.1, +20.7) mm  yaw +6.0 deg  34.8 x 39.1 mm  square sym=4
+[detect]   [1] zone (+27.9, -15.8) mm  yaw +3.9 deg  33.5 x 39.2 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.62)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -87.5  pickup tags [0, 1, 2, 3] rms 0.73 px
+[arm] target joint positions: {'joint2_to_joint1': -1.4835, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.5139, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0091, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.72 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.72 px | 1408 px/m = 0.3912 m from the mat | camera at zone (+2.0, -27.5) mm
+[detect]   [0] zone (-17.3, +20.8) mm  yaw +6.5 deg  34.8 x 39.1 mm  square sym=4
+[detect]   [1] zone (+27.8, -16.1) mm  yaw +4.3 deg  33.5 x 40.0 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.62)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -85.0  pickup tags [0, 1, 2, 3] rms 0.72 px
+[arm] target joint positions: {'joint2_to_joint1': -1.4399, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.5033, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0091, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.68 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.68 px | 1409 px/m = 0.3910 m from the mat | camera at zone (+2.8, -18.1) mm
+[detect]   [0] zone (-17.0, +20.5) mm  yaw -175.0 deg  34.8 x 39.1 mm  square sym=4
+[detect]   [1] zone (+27.7, -16.6) mm  yaw +6.6 deg  33.5 x 39.9 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.62)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -82.5  pickup tags [0, 1, 2, 3] rms 0.68 px
+[arm] target joint positions: {'joint2_to_joint1': -1.3963, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.4526, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.65 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.65 px | 1410 px/m = 0.3908 m from the mat | camera at zone (+3.1, -10.9) mm
+[detect]   [0] zone (-17.1, +20.4) mm  yaw -175.8 deg  34.3 x 39.2 mm  rect sym=2
+[detect]   [1] zone (+28.1, -17.2) mm  yaw +8.3 deg  32.7 x 40.6 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.62)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -80.0  pickup tags [0, 1, 2, 3] rms 0.65 px
+[arm] target joint positions: {'joint2_to_joint1': -1.3526, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.4142, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.61 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.61 px | 1412 px/m = 0.3903 m from the mat | camera at zone (+3.2, -2.3) mm
+[detect]   [0] zone (-17.0, +20.2) mm  yaw -175.2 deg  34.1 x 39.1 mm  rect sym=2
+[detect]   [1] zone (+28.0, -17.4) mm  yaw +10.4 deg  32.7 x 40.4 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.62)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -77.5  pickup tags [0, 1, 2, 3] rms 0.61 px
+[arm] target joint positions: {'joint2_to_joint1': -1.309, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.3697, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 1.29 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 1.29 px | 1421 px/m = 0.3876 m from the mat | camera at zone (+2.4, +7.0) mm
+[detect]   [0] zone (+27.8, -17.6) mm  yaw +12.8 deg  32.7 x 40.7 mm  unknown sym=1
+[detect]   [1] zone (-17.3, +20.3) mm  yaw -175.9 deg  33.7 x 38.7 mm  rect sym=2
+[detect]   [0] colour blue (0.62)
+[detect]   [1] colour red (1.00)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -75.0  pickup tags [0, 1, 2, 3] rms 1.29 px
+[arm] target joint positions: {'joint2_to_joint1': -1.2654, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.3252, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.96 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.96 px | 1421 px/m = 0.3877 m from the mat | camera at zone (+1.8, +14.2) mm
+[detect]   [0] zone (+27.8, -17.8) mm  yaw -171.9 deg  33.1 x 40.6 mm  unknown sym=1
+[detect]   [1] zone (-17.2, +20.0) mm  yaw -176.0 deg  33.5 x 38.7 mm  rect sym=2
+[detect]   [0] colour blue (0.62)
+[detect]   [1] colour red (1.00)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -72.5  pickup tags [0, 1, 2, 3] rms 0.96 px
+[arm] target joint positions: {'joint2_to_joint1': -1.2217, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.287, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.83 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.83 px | 1424 px/m = 0.3870 m from the mat | camera at zone (+0.7, +22.7) mm
+[detect]   [0] zone (+27.5, -17.6) mm  yaw -178.5 deg  33.5 x 39.9 mm  unknown sym=1
+[detect]   [1] zone (-17.2, +19.7) mm  yaw -176.1 deg  33.4 x 38.6 mm  rect sym=2
+[detect]   [0] colour blue (0.62)
+[detect]   [1] colour red (1.00)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -70.0  pickup tags [0, 1, 2, 3] rms 0.83 px
+[arm] target joint positions: {'joint2_to_joint1': -1.1781, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.2425, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0122, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 1.56 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 1.56 px | 1424 px/m = 0.3869 m from the mat | camera at zone (-0.7, +31.9) mm
+[detect]   [0] zone (+27.8, -18.4) mm  yaw -178.0 deg  33.5 x 40.1 mm  unknown sym=1
+[detect]   [1] zone (-17.0, +19.2) mm  yaw -176.5 deg  33.4 x 38.8 mm  rect sym=2
+[detect]   [0] colour blue (0.62)
+[detect]   [1] colour red (1.00)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -67.5  pickup tags [0, 1, 2, 3] rms 1.56 px
+[arm] target joint positions: {'joint2_to_joint1': -1.1345, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.1933, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0122, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 2 tag(s), rms 1.14 px, 2 block(s)
+[detect] tags [1, 3] | rms 1.14 px | 1419 px/m = 0.3882 m from the mat | camera at zone (-1.0, +39.3) mm
+[detect]   [0] zone (-16.1, +18.1) mm  yaw -175.8 deg  34.0 x 39.3 mm  rect sym=2
+[detect]   [1] zone (+28.8, -19.1) mm  yaw -177.5 deg  33.3 x 39.5 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.62)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -65.0  pickup tags [1, 3] rms 1.14 px
+[arm] target joint positions: {'joint2_to_joint1': -1.0908, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2541, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.1519, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0122, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 2 tag(s), rms 0.89 px, 2 block(s)
+[detect] tags [1, 3] | rms 0.89 px | 1423 px/m = 0.3873 m from the mat | camera at zone (-3.6, +48.5) mm
+[detect]   [0] zone (+29.3, -18.1) mm  yaw +158.1 deg  32.0 x 42.1 mm  unknown sym=1
+[detect]   [1] zone (-16.1, +17.8) mm  yaw -176.2 deg  34.0 x 39.2 mm  rect sym=2
+[detect]   [0] colour blue (0.62)
+[detect]   [1] colour red (1.00)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   -62.5  pickup tags [1, 3] rms 0.89 px
+[explore] place coarse yaw: coarse yaw solved at +104.7 deg over 7 view(s), residual 1.5 mm -- coarse origins recomputed with it rather than with an assumed 0 deg.
 
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.5/src/serdata.cpp:354'
+[explore] place coarse best: J1 +90.0 with 4 tag(s) -- refining +-12.5 deg around it
 
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
+[explore] place fine arc: coarse radius 0.2057 m (median of 7, MAD 0 mm); pitch -71.0 aims the axis at 0.1961 (-10 mm off the mat centre) -> using pitch -69.7, axis 0.2058
+[arm] target joint positions: {'joint2_to_joint1': 1.3526, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 3.000s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.1058, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2502, 'joint6_to_joint5': -0.0122, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.61 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.61 px | 1423 px/m = 0.3872 m from the mat | camera at zone (-33.2, -59.5) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +77.5  place tags [4, 5, 6, 7] rms 0.61 px
+[arm] target joint positions: {'joint2_to_joint1': 1.3963, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.3437, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2332, 'joint6_to_joint5': -0.0091, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.58 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.58 px | 1420 px/m = 0.3881 m from the mat | camera at zone (-27.3, -50.7) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +80.0  place tags [4, 5, 6, 7] rms 0.58 px
+[arm] target joint positions: {'joint2_to_joint1': 1.4399, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.379, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.0014, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.62 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.62 px | 1420 px/m = 0.3881 m from the mat | camera at zone (-22.7, -42.5) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +82.5  place tags [4, 5, 6, 7] rms 0.62 px
+[arm] target joint positions: {'joint2_to_joint1': 1.4835, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.4251, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.0014, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.62 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.62 px | 1420 px/m = 0.3881 m from the mat | camera at zone (-17.9, -33.5) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +85.0  place tags [4, 5, 6, 7] rms 0.62 px
+[arm] target joint positions: {'joint2_to_joint1': 1.5272, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.4757, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.003, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.66 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.66 px | 1422 px/m = 0.3875 m from the mat | camera at zone (-15.0, -27.1) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +87.5  place tags [4, 5, 6, 7] rms 0.66 px
+[arm] target joint positions: {'joint2_to_joint1': 1.5708, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.5078, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.0045, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.67 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.67 px | 1422 px/m = 0.3874 m from the mat | camera at zone (-11.5, -18.5) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +90.0  place tags [4, 5, 6, 7] rms 0.67 px
+[arm] target joint positions: {'joint2_to_joint1': 1.6144, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.5523, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.0061, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.71 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.71 px | 1426 px/m = 0.3865 m from the mat | camera at zone (-8.3, -9.6) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +92.5  place tags [4, 5, 6, 7] rms 0.71 px
+[arm] target joint positions: {'joint2_to_joint1': 1.6581, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.5984, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.0061, 'joint6output_to_joint6': -2.3393}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.68 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.68 px | 1429 px/m = 0.3856 m from the mat | camera at zone (-5.6, -0.8) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +95.0  place tags [4, 5, 6, 7] rms 0.68 px
+[arm] target joint positions: {'joint2_to_joint1': 1.7017, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.6443, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.0061, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.88 px, 0 block(s)
+[detect] tags [4, 5, 6, 7] | rms 0.88 px | 1437 px/m = 0.3833 m from the mat | camera at zone (-3.4, +7.5) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1   +97.5  place tags [4, 5, 6, 7] rms 0.88 px
+[arm] target joint positions: {'joint2_to_joint1': 1.7453, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.6904, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.0061, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] OK: 3 tag(s), rms 0.79 px, 0 block(s)
+[detect] tags [5, 6, 7] | rms 0.79 px | 1434 px/m = 0.3843 m from the mat | camera at zone (-1.9, +15.4) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1  +100.0  place tags [5, 6, 7] rms 0.79 px
+[arm] target joint positions: {'joint2_to_joint1': 1.789, 'joint3_to_joint2': 0.0, 'joint4_to_joint3': 0.0, 'joint5_to_joint4': -1.2158, 'joint6_to_joint5': 0.0, 'joint6output_to_joint6': -2.3562}
+[arm] trajectory: 1 waypoints, 1.600s total, ~0.000 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.7303, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.0061, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[detect] OK: 3 tag(s), rms 0.73 px, 0 block(s)
+[detect] tags [5, 6, 7] | rms 0.73 px | 1440 px/m = 0.3825 m from the mat | camera at zone (-0.4, +23.7) mm
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[explore] J1  +102.5  place tags [5, 6, 7] rms 0.73 px
 
->>> [rcutils|error_handling.c:108] rcutils_set_error_state()
-This error state is being overwritten:
+[survey] pickup J1   -65.0 REJECTED: only 2 tag(s); 3 needed before the homography is trusted this far from them
+[survey] pickup J1   -62.5 REJECTED: only 2 tag(s); 3 needed before the homography is trusted this far from them
+[survey] pickup zone: origin (+0.0108, -0.1623)  r 0.1627 m = 6.41 in  bearing -86.2 deg  |  zone yaw -88.5 deg  residual 0.4 mm over 9 view(s)
+[survey] place zone: origin (+0.0038, +0.1776)  r 0.1776 m = 6.99 in  bearing +88.8 deg  |  zone yaw +103.9 deg  residual 0.5 mm over 11 view(s)
 
-  'invalid data size, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.5/src/serdata.cpp:354'
+[stack] pick from (0.0108, -0.1623) yaw -88.5  ->  stack at (0.0038, 0.1776) yaw -1.2
+[stack] the stack's ABSOLUTE position is only as good as that place survey (a few mm, and it needs +-25 mm). Its own straightness does not depend on it -- see design decision 4.
+[stack] level 0: surface z -0.0040, release flange z 0.1455, hover 0.1855 (40 mm descent)
+[stack] level 0: flange radius 0.1944 at that height, envelope allows 0.2805 -- margin +86.1 mm
+[pick_place] hover 0.214 exceeds the reachable ceiling 0.205 -- clamping (descent shortens to 0.031m)
+[stack] level 1: surface z 0.0214, release flange z 0.1739, hover 0.2050 (31 mm descent) -- releasing 3.0 mm high, so the block DROPS that far rather than being pressed into level 0 (see PLACE_DROP_M)
+[stack] level 1: flange radius 0.1944 at that height, envelope allows 0.2712 -- margin +76.9 mm
+Executing joint-space move to home pose...
+[arm] target joint positions: {'joint2_to_joint1': -0.0001, 'joint3_to_joint2': 0.0001, 'joint4_to_joint3': -0.0001, 'joint5_to_joint4': 0.0006, 'joint6_to_joint5': 0.0004, 'joint6output_to_joint6': -0.7849}
+[arm] trajectory: 15 waypoints, 4.044s total, ~0.438 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 1.7717, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -1.2317, 'joint6_to_joint5': 0.0075, 'joint6output_to_joint6': -2.3377}  (max movement so far 0.0000 rad)
+[gripper] target joint positions: {'gripper_controller': 0.15}
+[gripper] trajectory: 1 waypoints, 1.000s total, ~0.000 rad/s peak joint speed, velocities=NO, header.stamp=0.000000000
+[gripper] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[gripper] waiting... current joint positions: {'gripper_controller': 0.135}  (max movement so far 0.0000 rad)
+[stack] pickup survey: 5 stills at hover 0.255, flange re-centred per wrist yaw
+[multiview] wrist yaws are relative to the mat's bearing -86.2 deg (see the note in detect_multiview)
 
-with this new error message:
+[multiview] still 1/5 at wrist yaw +4 deg (offset +90) -- flange (0.0083, -0.1225), radius 0.1228 m, lens on the zone centre by model
+[ik] 'current-state' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [-0.956, -0.784, 1.286, -2.077, -0.007, -0.237]  (travel 2.798 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [-0.956, -0.784, 1.286, -2.077, -0.007, -0.237]  (travel 2.798 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [-0.956, -0.784, 1.286, -2.077, -0.007, -0.237]  (travel 2.798 rad)
+[ik] 'downward-confirmed' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'home' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'home-wrist-zeroed' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'all-zeros' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'deep-elbow-down' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]  (travel 1.876 rad)
+[ik] chose 'bearing+offset/elbow-down' (1.876 rad of joint travel): [-0.956, 0.397, -1.286, -0.686, -0.007, -0.237]
+Executing joint-space move to (0.008253325766573314, -0.1224786455117026, 0.255)...
+[arm] target joint positions: {'joint2_to_joint1': -0.9548, 'joint3_to_joint2': 0.3966, 'joint4_to_joint3': -1.2851, 'joint5_to_joint4': -0.6863, 'joint6_to_joint5': -0.0078, 'joint6output_to_joint6': -0.2362}
+[arm] trajectory: 13 waypoints, 3.064s total, ~0.418 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': 0.0152, 'joint3_to_joint2': 0.0045, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': -0.0061, 'joint6_to_joint5': 0.003, 'joint6output_to_joint6': -0.7976}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.49 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.49 px | 2010 px/m = 0.2741 m from the mat | camera at zone (-31.5, +6.8) mm
+[detect]   [0] zone (-18.7, +19.1) mm  yaw -83.8 deg  34.2 x 35.6 mm  square sym=4
+[detect]   [1] zone (+27.5, -19.3) mm  yaw -83.4 deg  32.0 x 37.0 mm  unknown sym=1
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.67)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[multiview]   lens measured 32.2 mm off the zone centre; correcting the remaining stills by (-6.0, -31.7) mm
+[multiview]   top-face parallax: lens 0.2741 m over a 30 mm block, scaling by 0.8905 about the nadir (-5.6 mm at the zone edge)
 
-  'string data is not null-terminated, at /tmp/binarydeb/ros-galactic-rmw-cyclonedds-cpp-0.22.5/src/serdata.cpp:354'
+[multiview] still 2/5 at wrist yaw -26 deg (offset +60) -- flange (0.0225, -0.1582), radius 0.1598 m, lens re-centred by (-6.0, -31.7) mm
+[ik] 'current-state' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [-1.044, -0.846, 0.875, -1.702, 0.078, 0.192]  (travel 2.711 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [-1.044, -0.846, 0.875, -1.702, 0.078, 0.192]  (travel 2.711 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [-1.044, -0.846, 0.875, -1.702, 0.078, 0.192]  (travel 2.711 rad)
+[ik] 'downward-confirmed' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'home' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'home-wrist-zeroed' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'all-zeros' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'deep-elbow-down' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'home-mirrored' seed: OK -> [-1.044, -0.846, 0.875, -1.702, 0.078, 0.192]  (travel 2.711 rad)
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]  (travel 0.747 rad)
+[ik] chose 'elbow-bent-wrist-zero' (0.747 rad of joint travel): [-1.044, -0.037, -0.875, -0.762, 0.078, 0.192]
+Executing joint-space move to (0.022549882051793292, -0.15817996381825497, 0.255)...
+[arm] target joint positions: {'joint2_to_joint1': -1.043, 'joint3_to_joint2': -0.0361, 'joint4_to_joint3': -0.8743, 'joint5_to_joint4': -0.7629, 'joint6_to_joint5': 0.0782, 'joint6output_to_joint6': 0.1927}
+[arm] trajectory: 6 waypoints, 1.397s total, ~0.321 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -0.928, 'joint3_to_joint2': 0.385, 'joint4_to_joint3': -1.264, 'joint5_to_joint4': -0.684, 'joint6_to_joint5': -0.0122, 'joint6output_to_joint6': -0.256}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.61 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.61 px | 2130 px/m = 0.2586 m from the mat | camera at zone (-34.9, +1.7) mm
+[detect]   [0] zone (-18.9, +19.9) mm  yaw -86.4 deg  35.1 x 36.5 mm  square sym=4
+[detect]   [1] zone (+25.0, -18.4) mm  yaw +157.9 deg  32.6 x 34.4 mm  circle sym=0
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.67)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[multiview]   top-face parallax: lens 0.2586 m over a 30 mm block, scaling by 0.8840 about the nadir (-5.9 mm at the zone edge)
 
-rcutils_reset_error() should be called after error handling to avoid this.
-<<<
-[INFO] [1787266573.591332067] [block_detector]: frame dump off; start with --ros-args -p frame_dump_dir:=/tmp/frames to record what the camera sees
-[INFO] [1787266573.706916454] [block_detector]: block_detector up: reading /dev/video0 directly, serving /detect_block
-[INFO] [1787266573.709147009] [block_detector]: tag_size=0.0254 m, default zone_size=0.1016 m, method=colour
-[INFO] [1787266573.711587432] [block_detector]: method=colour: segmenting by SATURATION (mat is white, blocks are painted), colour named by nearest hue prototype. Colour travels on the block_detections topic, not in the service response -- see detection_wire.py schema 3.
+[multiview] still 3/5 at wrist yaw +34 deg (offset +120) -- flange (-0.0173, -0.1608), radius 0.1617 m, lens re-centred by (-6.0, -31.7) mm
+[ik] 'current-state' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'bearing+offset/elbow-down' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'bearing+offset/elbow-up' seed: OK -> [-1.288, -0.839, 0.843, -1.684, 0.049, -1.096]  (travel 2.487 rad)
+[ik] 'bearing/elbow-down' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'bearing/elbow-up' seed: OK -> [-1.288, -0.839, 0.843, -1.684, 0.049, -1.096]  (travel 2.487 rad)
+[ik] 'bearing-offset/elbow-down' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'bearing-offset/elbow-up' seed: OK -> [-1.288, -0.839, 0.843, -1.684, 0.049, -1.096]  (travel 2.487 rad)
+[ik] 'downward-confirmed' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'home' seed: IK did not converge
+[ik] 'home-wrist-zeroed' seed: IK did not converge
+[ik] 'elbow-bent-wrist-zero' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'all-zeros' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'deep-elbow-down' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'downward-confirmed-mirrored' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'home-mirrored' seed: IK did not converge
+[ik] 'home-wrist-zeroed-mirrored' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'elbow-bent-wrist-zero-mirrored' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'all-zeros-mirrored' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] 'deep-elbow-down-mirrored' seed: OK -> [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]  (travel 1.297 rad)
+[ik] chose 'bearing+offset/elbow-down' (1.297 rad of joint travel): [-1.288, -0.059, -0.843, -0.779, 0.049, -1.096]
+Executing joint-space move to (-0.017282978877303356, -0.160761698868921, 0.255)...
+[arm] target joint positions: {'joint2_to_joint1': -1.289, 'joint3_to_joint2': -0.0587, 'joint4_to_joint3': -0.8435, 'joint5_to_joint4': -0.7781, 'joint6_to_joint5': 0.0492, 'joint6output_to_joint6': -1.0971}
+[arm] trajectory: 6 waypoints, 3.041s total, ~0.418 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.0276, 'joint3_to_joint2': -0.0321, 'joint4_to_joint3': -0.8927, 'joint5_to_joint4': -0.7669, 'joint6_to_joint5': 0.0644, 'joint6output_to_joint6': 0.1733}  (max movement so far 0.0000 rad)
+[detect] OK: 4 tag(s), rms 0.51 px, 2 block(s)
+[detect] tags [0, 1, 2, 3] | rms 0.51 px | 2113 px/m = 0.2608 m from the mat | camera at zone (-35.8, -0.1) mm
+[detect]   [0] zone (-19.0, +20.2) mm  yaw -86.2 deg  35.8 x 36.4 mm  square sym=4
+[detect]   [1] zone (+24.7, -18.5) mm  yaw -146.0 deg  32.0 x 35.2 mm  circle sym=0
+[detect]   [0] colour red (1.00)
+[detect]   [1] colour blue (0.67)
+[detect]   no block tags in this still -- nothing here identifies which block is which
+[multiview]   top-face parallax: lens 0.2608 m over a 30 mm block, scaling by 0.8850 about the nadir (-5.8 mm at the zone edge)
+[multiview] 3 usable views, skipping the remaining 2 still(s)
 
+[multiview] 3 usable view(s), tags seen across all of them: [0, 1, 2, 3]
+[multiview]   [0] zone (-20.7, +17.8) mm  yaw +3.0 deg  31.0 x 32.2 mm  square  views=3 spread=0.6 mm/1.7 deg
+[multiview]   [1] zone (+18.1, -16.4) mm  yaw +0.0 deg  28.5 x 31.2 mm  circle  views=3 spread=3.0 mm/0.0 deg
+[identify] contour 0 at zone (-20.7, +17.8) mm is red (score 1.00, 100% of 3 view(s) agree)
+[identify] contour 1 at zone (+18.1, -16.4) mm is blue (score 0.67, 100% of 3 view(s) agree)
+[stack] identified: blue x1, red x1
+
+[stack] --survey-only: both zones surveyed, 2 block(s) located and named. Nothing was grasped.
+[memory] 0 pose(s) held; 0 hit / 0 miss over 0 lookup(s), 0 replayed. Replay saves IK and planning latency, not arm motion.
+
+=== Returning home ===
+Executing joint-space move to home pose...
+[arm] target joint positions: {'joint2_to_joint1': -0.0008, 'joint3_to_joint2': -0.0003, 'joint4_to_joint3': 0.0004, 'joint5_to_joint4': -0.0008, 'joint6_to_joint5': 0.0008, 'joint6output_to_joint6': -0.7857}
+[arm] trajectory: 11 waypoints, 3.039s total, ~0.418 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
+[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
+[arm] waiting... current joint positions: {'joint2_to_joint1': -1.2701, 'joint3_to_joint2': -0.0506, 'joint4_to_joint3': -0.8589, 'joint5_to_joint4': -0.7807, 'joint6_to_joint5': 0.0382, 'joint6output_to_joint6': -1.0798}  (max movement so far 0.0000 rad)
+ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ 
 

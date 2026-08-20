@@ -333,6 +333,8 @@ Wait till you see three yellow lines with the names of the controllers being con
 [spawner_gripper_group_controller]: Configured and started gripper_group_controller
 [INFO] [bash-6]: process has finished cleanly [pid 17329]
 
+Note that It takes usually two or three tries to get each controller to configure and the script automatically tries each controller 5 times before giving up. Why this does not work on the first try is only known to god. 
+
 DO NOT start Terminal 2 on a workstation before Terminal 1 states that all controllers are configured and ready and the last "process has finished cleanly" is published in terminal 1. Doing so forces method calls from controllers that aren't configured and induces import/construction/initialization failures into the controllers and thus not letting them initialize properly. 
 
 **Terminal 2 — workstation: planning + RViz**
