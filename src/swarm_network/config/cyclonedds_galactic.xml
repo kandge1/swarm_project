@@ -23,14 +23,17 @@
            list below regardless - the campus Wi-Fi blocks multicast for
            that regardless of this setting. -->
       <AllowMulticast>spdp</AllowMulticast>
-    </General>
-    <Discovery>
-      <Peers>
-        <Peer address="172.30.11.42"/>
-        <Peer address="172.27.80.139"/>
-      </Peers>
-    </Discovery>
-    <Internal>
+
+      <!-- MOVED FROM <Internal> TO <General> (2026-08-20). The robot's Cyclone
+           says so itself, on every node start:
+             config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved
+             to //CycloneDDS/Domain/General/MaxMessageSize (line 78)
+           It was honouring the old location through a compatibility shim and
+           warning each time; cyclonedds_jazzy.xml already had them under
+           <General>. The two files MUST agree, because these settings govern
+           the wire format and both ends of the link have to match, so the
+           structural mismatch was a latent trap even while the shim held.
+      -->
       <!-- KEEP EVERY UDP DATAGRAM UNDER THE ETHERNET MTU (2026-07-26).
            Must match cyclonedds_jazzy.xml, since these settings govern the
            wire format and both ends of the link have to agree.
@@ -77,6 +80,12 @@
            harder at the IP layer. Do not raise these. -->
       <MaxMessageSize>1400B</MaxMessageSize>
       <FragmentSize>1300B</FragmentSize>
-    </Internal>
+    </General>
+    <Discovery>
+      <Peers>
+        <Peer address="172.30.11.42"/>
+        <Peer address="172.27.80.139"/>
+      </Peers>
+    </Discovery>
   </Domain>
 </CycloneDDS>

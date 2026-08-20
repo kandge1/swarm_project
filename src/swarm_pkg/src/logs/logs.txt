@@ -1,62 +1,25 @@
-ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ python3 stack_blocks.py --by-colour --survey-only
-[stack] no --stack given; using the colour default: red blue
-[stack] per-level step from the blocks themselves: red 25.4 mm, blue 30.5 mm
-[stack] stacking bottom-first: red -> blue
-[stack]   level 0  red  release flange z 0.1455  (set down, no drop -- it lands on the mat)
-[stack]   level 1  blue  release flange z 0.1739  (3.0 mm of drop)
-[stack] NOTE: the stack step (0.0254, 0.0305) differs from pick_place.BLOCK_HEIGHT_M 0.0300. The stack uses these; GRASP_OFFSET_Z, the parks and the parallax correction are all referenced to the constant.
-[joint_states] no data after 6s (0 publisher(s) visible) -- recreating the subscription to force a fresh DDS match (attempt 1)
-[WARN] [1787263653.595853724] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1787263653.595905679] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1787263653.596226484] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1787263653.616804845] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1787263653.616843491] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1787263653.618118642] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.618197765] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1787263653.618214272] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'ros_discovery_info' with type 'rmw_dds_common::msg::dds_::ParticipantEntitiesInfo_' from USER_DATA '(null)'.
-[WARN] [1787263653.618311277] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.626096854] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.626112360] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1787263653.626120926] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/tf_static' with type 'tf2_msgs::msg::dds_::TFMessage_' from USER_DATA '(null)'.
-[WARN] [1787263653.626135262] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/robot_description' with type 'std_msgs::msg::dds_::String_' from USER_DATA '(null)'.
-[WARN] [1787263653.626434073] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.626464888] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1787263653.636942622] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.636982354] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/joint_states' with type 'sensor_msgs::msg::dds_::JointState_' from USER_DATA '(null)'.
-[WARN] [1787263653.637006976] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/dynamic_joint_states' with type 'control_msgs::msg::dds_::DynamicJointState_' from USER_DATA '(null)'.
-[WARN] [1787263653.637028210] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1787263653.637060557] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.637071333] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1787263653.637222158] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1787263653.637276014] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1787263653.637285485] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/rosout' with type 'rcl_interfaces::msg::dds_::Log_' from USER_DATA '(null)'.
-[WARN] [1787263653.637311683] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.637319751] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/state' with type 'control_msgs::msg::dds_::JointTrajectoryControllerState_' from USER_DATA '(null)'.
-[WARN] [1787263653.637338455] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/feedback' with type 'control_msgs::action::dds_::FollowJointTrajectory_FeedbackMessage_' from USER_DATA '(null)'.
-[WARN] [1787263653.637348578] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/follow_joint_trajectory/_action/status' with type 'action_msgs::msg::dds_::GoalStatusArray_' from USER_DATA '(null)'.
-[WARN] [1787263653.637368524] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.637509419] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.637525096] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/arm_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[WARN] [1787263653.637593753] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/parameter_events' with type 'rcl_interfaces::msg::dds_::ParameterEvent_' from USER_DATA '(null)'.
-[WARN] [1787263653.637613955] [rmw_cyclonedds_cpp]: Failed to parse type hash for topic 'rt/gripper_group_controller/joint_trajectory' with type 'trajectory_msgs::msg::dds_::JointTrajectory_' from USER_DATA '(null)'.
-[joint_states] recovered after 1 subscription recreate(s)
-[detect] /detect_block never appeared in 15s.
-         Is block_detector_node.py running ON THE PI?
-         Remember `ros2 node list` does not show the robot's nodes from mars even when they are up (PROJECT_CONTEXT.md) -- check with `ros2 service list | grep detect_block` instead.
-[memory] 0 pose(s) held; 0 hit / 0 miss over 0 lookup(s), 0 replayed. Replay saves IK and planning latency, not arm motion.
+er@er:~/swarm_project$ echo "$ROS_DOMAIN_ID / $RMW_IMPLEMENTATION" 
+ / 
+er@er:~/swarm_project$ ros2 service list | grep detect_block
+ros2: command not found
+er@er:~/swarm_project$ 
 
-=== Returning home ===
-Executing joint-space move to home pose...
-[arm] target joint positions: {'joint2_to_joint1': -0.0002, 'joint3_to_joint2': -0.001, 'joint4_to_joint3': -0.0001, 'joint5_to_joint4': -0.0, 'joint6_to_joint5': -0.0003, 'joint6output_to_joint6': -0.7844}
-[arm] trajectory: 4 waypoints, 2.041s total, ~0.378 rad/s peak joint speed, velocities=yes, header.stamp=0.000000000
-[arm] goal ACCEPTED by the controller (attempt 1) -- delivery confirmed, now watching /joint_states for real motion
-[arm] waiting... current joint positions: {'joint2_to_joint1': -0.0138, 'joint3_to_joint2': -0.0014, 'joint4_to_joint3': -0.003, 'joint5_to_joint4': 0.003, 'joint6_to_joint5': -0.0106, 'joint6output_to_joint6': -0.0138}  (max movement so far 0.0000 rad)
-ewok@mars:~/swarm/swarm_project/src/swarm_pkg/src/scripts$ 
+in the same terminal
 
-@er:~/swarm_project$ python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py \
->     --ros-args -p method:=colour
-[INFO] [1787261898.128466611] [block_detector]: frame dump off; start with --ros-args -p frame_dump_dir:=/tmp/frames to record what the camera sees
-[INFO] [1787261898.243565269] [block_detector]: block_detector up: reading /dev/video0 directly, serving /detect_block
-[INFO] [1787261898.246286632] [block_detector]: tag_size=0.0254 m, default zone_size=0.1016 m, method=colour
-[INFO] [1787261898.248459463] [block_detector]: method=colour: segmenting by SATURATION (mat is white, blocks are painted), colour named by nearest hue prototype. Colour travels on the block_detections topic, not in the service response -- see detection_wire.py schema 3.
+er@er:~/swarm_project$ python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py     --ros-args -p method:=colour
+[INFO] [1787264462.702525169] [block_detector]: frame dump off; start with --ros-args -p frame_dump_dir:=/tmp/frames to record what the camera sees
+[INFO] [1787264462.813722336] [block_detector]: block_detector up: reading /dev/video0 directly, serving /detect_block
+[INFO] [1787264462.815961017] [block_detector]: tag_size=0.0254 m, default zone_size=0.1016 m, method=colour
+[INFO] [1787264462.818057755] [block_detector]: method=colour: segmenting by SATURATION (mat is white, blocks are painted), colour named by nearest hue prototype. Colour travels on the block_detections topic, not in the service response -- see detection_wire.py schema 3.
+^C^Cer@er:~/swarm_project$ ^C
+er@er:~/swarm_project$ echo "$ROS_DOMAIN_ID / $RMW_IMPLEMENTATION" 
+ / 
+er@er:~/swarm_project$ ros2 service list | grep detect_block
+
+accidentally found: running this in an ssh terminal from mars onto the robot
+
+er@er:~$ ros2 service list | grep detect_block
+1787265262.972555 [42]       ros2: config: //CycloneDDS/Domain/Internal/MaxMessageSize: setting moved to //CycloneDDS/Domain/General/MaxMessageSize (file:///home/er/swarm_project/install/swarm_network/share/swarm_network/config/cyclonedds_galactic.xml line 78)
+1787265262.972702 [42]       ros2: config: //CycloneDDS/Domain/Internal/FragmentSize: setting moved to //CycloneDDS/Domain/General/FragmentSize (line 79)
+er@er:~$ 
 
