@@ -92,7 +92,11 @@ GRIPPER_OPEN_RAD = 0.15
 GRIPPER_CLOSED_RAD = -0.60
 
 DEFAULT_SOCKET_PATH = "/tmp/mycobot_hardware_bridge.sock"
-DEFAULT_SERIAL_PORT = "/dev/ttyAMA0"  # UNVERIFIED -- confirm on real hardware
+# Verified on the real arm: ttyAMA0 @ 1000000 is what the 280 Pi answers on.
+# Not /dev/serial0 -- on a Pi 4 that symlinks to the mini UART (ttyS0) unless
+# Bluetooth is disabled, and opening the wrong port fails silently rather than
+# raising: writes go nowhere and reads return stale angles.
+DEFAULT_SERIAL_PORT = "/dev/ttyAMA0"
 DEFAULT_BAUD_RATE = 1000000
 DEFAULT_SPEED = 50  # 0-100, pymycobot's joint/gripper move speed -- see
                     # SPEED_100_RAD_PER_SEC below; this is now an UPPER BOUND,
@@ -715,7 +719,14 @@ class Bridge:
         self.arm = MyCobot280(serial_port, baud_rate)
         print("[mycobot_bridge] connected.")
         self._install_read_timeout(read_timeout)
-        self._gripper_async = async_writes and self._probe_gripper_async()
+        self._angles_async = async_writes and self._accepts_async(
+            getattr(self.arm, "send_angles", None))
+        if async_writes and not self._angles_async:
+            print("[mycobot_bridge] arm writes=sync (blocking) -- this "
+                  "pymycobot's send_angles takes no _async argument. Expect "
+                  "0.5-1.5s per write; see DEFAULT_ASYNC_WRITES.")
+        self._gripper_async = async_writes and self._accepts_async(
+            getattr(self.arm, "set_gripper_value", None))
         if self._gripper_async:
             print("[mycobot_bridge] gripper writes=async")
         elif async_writes:
@@ -981,9 +992,16 @@ class Bridge:
             self.state.last_read_monotonic = time.monotonic()
 
     def _send_angles(self, arm_degrees, speed):
-        """send_angles(), async by default -- see DEFAULT_ASYNC_WRITES for why
-        the synchronous form costs 0.5-1.5s per call on Linux."""
-        if self.async_writes:
+        """send_angles(), async when this pymycobot supports it -- see
+        DEFAULT_ASYNC_WRITES for why the synchronous form costs 0.5-1.5s per
+        call on Linux.
+
+        Whether _async exists is PROBED, not assumed. pymycobot 3.7.0 dropped
+        the argument from send_angles, and passing it unconditionally raised
+        TypeError on every single write -- the command stayed dirty and was
+        retried forever, so the arm never moved and the log filled with
+        "send_angles() got an unexpected keyword argument '_async'"."""
+        if self._angles_async:
             self.arm.send_angles(arm_degrees, speed, _async=True)
         else:
             self.arm.send_angles(arm_degrees, speed)
@@ -991,9 +1009,9 @@ class Bridge:
     def _set_gripper_value(self, value, speed):
         """set_gripper_value(), async when this pymycobot supports it.
 
-        Unlike send_angles, set_gripper_value is not documented to take
-        _async, and it is missing from it in some versions -- so whether the
-        argument exists is probed once at startup rather than assumed here.
+        _async is undocumented and comes and goes between pymycobot releases,
+        on this method and on send_angles alike, so whether the argument
+        exists is probed once at startup rather than assumed here.
         The blocking form costs the same 0.5s read timeout as everything else:
         `gripper=524ms` appears in the real logs, holding the serial link and
         starving the arm's own command stream at the same time."""
@@ -1002,10 +1020,17 @@ class Bridge:
         else:
             self.arm.set_gripper_value(value, speed)
 
-    def _probe_gripper_async(self):
-        """Whether this pymycobot's set_gripper_value accepts _async."""
+    @staticmethod
+    def _accepts_async(method):
+        """Whether this pymycobot method takes the _async keyword.
+
+        Returns False for anything unintrospectable (C extensions, absent
+        methods), which costs speed and never correctness: the blocking call
+        is always valid, the _async one is not."""
+        if method is None:
+            return False
         try:
-            parameters = inspect.signature(self.arm.set_gripper_value).parameters
+            parameters = inspect.signature(method).parameters
         except (TypeError, ValueError, AttributeError):
             return False
         return "_async" in parameters

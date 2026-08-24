@@ -1,8 +1,16 @@
-# Python (pip) dependencies NOT available via apt/rosdep.
+# Python (pip) dependencies NOT available via apt/rosdep, for the ROBOT.
 #
-# Everything else this project needs (rclpy, moveit_msgs, moveit_py, cv_bridge,
-# opencv, numpy via python3-opencv, etc.) comes from ROS2 apt packages --
-# see install_pi_humble.sh. Only true pip-only packages belong here.
+# Everything else the robot needs (rclpy, moveit_msgs, cv_bridge, opencv and
+# numpy via python3-opencv, etc.) comes from ROS2 apt packages installed by
+# install_pi_galactic.sh. Only true pip-only packages belong here.
+#
+# No moveit_py: nothing in this project imports it. Every script talks to
+# move_group over plain services/actions, and Galactic has no moveit_py
+# package to install even if one were wanted.
+#
+# pillow is deliberately absent: only print_zone_tags.py / print_block_tags.py
+# need it, those generate printable sheets, and printing happens on the
+# workstation rather than the robot. See README.md section 5.
 
 pymycobot>=3.6.1
 packaging

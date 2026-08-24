@@ -32,6 +32,18 @@ sudo apt install ros-jazzy-rmw-cyclonedds-cpp
 sudo apt install ros-galactic-rmw-cyclonedds-cpp
 ```
 
+**The short way, on either machine, in every terminal:**
+```bash
+source ~/swarm_project/swarm_env.sh          # robot
+source ~/swarm/swarm_project/swarm_env.sh    # workstation
+```
+That sources ROS2, then the workspace, then exports the DDS variables using the
+config file for that machine's distro -- in that order, because CYCLONEDDS_URI
+is built from `ros2 pkg prefix swarm_network` and resolves to nothing until the
+workspace is sourced. It then prints the peer list and this machine's IP so a
+wrong address is visible immediately. It refuses to run if executed rather than
+sourced. **Everything below is what it does by hand.**
+
 **Add to your terminal session, each time you open a new terminal. The config
 FILENAME differs per machine -- Cyclone DDS behaves differently enough between
 the robot's Galactic build and mars's Jazzy build that the settings are split
@@ -195,6 +207,21 @@ adjust if yours differs.
 - **Joint velocity is always reported as `0.0`** -- pymycobot exposes no
   velocity reading. Controllers here only rely on position tracking, so
   this is a placeholder, not a bug, but worth knowing.
+- **ONE arm per DDS domain. Two arms on the same `ROS_DOMAIN_ID` is not
+  supported and is not safe to try casually** -- node names, topics and
+  action names are not namespaced per robot, so a second arm brings up a
+  second `/controller_manager`, `/joint_states` and `arm_group_controller`
+  under the SAME names. Every script here would then be addressing an
+  ambiguous pair, and which arm answers a goal is a race. To run a second
+  arm, isolate it on its own domain:
+
+  ```bash
+  SWARM_DOMAIN_ID=43 source swarm_env.sh
+  ```
+
+  That keeps them from colliding. Making them cooperate needs per-robot
+  namespaces throughout the launch files, the MoveIt config and every
+  script -- see "Future work" in README.md.
 
 Confirmed working on the real robot: `mycobot_hardware` builds clean on
 Galactic, `mycobot_bridge.py` connects to the arm at `/dev/ttyAMA0 @
@@ -205,6 +232,19 @@ Troubleshooting below for the `libbackward.so` fix that was needed first).
 ```bash
 cd ~/swarm_project
 source /opt/ros/galactic/setup.bash
+
+# On a robot you have not built on before, confirm the prerequisites first --
+# this is the difference between one actionable message and the CMake stack
+# traces in issue #22. Read-only; installs and builds nothing.
+./pi_setup/preflight_check.sh
+
+# BUILD AND SOURCE BEFORE exporting CYCLONEDDS_URI: that export runs
+# `ros2 pkg prefix swarm_network`, which resolves to nothing until
+# swarm_network is built AND sourced, leaving file:///share/... -- a path that
+# does not exist. Every ROS2 process in the shell then dies in
+# rmw_create_node. swarm_network is in this build list for the same reason.
+colcon build --packages-select swarm_network swarm_interfaces mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
+source install/setup.bash
 
 # Set DDS environment (must be done before ros2_control starts)
 # NOTE: cyclonedds_galactic.xml, not cyclonedds.xml -- the config was split
@@ -219,8 +259,9 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export ROS_DOMAIN_ID=42
 export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
 
-colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
-source install/setup.bash
+# Confirm the URI resolved to a real file before launching anything.
+[ -f "${CYCLONEDDS_URI#file://}" ] && echo "DDS config OK" || echo "BROKEN: $CYCLONEDDS_URI"
+
 ros2 launch mycobot_280pi_camera_moveit2 real_robot.launch.py
 ```
 
@@ -279,39 +320,67 @@ that plugin, only `ros2_control_node` does, and that stays on the robot).
 ```bash
 cd ~/swarm_project
 source /opt/ros/galactic/setup.bash
-# DDS env already in .bashrc -- skip these exports if so. If .bashrc still
-# says cyclonedds.xml (no _galactic suffix), fix it there too -- see the note
-# in Terminal 1 of the split-terminal walkthrough above.
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
 
+# BUILD AND SOURCE FIRST. The CYCLONEDDS_URI export below runs
+# `ros2 pkg prefix swarm_network`, which cannot resolve until swarm_network is
+# both built and sourced. Export it too early and the substitution comes back
+# EMPTY, giving file:///share/... -- a path that does not exist. Cyclone then
+# refuses to create a domain and EVERY ROS2 process in that shell dies,
+# including all three controller spawners. See "CYCLONEDDS_URI is empty" under
+# Troubleshooting; this ordering is the whole fix.
+#
 # swarm_network MUST be in this list: CYCLONEDDS_URI points at the install
 # tree, so a `git pull` that changes a peer IP has no effect until it is
 # rebuilt -- the robot keeps announcing to mars's old address and mars sees
 # zero publishers while everything looks healthy locally.
-colcon build --packages-select swarm_network mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
+colcon build --packages-select swarm_network swarm_interfaces mycobot_description mycobot_280pi_camera_moveit2 mycobot_hardware
 source install/setup.bash
+
+# NOW the DDS env, and it must be set before ros2_control starts.
+# Already in .bashrc? Skip these -- but confirm it says cyclonedds_galactic.xml,
+# not the stale suffix-less cyclonedds.xml.
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
+
+# One second of checking beats ten minutes of rmw_create_node stack traces.
+[ -f "${CYCLONEDDS_URI#file://}" ] && echo "DDS config OK" || echo "BROKEN: $CYCLONEDDS_URI"
+
 ros2 launch mycobot_280pi_camera_moveit2 real_robot_hardware.launch.py
 ```
+
+Wait till you see three yellow lines with the names of the controllers being configured and initalized like the following
+
+[spawner_joint_state_broadcaster]: Configured and started joint_state_broadcaster
+[spawner_arm_group_controller]: Configured and started arm_group_controller
+[spawner_gripper_group_controller]: Configured and started gripper_group_controller
+[INFO] [bash-6]: process has finished cleanly [pid 17329]
+
+Note that It takes usually two or three tries to get each controller to configure and the script automatically tries each controller 5 times before giving up. Why this does not work on the first try is only known to god. 
+
+DO NOT start Terminal 2 on a workstation before Terminal 1 states that all controllers are configured and ready and the last "process has finished cleanly" is published in terminal 1. Doing so forces method calls from controllers that aren't configured and induces import/construction/initialization failures into the controllers and thus not letting them initialize properly. 
+
 
 ### Terminal 2: Planning + RViz (on mars, Jazzy)
 ```bash
 cd ~/swarm/swarm_project
-source /opt/ros/jazzy/setup.bash
-# DDS env already in .bashrc -- skip these exports if so:
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_jazzy.xml
 
+# Build BEFORE sourcing the env: swarm_env.sh reads `ros2 pkg prefix
+# swarm_network` out of install/, so the package has to exist there first.
+source /opt/ros/jazzy/setup.bash
 colcon build --packages-skip mycobot_hardware
-source install/setup.bash
+
+# ROS + workspace + DDS, in the order that works. Replaces the three exports.
+source swarm_env.sh
+
+# WAIT for Terminal 1 to report all three controllers configured before
+# starting this -- see the note under Terminal 1.
 ros2 launch mycobot_280pi_camera_moveit2 real_robot_planning.launch.py
 ```
 
 ### Terminal 3: Verify, then run pick_place.py / annulus_test.py (on mars)
 ```bash
-source ~/swarm/swarm_project/install/setup.bash
+source ~/swarm/swarm_project/swarm_env.sh
 ros2 node list                    # /move_group must be present, plus the robot's nodes
 ros2 control list_controllers     # all three should show "active" (queried over DDS from the robot)
 ros2 topic hz /joint_states       # should show ~50-100Hz streaming from the Pi
@@ -336,7 +405,14 @@ anything over ~1400 bytes.
 
 ### Terminal 4: Detector (on the robot, Galactic)
 ```bash
-source ~/swarm_project/install/setup.bash
+# THIS TERMINAL NEEDS THE DDS ENV TOO, and it is the easiest one to forget
+# because the detector is a bare `python3 script.py` rather than a `ros2
+# launch`. Without it the node joins the DEFAULT domain with the DEFAULT rmw,
+# logs "serving /detect_block" quite happily, and is invisible from mars:
+#     [detect] /detect_block never appeared in 15s.
+# swarm_env.sh does ROS + workspace + DDS in the one order that works:
+source ~/swarm_project/swarm_env.sh
+
 python3 ~/swarm_project/src/swarm_pkg/src/scripts/block_detector_node.py
 
 # ... or, for the AprilTag-free colour path (new 2026-08-12):
@@ -374,7 +450,7 @@ node now means one of them fails to open the device, not that they cooperate.
 If you need the raw topic for something else (RViz, `live_tag_view.py`), stop
 this node first.
 
-### Terminal 5: Detection and picking (on mars, Jazzy)
+### Terminal 5: April-tag based Detection and picking (on mars, Jazzy)
 ```bash
 source ~/swarm/swarm_project/install/setup.bash
 cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
@@ -398,6 +474,24 @@ python3 tag_pick_place.py --zone-origin 0.0 0.2286 0.050 --log /tmp/corrections.
 measures it, and every world coordinate reported is only as good as that
 number -- the vision measures the block RELATIVE to the zone.
 
+## Terminal 5A: Colour and Shape Based Block Stacking Workflow (`stack_blocks.py`, new 2026-08-12)
+
+Surveys both zones, picks two blocks **by name**, and stacks them at the place
+zone centre with the near face square to the robot.
+
+```bash
+cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+
+# check the whole plan without touching a block
+python3 stack_blocks.py --survey-only
+
+# every pose parked at, nothing grasped or released
+python3 stack_blocks.py --dry-run
+
+# the real thing, with the operator checkpoints ON
+python3 stack_blocks.py --stack "orange block" "the green one"
+```
+
 ### No robot needed
 ```bash
 # geometry regression test: catches corner-order, homography and
@@ -419,386 +513,7 @@ python3 zone_view.py /tmp/zone.png --method otsu --write /tmp/annotated.png
 
 ---
 
-## Project Structure
-
-```
-~/swarm/swarm_project/
-├── src/
-│   ├── swarm_pkg/               # Main package
-│   │   ├── CMakeLists.txt
-│   │   ├── package.xml
-│   │   ├── include/
-│   │   └── src/
-│   │       └── scripts/         # All Python scripts
-│   │           ├── pick_place.py
-│   │           ├── annulus_test.py
-│   │           ├── annulus_show.py
-│   │           ├── ik_probe.py
-│   │           ├── reach_probe.py
-│   │           ├── check_state_validity.py
-│   │           ├── gen_disable_collisions.py
-│   │           ├── camera_view.py
-│   │           ├── camera_test.py
-│   │           ├── gripper_test.py
-│   │           ├── reset_arm.py
-│   │           ├── collision_contacts.py
-│   │           ├── gripper_offset_probe.py
-│   │           ├── tool_frame_check.py
-│   │           ├── spawn_world.py
-│   │           │
-│   │           │   # AprilTag feature -- see APRIL_TAGS.md
-│   │           ├── zone_vision.py           # pure OpenCV, no ROS: tags -> block pose
-│   │           ├── zone_vision_selftest.py  # synthetic geometry test, no hardware
-│   │           ├── zone_view.py             # overlay viewer / threshold tuning
-│   │           ├── block_detector_node.py   # ON THE PI: /detect_block service
-│   │           └── tag_pick_place.py        # ON MARS: Stage 1 orchestrator
-│   │
-│   ├── mycobot_description/     # Robot meshes & URDFs
-│   │   ├── package.xml
-│   │   ├── setup.py
-│   │   └── urdf/
-│   │       ├── adaptive_gripper/    (7 .dae mesh files)
-│   │       └── mycobot_280_pi/      (11 .dae mesh files)
-│   │
-│   ├── mycobot_280pi_camera_moveit2/  # MoveIt config
-│   │   ├── package.xml
-│   │   ├── CMakeLists.txt
-│   │   ├── config/
-│   │   │   ├── firefighter.urdf.xacro       # hardware_mode: mock|gazebo|real
-│   │   │   ├── firefighter.srdf
-│   │   │   ├── firefighter.ros2_control.xacro
-│   │   │   ├── joint_limits.yaml
-│   │   │   ├── kinematics.yaml
-│   │   │   ├── initial_positions.yaml
-│   │   │   ├── moveit_controllers.yaml
-│   │   │   ├── ros2_controllers.yaml
-│   │   │   ├── pilz_cartesian_limits.yaml
-│   │   │   └── moveit.rviz
-│   │   ├── launch/
-│   │   │   ├── demo.launch.py         # hardware_mode=mock (default)
-│   │   │   ├── gazebo.launch.py       # hardware_mode=gazebo
-│   │   │   └── real_robot.launch.py   # hardware_mode=real
-│   │   └── worlds/
-│   │
-│   ├── mycobot_hardware/        # ros2_control plugin for REAL hardware
-│   │   ├── package.xml          # Galactic-only -- see Setup note above
-│   │   ├── CMakeLists.txt
-│   │   ├── mycobot_hardware.xml # pluginlib description
-│   │   ├── include/mycobot_hardware/mycobot_system.hpp
-│   │   ├── src/mycobot_system.cpp
-│   │   └── scripts/mycobot_bridge.py  # pymycobot bridge daemon
-│   │
-│   ├── swarm_network/           # DDS unicast discovery config
-│   │   ├── package.xml
-│   │   ├── CMakeLists.txt
-│   │   └── config/
-│   │       ├── cyclonedds_galactic.xml   # DDS config for the robot (Galactic)
-│   │       └── cyclonedds_jazzy.xml      # DDS config for mars (Jazzy) -- the
-│   │                                     #   two differ; see cyclone_dds_
-│   │                                     #   integration_log.md for why
-│   │
-│   └── swarm_interfaces/        # Service defs shared Pi <-> mars
-│       ├── package.xml          # MUST be built on BOTH machines
-│       ├── CMakeLists.txt
-│       ├── msg/BlockDetection.msg
-│       └── srv/DetectBlock.srv
-│
-├── pi_setup/                    # Robot-side install (Ubuntu 20.04/Galactic)
-│   ├── install_pi_galactic.sh
-│   └── requirements.txt
-│
-├── legacy/                      # Old code (keep for reference)
-├── build/                       # Build artifacts (auto-generated)
-├── install/                     # Installed packages (source this)
-├── log/                         # Build logs (auto-generated)
-├── WORKFLOW.md                  # This file
-├── PROJECT_CONTEXT.md           # What the system is, and why
-├── TESTS.md                     # Hardware characterization
-├── APRIL_TAGS.md                # Vision-guided pick and place
-└── .git/
-```
-
----
-
-## Quick Commands
-
-```bash
-# Build everything (on mars/Jazzy: mycobot_hardware will NOT build -- see below)
-cd ~/swarm/swarm_project && colcon build --packages-skip mycobot_hardware
-
-# On the robot (Galactic), mycobot_hardware builds normally -- include it:
-colcon build
-
-# Build only robot packages
-colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2
-
-# Build only swarm_pkg
-colcon build --packages-select swarm_pkg
-
-# Source setup
-source ~/swarm/swarm_project/install/setup.bash
-
-# List all packages
-ros2 pkg list | grep -E "swarm|mycobot"
-
-# Find a package
-ros2 pkg prefix mycobot_280pi_camera_moveit2
-
-# Run a script
-python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
-```
-
----
-
-## Troubleshooting
-
-### Packages not found
-```bash
-# Verify setup.bash was sourced
-echo $ROS_PACKAGE_PATH
-
-# Re-source if needed
-source ~/swarm/swarm_project/install/setup.bash
-```
-
-### Script fails to find MoveIt config
-```bash
-# Make sure ROS_PACKAGE_PATH includes install/
-ros2 pkg list | grep mycobot_280pi_camera_moveit2
-```
-
-### Gazebo clock issues
-- Kill old processes: `pkill -9 -f "gz sim"`
-- Clean shared memory: `rm -rf /dev/shm/fastrtps_* /dev/shm/ros_*`
-- Launch fresh: `ros2 launch mycobot_280pi_camera_moveit2 gazebo.launch.py`
-
-### `mycobot_hardware` fails to build
-- **On mars:** expected. It targets Galactic's `hardware_interface` API,
-  which differs from Jazzy's `read()`/`write()` signature. Always build
-  with `--packages-skip mycobot_hardware` on mars.
-- **On the robot (Galactic):** confirmed working -- builds cleanly.
-
-### `move_group` dies instantly: `libbackward.so: cannot open shared object file`
-- Known Galactic packaging gap: `ros-galactic-moveit-ros-move-group`
-  should pull in `ros-galactic-backward-ros` but doesn't always.
-  `pi_setup/install_pi_galactic.sh` now installs it explicitly; if you
-  set up the robot before this was added:
-  ```bash
-  sudo apt install ros-galactic-backward-ros
-  ```
-- **Symptom to watch for:** RViz's Motion Planning panel can still load
-  and show the robot model even with `move_group` dead -- that's RViz's
-  own internal preview, not proof move_group is running. The real
-  tell is `Failed to call service get_planning_scene, have you launched
-  move_group...?` in the RViz log, or `ros2 node list` not showing
-  `/move_group`.
-
-### Real hardware: `mycobot_bridge.py` can't open the serial port
-- Confirm `DEFAULT_SERIAL_PORT`/`DEFAULT_BAUD_RATE` in
-  `src/mycobot_hardware/scripts/mycobot_bridge.py` actually match this
-  Pi's onboard UART -- both are unverified placeholders.
-- Check permissions on the serial device (may need the user in the
-  `dialout` group, or `sudo chmod`).
-
-### Real hardware: "Goal reached, success!" in the logs but the arm never moved
-- Fixed (Fix 7) -- `real_robot.launch.py` starts `mycobot_bridge.py` and
-  `ros2_control_node` at the same time. The bridge needs real wall-clock
-  time to import `pymycobot` and open the serial connection before its
-  socket exists; `MyCobotSystem::on_activate()` was trying to connect
-  immediately and only once, reliably losing that race. `connect_bridge()`
-  now retries for up to ~10s. **Important, independent of this fix:**
-  Galactic's `controller_manager` does not appear to block controller
-  activation even when a hardware component's `on_activate()` returns an
-  error -- `arm_group_controller` spawned and reported "Goal reached,
-  success!" even while `mycobot_hardware` was logging "Could not connect to
-  mycobot_bridge.py" every single run. **The ROS logs alone are not
-  sufficient proof of real motion on this setup -- always visually confirm
-  the arm actually moved.**
-
-### Real hardware: gripper never reports contact
-- Expected for now -- pymycobot's gripper API has no effort/force
-  reading, so `gripper_close_until_contact()`'s contact detection can't
-  work as written against real hardware. See "Known gaps" under Real
-  Hardware Workflow above.
-
-### `arm_group_controller`: "Time between points 0 and 1 is not strictly increasing"
-- Fixed (Fix 6) -- was caused by dropping `ompl_planning.yaml`'s
-  `response_adapters` (Fix 5, for the Galactic/Jazzy type conflict), which
-  also dropped time parameterization on Galactic. `pick_place.py`'s
-  `plan_motion()` now has a `_ensure_monotonic_timing()` safety net that
-  recomputes valid waypoint timing when the planner returns none -- a
-  no-op on Jazzy/Gazebo, where trajectories already come back properly
-  timed. If this resurfaces, check whether `/plan_kinematic_path`'s
-  response has all-zero `time_from_start` again.
-
-### DDS discovery verification (campus network)
-**Test that the workstation and robot can see each other over DDS:**
-
-On mars (workstation), in one terminal:
-```bash
-# Source setup and DDS environment
-source ~/swarm/swarm_project/install/setup.bash
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_jazzy.xml
-
-# Run a simple talker
-ros2 run demo_nodes_cpp talker
-```
-
-On the robot, in another terminal:
-```bash
-# Source setup and DDS environment (if not already in .bashrc)
-source ~/swarm_project/install/setup.bash
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
-
-# Echo the topic
-ros2 topic echo /chatter
-```
-
-**Expected:** The robot's terminal will show messages from the workstation's
-talker, like:
-```
-data: 'Hello World: 1'
----
-data: 'Hello World: 2'
----
-```
-
-If it doesn't work:
-- Verify both machines have sourced the DDS environment variables
-- Check that both machines can ping each other (not multicast, regular ICMP)
-- Confirm `ros-jazzy-rmw-cyclonedds-cpp` is installed on mars
-- Confirm `ros-galactic-rmw-cyclonedds-cpp` is installed on the robot
-- Check you are pointing at the right FILE for this machine:
-  `cyclonedds_galactic.xml` on the robot, `cyclonedds_jazzy.xml` on mars.
-  Plain `cyclonedds.xml` is a stale pre-split artifact -- if `ros2 pkg prefix
-  swarm_network`'s install dir still has one, it is orphaned build output, not
-  live config, and it is not even valid XML. Safe to `rm` it.
-- Check the IPs in that file are correct. BOTH addresses change when the campus
-  DHCP lease renews -- mars has moved (172.27.89.157 -> 172.27.80.139) and so
-  has the robot (172.30.6.165 -> 172.30.11.51, 2026-07-31). Run `hostname -I`
-  on each machine and compare against the `<Peer>` entries. Symptom of a stale
-  entry: mars's `ros2 node list` shows only its own nodes and
-  `ros2 topic info /joint_states` reports 0 publishers, while the robot side
-  looks perfectly healthy locally. Confirm with a plain `ping` between the two
-  before touching anything in ROS.
-- Check the file you edited is the one Cyclone actually loads. `CYCLONEDDS_URI`
-  points into the INSTALL tree, so a `git pull` alone does not take effect --
-  `colcon build --packages-select swarm_network` and relaunch. Cyclone reads
-  the XML once at process start, so a running launch keeps the old peers.
-
-
----
-
-## Calibration workflow (as of 2026-08-11)
-
-Full record and the reasoning behind every constant:
-**`CALIBRATION_2026-08-11.md`**. Current open-loop grasp error is 0.58 mm RMS.
-
-```bash
-cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
-```
-
-### Picking a real block — no calibration flags
-
-```bash
-python3 explore_pick_place.py --any-block --note real_pick
-```
-
-**Never pass `--force-grasp-yaw` here.** It pins the wrist and the arm will
-hover dead over the block without orienting to it. That is the flag working, not
-a bug — it exists so a caliper reading has a known axis.
-
-### Measuring the open-loop error at one position
-
-```bash
-python3 explore_pick_place.py --any-block --skip-pick --position N \
-    --force-grasp-yaw 0 --note my_note
-```
-
-At the confirm prompt the arm is parked 8 mm above the block's top face:
-
-| type | does |
-|---|---|
-| `m 0 4` | **records a caliper reading, MOVES NOTHING.** Do this first. |
-| `0 4` | nudges +4 mm in world Y and re-parks |
-| `0 4 90` | nudge plus 90° of wrist |
-| ENTER | descend and grasp |
-| `q` | abort |
-
-- `m` is the **measurement**; the nudge is a **control action**. They are not the
-  same number — the first nudge at any pose loses one J1 dead band (2.6 mm at
-  r=126, 4.7 mm at r=229). Give `m` the same sign you would type as a nudge.
-- **Nudge in ONE step**, never several small ones: each reversal donates up to a
-  full backlash (1.88°).
-- `--skip-pick` returns before any descent, so the block never moves and repeats
-  are free.
-- Reach must be **121–222 mm (4.8–8.7 in)**. Outside that a `[tool]` warning
-  fires and the tangential term is extrapolated.
-
-### Positions (`--position`, offsets in inches)
-
-```
-A (-3,-7)   B ( 0,-7)   C (+3,-7)   D (+5,-5)   E (+6,-3)
-F (+7,-2)   G (+8,-1)   H (+9, 0)   I (+8,+1)   J (+7,+2)
-K (+6,+2)   L ( 0,+7)   M (+3,+7)   N (+5, 0)   O (+7, 0)
-```
-
-`--position` sets the truth column from the **nominal** inch grid, i.e. where the
-mat was *meant* to go. It is not a measurement — do not fit against
-`truth_world` unless the mat was independently measured.
-
-### Survey only, gripper never leaves home
-
-```bash
-python3 explore_pick_place.py --survey-only --position G --note my_note
-```
-
-### In-zone (block off-centre) against a fixed surveyed origin
-
-Take the origin and yaw from the survey above, then substitute **real numbers**:
-
-```bash
-python3 tag_pick_place.py --zone-origin 0.2059 -0.0315 0.050 --zone-yaw 88.8 \
-    --skip-pick --truth-block-zone 0 -20 --note q2
-```
-
-- `--truth-block-zone` is **MILLIMETRES**, `--truth-block-world` is **METRES**.
-- `--no-truth-block-on-centre` belongs to **`explore_pick_place.py`** and will
-  be rejected by `tag_pick_place.py`.
-- Usable range is 23.1 mm, checked on `max(|zx|,|zy|)`, so ±20 mm corners are
-  legal.
-
-### Reading the results
-
-```bash
-python3 calibration.py --report
-python3 calibration.py --fit --channel survey --zone pickup
-python3 calibration.py --fit --channel nudge --max-clearance-mm 10
-```
-
-`--zone pickup` is the default and should stay that way: place rows are rank
-deficient alone (the place zone never moves) and pooling them corrupts the fit.
-
-### Offline, no robot — all must print `0 failure(s)`
-
-```bash
-python3 -m py_compile tag_pick_place.py pick_place.py zone_vision.py \
-    zone_calibrate.py explore.py explore_pick_place.py calibration.py \
-    stack_blocks.py
-python3 zone_vision_selftest.py
-python3 explore.py --selftest
-python3 calibration.py --selftest
-python3 stack_blocks.py --selftest
-python3 block_tags_selftest.py
-```
-
----
-
-## Stacking workflow (`stack_blocks.py`, new 2026-08-12)
+## Terminal 5B: Stacking workflow (`stack_blocks.py`, new 2026-08-12)
 
 Surveys both zones, picks two blocks **by name**, and stacks them at the place
 zone centre with the near face square to the robot.
@@ -1272,3 +987,595 @@ Check the tag count per sighting. Trust radius is tag-count dependent —
 undetected tag drops to 72 mm, and if it sits adjacent to the other zone the
 fine pass centres on the *other* mat and every sighting is rejected. Clean or
 reprint the missing tag.
+
+--- 
+
+## Project Structure
+
+```
+~/swarm/swarm_project/
+├── src/
+│   ├── swarm_pkg/               # Main package
+│   │   ├── CMakeLists.txt
+│   │   ├── package.xml
+│   │   ├── include/
+│   │   └── src/
+│   │       └── scripts/         # All Python scripts
+│   │           ├── pick_place.py
+│   │           ├── annulus_test.py
+│   │           ├── annulus_show.py
+│   │           ├── ik_probe.py
+│   │           ├── reach_probe.py
+│   │           ├── check_state_validity.py
+│   │           ├── gen_disable_collisions.py
+│   │           ├── camera_view.py
+│   │           ├── camera_test.py
+│   │           ├── gripper_test.py
+│   │           ├── reset_arm.py
+│   │           ├── collision_contacts.py
+│   │           ├── gripper_offset_probe.py
+│   │           ├── tool_frame_check.py
+│   │           ├── spawn_world.py
+│   │           │
+│   │           │   # AprilTag feature -- see APRIL_TAGS.md
+│   │           ├── zone_vision.py           # pure OpenCV, no ROS: tags -> block pose
+│   │           ├── zone_vision_selftest.py  # synthetic geometry test, no hardware
+│   │           ├── zone_view.py             # overlay viewer / threshold tuning
+│   │           ├── block_detector_node.py   # ON THE PI: /detect_block service
+│   │           └── tag_pick_place.py        # ON MARS: Stage 1 orchestrator
+│   │
+│   ├── mycobot_description/     # Robot meshes & URDFs
+│   │   ├── package.xml
+│   │   ├── setup.py
+│   │   └── urdf/
+│   │       ├── adaptive_gripper/    (7 .dae mesh files)
+│   │       └── mycobot_280_pi/      (11 .dae mesh files)
+│   │
+│   ├── mycobot_280pi_camera_moveit2/  # MoveIt config
+│   │   ├── package.xml
+│   │   ├── CMakeLists.txt
+│   │   ├── config/
+│   │   │   ├── firefighter.urdf.xacro       # hardware_mode: mock|gazebo|real
+│   │   │   ├── firefighter.srdf
+│   │   │   ├── firefighter.ros2_control.xacro
+│   │   │   ├── joint_limits.yaml
+│   │   │   ├── kinematics.yaml
+│   │   │   ├── initial_positions.yaml
+│   │   │   ├── moveit_controllers.yaml
+│   │   │   ├── ros2_controllers.yaml
+│   │   │   ├── pilz_cartesian_limits.yaml
+│   │   │   └── moveit.rviz
+│   │   ├── launch/
+│   │   │   ├── demo.launch.py         # hardware_mode=mock (default)
+│   │   │   ├── gazebo.launch.py       # hardware_mode=gazebo
+│   │   │   └── real_robot.launch.py   # hardware_mode=real
+│   │   └── worlds/
+│   │
+│   ├── mycobot_hardware/        # ros2_control plugin for REAL hardware
+│   │   ├── package.xml          # Galactic-only -- see Setup note above
+│   │   ├── CMakeLists.txt
+│   │   ├── mycobot_hardware.xml # pluginlib description
+│   │   ├── include/mycobot_hardware/mycobot_system.hpp
+│   │   ├── src/mycobot_system.cpp
+│   │   └── scripts/mycobot_bridge.py  # pymycobot bridge daemon
+│   │
+│   ├── swarm_network/           # DDS unicast discovery config
+│   │   ├── package.xml
+│   │   ├── CMakeLists.txt
+│   │   └── config/
+│   │       ├── cyclonedds_galactic.xml   # DDS config for the robot (Galactic)
+│   │       └── cyclonedds_jazzy.xml      # DDS config for mars (Jazzy) -- the
+│   │                                     #   two differ; see cyclone_dds_
+│   │                                     #   integration_log.md for why
+│   │
+│   └── swarm_interfaces/        # Service defs shared Pi <-> mars
+│       ├── package.xml          # MUST be built on BOTH machines
+│       ├── CMakeLists.txt
+│       ├── msg/BlockDetection.msg
+│       └── srv/DetectBlock.srv
+│
+├── swarm_env.sh                 # `source` this in EVERY terminal, either machine
+├── pi_setup/                    # Robot-side install (Ubuntu 20.04/Galactic)
+│   ├── install_pi_galactic.sh   # One-shot installer for a fresh arm
+│   ├── preflight_check.sh       # Run before colcon build; explains failures
+│   └── requirements.txt
+│
+├── workstation_setup/           # Workstation install (Ubuntu 24.04/Jazzy)
+│   └── install_workstation_jazzy.sh
+│
+├── legacy/                      # Old code (keep for reference)
+│   └── COLCON_IGNORE            # Keeps the dead 'control' pkg out of builds
+├── build/                       # Build artifacts (auto-generated)
+├── install/                     # Installed packages (source this)
+├── log/                         # Build logs (auto-generated)
+├── WORKFLOW.md                  # This file
+├── PROJECT_CONTEXT.md           # What the system is, and why
+├── TESTS.md                     # Hardware characterization
+├── APRIL_TAGS.md                # Vision-guided pick and place
+└── .git/
+```
+
+---
+
+## Quick Commands
+
+```bash
+# Build everything (on mars/Jazzy: mycobot_hardware will NOT build -- see below)
+cd ~/swarm/swarm_project && colcon build --packages-skip mycobot_hardware
+
+# On the robot (Galactic), mycobot_hardware builds normally -- include it:
+colcon build
+
+# Build only robot packages
+colcon build --packages-select mycobot_description mycobot_280pi_camera_moveit2
+
+# Build only swarm_pkg
+colcon build --packages-select swarm_pkg
+
+# Source setup
+source ~/swarm/swarm_project/install/setup.bash
+
+# List all packages
+ros2 pkg list | grep -E "swarm|mycobot"
+
+# Find a package
+ros2 pkg prefix mycobot_280pi_camera_moveit2
+
+# Run a script
+python3 ~/swarm/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
+```
+
+---
+
+## Troubleshooting
+
+### Fresh arm: `colcon build` fails (GitHub issue #22)
+
+Run this first on any new robot. It checks every prerequisite in one pass and
+prints the exact fix for each, instead of letting CMake report the same
+problems as stack traces:
+
+```bash
+cd ~/swarm_project
+./pi_setup/preflight_check.sh
+```
+
+Issue #22 was three separate problems stacked on top of each other, all of
+which this script now catches up front:
+
+**1. `Could not find ... "ament_cmake"` / `ros2: command not found`**
+
+ROS was never sourced in that shell. Sourcing is per-terminal and does not
+persist across new terminals or reboots:
+
+```bash
+source /opt/ros/galactic/setup.bash   # on the robot
+source /opt/ros/jazzy/setup.bash      # on mars
+```
+
+Never source `/opt/ros/noetic` (the vendor image's ROS1) in the same shell.
+
+**2. `Could not find ... "hardware_interface"`, `Package 'controller_manager' not found`**
+
+ros2_control is not part of the stock Elephant Robotics image, and
+`mycobot_hardware` cannot build without it. The fresh arm had never had the
+installer run on it:
+
+```bash
+./pi_setup/install_pi_galactic.sh
+```
+
+That installs MoveIt2, ros2_control, the camera stack, and pymycobot. Expect
+it to take a while on a Pi 4.
+
+**3. `Starting >>> control` for a package that isn't in `src/`**
+
+`legacy/ws/src/control/` is a dead AGV package kept for reference. colcon used
+to discover it as a workspace package, so every plain `colcon build` tried to
+build it and its failures were interleaved with real ones. `legacy/COLCON_IGNORE`
+now stops that. If an older checkout already built it, clear the leftovers
+(they are not rebuilt, but stay visible to `ros2 pkg list`):
+
+```bash
+rm -rf build/control install/control
+```
+
+Note that `colcon build` aborts *all* in-flight packages when any one of them
+fails, so a single missing dependency reads like the whole workspace is broken.
+`3 packages aborted` means "did not finish", not "also failed".
+
+### Packages not found
+```bash
+# Verify setup.bash was sourced
+echo $ROS_PACKAGE_PATH
+
+# Re-source if needed
+source ~/swarm/swarm_project/install/setup.bash
+```
+
+### Script fails to find MoveIt config
+```bash
+# Make sure ROS_PACKAGE_PATH includes install/
+ros2 pkg list | grep mycobot_280pi_camera_moveit2
+```
+
+### Gazebo clock issues
+- Kill old processes: `pkill -9 -f "gz sim"`
+- Clean shared memory: `rm -rf /dev/shm/fastrtps_* /dev/shm/ros_*`
+- Launch fresh: `ros2 launch mycobot_280pi_camera_moveit2 gazebo.launch.py`
+
+### `mycobot_hardware` fails to build
+- **On mars:** expected. It targets Galactic's `hardware_interface` API,
+  which differs from Jazzy's `read()`/`write()` signature. Always build
+  with `--packages-skip mycobot_hardware` on mars.
+- **On the robot (Galactic):** confirmed working -- builds cleanly.
+
+### `move_group` dies instantly: `libbackward.so: cannot open shared object file`
+- Known Galactic packaging gap: `ros-galactic-moveit-ros-move-group`
+  should pull in `ros-galactic-backward-ros` but doesn't always.
+  `pi_setup/install_pi_galactic.sh` now installs it explicitly; if you
+  set up the robot before this was added:
+  ```bash
+  sudo apt install ros-galactic-backward-ros
+  ```
+- **Symptom to watch for:** RViz's Motion Planning panel can still load
+  and show the robot model even with `move_group` dead -- that's RViz's
+  own internal preview, not proof move_group is running. The real
+  tell is `Failed to call service get_planning_scene, have you launched
+  move_group...?` in the RViz log, or `ros2 node list` not showing
+  `/move_group`.
+
+### Real hardware: `mycobot_bridge.py` can't open the serial port
+- Confirm `DEFAULT_SERIAL_PORT`/`DEFAULT_BAUD_RATE` in
+  `src/mycobot_hardware/scripts/mycobot_bridge.py` actually match this
+  Pi's onboard UART -- both are unverified placeholders.
+- Check permissions on the serial device (may need the user in the
+  `dialout` group, or `sudo chmod`).
+
+### Real hardware: "Goal reached, success!" in the logs but the arm never moved
+- Fixed (Fix 7) -- `real_robot.launch.py` starts `mycobot_bridge.py` and
+  `ros2_control_node` at the same time. The bridge needs real wall-clock
+  time to import `pymycobot` and open the serial connection before its
+  socket exists; `MyCobotSystem::on_activate()` was trying to connect
+  immediately and only once, reliably losing that race. `connect_bridge()`
+  now retries for up to ~10s. **Important, independent of this fix:**
+  Galactic's `controller_manager` does not appear to block controller
+  activation even when a hardware component's `on_activate()` returns an
+  error -- `arm_group_controller` spawned and reported "Goal reached,
+  success!" even while `mycobot_hardware` was logging "Could not connect to
+  mycobot_bridge.py" every single run. **The ROS logs alone are not
+  sufficient proof of real motion on this setup -- always visually confirm
+  the arm actually moved.**
+
+### Real hardware: `send_angles() got an unexpected keyword argument '_async'`
+
+The arm does not move and `mycobot_bridge.py` repeats:
+
+```
+[mycobot_bridge] ERROR during serial write: TypeError("send_angles() got an
+unexpected keyword argument '_async'") -- leaving command dirty so it gets retried
+```
+
+**pymycobot 3.7.0 removed the undocumented `_async` keyword from
+`send_angles`.** The bridge used to pass it unconditionally, so every write
+raised, the command stayed dirty, and it retried forever -- the arm never moved
+and `ros2_control` looked healthy throughout.
+
+Fixed 2026-08-19: `_async` support is now PROBED at startup for `send_angles`
+exactly as it already was for `set_gripper_value`, and the bridge falls back to
+the blocking call when the argument is absent. `git pull` and relaunch. On a
+pymycobot without `_async` the bridge now says so at startup:
+
+```
+[mycobot_bridge] arm writes=sync (blocking) -- this pymycobot's send_angles
+takes no _async argument. Expect 0.5-1.5s per write; see DEFAULT_ASYNC_WRITES.
+```
+
+That fallback is correct but slower per write. The read-timeout wrapper caps the
+confirmation read at 0.06s rather than pymycobot's 0.5s default, so the cost is
+far below the 0.5-1.5s the old sync path had -- but it is not free, and the
+serial loop will not reach the full 30 Hz command rate.
+
+**If the arm feels sluggish, check whether your pymycobot offers another async
+path before accepting it**, on the robot:
+
+```bash
+python3 -c "
+import inspect
+from pymycobot.mycobot280 import MyCobot280
+import pymycobot; print('pymycobot', pymycobot.__version__)
+for n in dir(MyCobot280):
+    if 'angle' in n.lower() or 'async' in n.lower():
+        try: print(n, inspect.signature(getattr(MyCobot280, n)))
+        except (TypeError, ValueError): print(n, '(no signature)')
+"
+```
+
+If that shows a separate async entry point, add a branch in `_send_angles`
+alongside the existing one. Never pass a keyword this probe has not confirmed.
+
+### Real hardware: gripper never reports contact
+- Expected for now -- pymycobot's gripper API has no effort/force
+  reading, so `gripper_close_until_contact()`'s contact detection can't
+  work as written against real hardware. See "Known gaps" under Real
+  Hardware Workflow above.
+
+### `arm_group_controller`: "Time between points 0 and 1 is not strictly increasing"
+- Fixed (Fix 6) -- was caused by dropping `ompl_planning.yaml`'s
+  `response_adapters` (Fix 5, for the Galactic/Jazzy type conflict), which
+  also dropped time parameterization on Galactic. `pick_place.py`'s
+  `plan_motion()` now has a `_ensure_monotonic_timing()` safety net that
+  recomputes valid waypoint timing when the planner returns none -- a
+  no-op on Jazzy/Gazebo, where trajectories already come back properly
+  timed. If this resurfaces, check whether `/plan_kinematic_path`'s
+  response has all-zero `time_from_start` again.
+
+### `/detect_block never appeared in 15s` while everything else works
+
+The give-away is that the rest of the link is fine — `/joint_states` streams,
+both controllers answer, tf arrives — and only the service is missing. That
+rules out discovery in general and points at the detector's own shell.
+
+In order of likelihood:
+
+**1. The detector was started without the DDS environment.** It is the one
+component launched as a bare `python3 script.py` instead of `ros2 launch`, so
+it is the easy terminal to forget. Without the exports it joins the default
+domain with the default rmw, logs nothing unusual, and is invisible from mars.
+Check *in the detector's own terminal*:
+
+```bash
+echo "$ROS_DOMAIN_ID / $RMW_IMPLEMENTATION / $CYCLONEDDS_URI"
+```
+
+Blank, `0`, or a `file:///share/...` path means this is your problem. Set them
+(Terminal 4 above) and restart the node.
+
+**2. `swarm_interfaces` is stale or unbuilt on the robot.** Both machines must
+build the identical `.srv`, or the type will not match and the service never
+pairs even though both ends are up. Rebuild on the robot:
+
+```bash
+colcon build --packages-select swarm_interfaces && source install/setup.bash
+```
+
+**3. The node died on startup.** `/dev/video0` is single-reader, so a running
+`camera.launch.py` or a second detector takes it. Read the detector's terminal.
+
+Confirm from mars with the service list, never the node list — the robot's
+nodes do not show in `ros2 node list` from mars even when they are up:
+
+```bash
+ros2 service list | grep detect_block
+```
+
+### CYCLONEDDS_URI is empty: `can't open configuration file file:///share/...`
+
+Every ROS2 process in the shell dies at startup, controller spawners included:
+
+```
+can't open configuration file file:///share/swarm_network/config/cyclonedds_galactic.xml
+[ERROR] [rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain, error Error
+terminate called after throwing an instance of 'rclcpp::exceptions::RCLError'
+[retrying_spawner] attempt 1 for joint_state_broadcaster failed, retrying in 2s...
+```
+
+**The path starting at `/share` is the tell.** `$(ros2 pkg prefix swarm_network)`
+expanded to nothing, so `file://` + `` + `/share/...` is what got exported. It
+happens when the export runs **before** `source install/setup.bash` — the
+package is not on the search path yet, `ros2 pkg prefix` prints
+`Package not found` to stderr, and the empty stdout goes straight into the
+variable. Nothing fails loudly, and the poisoned value then breaks every node
+launched from that shell.
+
+Nothing is actually broken. Fix the order, in one shell:
+
+```bash
+colcon build --packages-select swarm_network
+source install/setup.bash
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
+[ -f "${CYCLONEDDS_URI#file://}" ] && echo "DDS config OK" || echo "BROKEN: $CYCLONEDDS_URI"
+```
+
+`./pi_setup/preflight_check.sh` now checks this and names the cause. **If the
+export lives in `~/.bashrc`**, it runs there before the workspace is sourced
+too — move it after the `source install/setup.bash` line in `.bashrc`, or
+hardcode the absolute path.
+
+### RViz's "Plan and Execute" button does not move the real arm
+
+Planning succeeds, execution is rejected instantly:
+
+```
+[arm_group_controller]: Time between points 0 and 1 is not strictly increasing,
+it is 0.000000 and 0.000000 respectively
+[move_group]: Goal was rejected by server
+[move_group_interface]: MoveGroupInterface::execute() failed or timeout reached
+```
+
+**Expected on Galactic, not a regression.** `ompl_planning.yaml`'s
+`response_adapters` were removed (Fix 5) to resolve a Galactic/Jazzy type
+conflict, and that also removed time parameterization — so on this distro OMPL
+returns a geometrically valid path with **every `time_from_start` at zero**. The
+joint trajectory controller requires strictly increasing times and refuses it.
+
+`pick_place.py`'s `plan_motion()` carries the `_ensure_monotonic_timing()`
+safety net that recomputes the timing (Fix 6), which is why **the Python scripts
+move the arm and the RViz button does not** — RViz talks to `move_group`
+directly and never passes through that code.
+
+So on the real arm, drive it with the scripts:
+
+```bash
+python3 ~/swarm_project/src/swarm_pkg/src/scripts/reset_arm.py
+python3 ~/swarm_project/src/swarm_pkg/src/scripts/pick_place.py
+```
+
+Use RViz to **visualize and to plan**, not to execute. Restoring the button
+means giving Galactic back a working time-parameterization response adapter, or
+having `move_group` apply one — neither is done.
+
+### DDS discovery verification (campus network)
+**Test that the workstation and robot can see each other over DDS:**
+
+On mars (workstation), in one terminal:
+```bash
+# Source setup and DDS environment
+source ~/swarm/swarm_project/install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_jazzy.xml
+
+# Run a simple talker
+ros2 run demo_nodes_cpp talker
+```
+
+On the robot, in another terminal:
+```bash
+# Source setup and DDS environment (if not already in .bashrc)
+source ~/swarm_project/install/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=42
+export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_galactic.xml
+
+# Echo the topic
+ros2 topic echo /chatter
+```
+
+**Expected:** The robot's terminal will show messages from the workstation's
+talker, like:
+```
+data: 'Hello World: 1'
+---
+data: 'Hello World: 2'
+---
+```
+
+If it doesn't work:
+- Verify both machines have sourced the DDS environment variables
+- Check that both machines can ping each other (not multicast, regular ICMP)
+- Confirm `ros-jazzy-rmw-cyclonedds-cpp` is installed on mars
+- Confirm `ros-galactic-rmw-cyclonedds-cpp` is installed on the robot
+- Check you are pointing at the right FILE for this machine:
+  `cyclonedds_galactic.xml` on the robot, `cyclonedds_jazzy.xml` on mars.
+  Plain `cyclonedds.xml` is a stale pre-split artifact -- if `ros2 pkg prefix
+  swarm_network`'s install dir still has one, it is orphaned build output, not
+  live config, and it is not even valid XML. Safe to `rm` it.
+- Check the IPs in that file are correct. BOTH addresses change when the campus
+  DHCP lease renews -- mars has moved (172.27.89.157 -> 172.27.80.139) and so
+  has the robot (172.30.6.165 -> 172.30.11.51, 2026-07-31). Run `hostname -I`
+  on each machine and compare against the `<Peer>` entries. Symptom of a stale
+  entry: mars's `ros2 node list` shows only its own nodes and
+  `ros2 topic info /joint_states` reports 0 publishers, while the robot side
+  looks perfectly healthy locally. Confirm with a plain `ping` between the two
+  before touching anything in ROS.
+- Check the file you edited is the one Cyclone actually loads. `CYCLONEDDS_URI`
+  points into the INSTALL tree, so a `git pull` alone does not take effect --
+  `colcon build --packages-select swarm_network` and relaunch. Cyclone reads
+  the XML once at process start, so a running launch keeps the old peers.
+
+
+---
+
+## Calibration workflow (as of 2026-08-11)
+
+Full record and the reasoning behind every constant:
+**`CALIBRATION_2026-08-11.md`**. Current open-loop grasp error is 0.58 mm RMS.
+
+```bash
+cd ~/swarm/swarm_project/src/swarm_pkg/src/scripts
+```
+
+### Picking a real block — no calibration flags
+
+```bash
+python3 explore_pick_place.py --any-block --note real_pick
+```
+
+**Never pass `--force-grasp-yaw` here.** It pins the wrist and the arm will
+hover dead over the block without orienting to it. That is the flag working, not
+a bug — it exists so a caliper reading has a known axis.
+
+### Measuring the open-loop error at one position
+
+```bash
+python3 explore_pick_place.py --any-block --skip-pick --position N \
+    --force-grasp-yaw 0 --note my_note
+```
+
+At the confirm prompt the arm is parked 8 mm above the block's top face:
+
+| type | does |
+|---|---|
+| `m 0 4` | **records a caliper reading, MOVES NOTHING.** Do this first. |
+| `0 4` | nudges +4 mm in world Y and re-parks |
+| `0 4 90` | nudge plus 90° of wrist |
+| ENTER | descend and grasp |
+| `q` | abort |
+
+- `m` is the **measurement**; the nudge is a **control action**. They are not the
+  same number — the first nudge at any pose loses one J1 dead band (2.6 mm at
+  r=126, 4.7 mm at r=229). Give `m` the same sign you would type as a nudge.
+- **Nudge in ONE step**, never several small ones: each reversal donates up to a
+  full backlash (1.88°).
+- `--skip-pick` returns before any descent, so the block never moves and repeats
+  are free.
+- Reach must be **121–222 mm (4.8–8.7 in)**. Outside that a `[tool]` warning
+  fires and the tangential term is extrapolated.
+
+### Positions (`--position`, offsets in inches)
+
+```
+A (-3,-7)   B ( 0,-7)   C (+3,-7)   D (+5,-5)   E (+6,-3)
+F (+7,-2)   G (+8,-1)   H (+9, 0)   I (+8,+1)   J (+7,+2)
+K (+6,+2)   L ( 0,+7)   M (+3,+7)   N (+5, 0)   O (+7, 0)
+```
+
+`--position` sets the truth column from the **nominal** inch grid, i.e. where the
+mat was *meant* to go. It is not a measurement — do not fit against
+`truth_world` unless the mat was independently measured.
+
+### Survey only, gripper never leaves home
+
+```bash
+python3 explore_pick_place.py --survey-only --position G --note my_note
+```
+
+### In-zone (block off-centre) against a fixed surveyed origin
+
+Take the origin and yaw from the survey above, then substitute **real numbers**:
+
+```bash
+python3 tag_pick_place.py --zone-origin 0.2059 -0.0315 0.050 --zone-yaw 88.8 \
+    --skip-pick --truth-block-zone 0 -20 --note q2
+```
+
+- `--truth-block-zone` is **MILLIMETRES**, `--truth-block-world` is **METRES**.
+- `--no-truth-block-on-centre` belongs to **`explore_pick_place.py`** and will
+  be rejected by `tag_pick_place.py`.
+- Usable range is 23.1 mm, checked on `max(|zx|,|zy|)`, so ±20 mm corners are
+  legal.
+
+### Reading the results
+
+```bash
+python3 calibration.py --report
+python3 calibration.py --fit --channel survey --zone pickup
+python3 calibration.py --fit --channel nudge --max-clearance-mm 10
+```
+
+`--zone pickup` is the default and should stay that way: place rows are rank
+deficient alone (the place zone never moves) and pooling them corrupts the fit.
+
+### Offline, no robot — all must print `0 failure(s)`
+
+```bash
+python3 -m py_compile tag_pick_place.py pick_place.py zone_vision.py \
+    zone_calibrate.py explore.py explore_pick_place.py calibration.py \
+    stack_blocks.py
+python3 zone_vision_selftest.py
+python3 explore.py --selftest
+python3 calibration.py --selftest
+python3 stack_blocks.py --selftest
+python3 block_tags_selftest.py
+```

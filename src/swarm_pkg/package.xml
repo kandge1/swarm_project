@@ -10,7 +10,11 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclpy</depend>
-  <depend>moveit_py</depend>
+  <!-- No moveit_py dependency on purpose: every script in this package talks
+       to move_group over plain ROS2 services/actions (/plan_kinematic_path,
+       /compute_ik, /check_state_validity, /compute_cartesian_path), so the
+       bindings are never imported. Declaring it broke rosdep on a fresh arm,
+       where Galactic has no moveit_py package at all (GitHub issue #22). -->
   <depend>moveit_msgs</depend>
   <depend>moveit_configs_utils</depend>
   <depend>geometry_msgs</depend>

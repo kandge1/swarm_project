@@ -683,7 +683,71 @@ class BlockDetector(Node):
                 pass
 
 
+def _warn_if_dds_env_missing():
+    """Shout if this process is about to join the wrong DDS domain.
+
+    This node is the one component normally started as a bare
+    `python3 block_detector_node.py` rather than a `ros2 launch`, so it is the
+    easy one to start in a terminal that never sourced anything. rclpy imports
+    and runs perfectly well that way -- it just joins domain 0 with the default
+    rmw, advertises /detect_block into a domain nobody else is on, and logs
+    "serving /detect_block" as if all were well. The workstation then sits in
+    `wait_for_service` until it times out, with nothing anywhere saying why.
+
+    That cost a full afternoon on 2026-08-20, with the robot terminal showing
+    `ros2: command not found` while this script ran happily beside it. Warn
+    loudly rather than fail: a genuinely local, single-machine session is a
+    legitimate use, so this must not refuse to start.
+    """
+    bar = "=" * 72
+
+    # Checked FIRST and independently: all three variables can be set and the
+    # URI still point at nothing, which is what an export that ran before
+    # `source install/setup.bash` leaves behind (an empty
+    # `ros2 pkg prefix swarm_network` gives file:///share/...). That case is
+    # worse than unset -- Cyclone refuses to create a domain and every node in
+    # the shell dies -- so it must not be gated behind a missing variable.
+    uri = os.environ.get("CYCLONEDDS_URI", "")
+    if uri.startswith("file://") and not os.path.isfile(uri[len("file://"):]):
+        print(bar, file=sys.stderr)
+        print("[block_detector] WARNING: CYCLONEDDS_URI points at a file that "
+              "does not exist:", file=sys.stderr)
+        print("[block_detector]     %s" % uri, file=sys.stderr)
+        if uri.startswith("file:///share/"):
+            print("[block_detector] The path starts at /share, so "
+                  "$(ros2 pkg prefix swarm_network)", file=sys.stderr)
+            print("[block_detector] expanded to NOTHING: this was exported "
+                  "before the workspace", file=sys.stderr)
+            print("[block_detector] was sourced.", file=sys.stderr)
+        print("[block_detector] Fix, then restart this node:", file=sys.stderr)
+        print("[block_detector]     source ~/swarm_project/swarm_env.sh",
+              file=sys.stderr)
+        print(bar, file=sys.stderr)
+
+    missing = [name for name in ("ROS_DOMAIN_ID", "RMW_IMPLEMENTATION",
+                                 "CYCLONEDDS_URI") if not os.environ.get(name)]
+    if not missing:
+        return
+
+    print(bar, file=sys.stderr)
+    print("[block_detector] WARNING: DDS environment incomplete. Missing: %s"
+          % ", ".join(missing), file=sys.stderr)
+    print("[block_detector] This process will join the DEFAULT domain with the",
+          file=sys.stderr)
+    print("[block_detector] DEFAULT rmw. It will run, serve /detect_block, and",
+          file=sys.stderr)
+    print("[block_detector] be INVISIBLE to the workstation.", file=sys.stderr)
+    print("[block_detector] Fix, then restart this node:", file=sys.stderr)
+    print("[block_detector]     source ~/swarm_project/swarm_env.sh",
+          file=sys.stderr)
+    print("[block_detector] Ignore this only if nothing off-machine needs to",
+          file=sys.stderr)
+    print("[block_detector] reach the detector.", file=sys.stderr)
+    print(bar, file=sys.stderr)
+
+
 def main():
+    _warn_if_dds_env_missing()
     rclpy.init()
     node = BlockDetector()
     executor = MultiThreadedExecutor(num_threads=2)
