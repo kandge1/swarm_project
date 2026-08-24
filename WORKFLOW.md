@@ -207,6 +207,21 @@ adjust if yours differs.
 - **Joint velocity is always reported as `0.0`** -- pymycobot exposes no
   velocity reading. Controllers here only rely on position tracking, so
   this is a placeholder, not a bug, but worth knowing.
+- **ONE arm per DDS domain. Two arms on the same `ROS_DOMAIN_ID` is not
+  supported and is not safe to try casually** -- node names, topics and
+  action names are not namespaced per robot, so a second arm brings up a
+  second `/controller_manager`, `/joint_states` and `arm_group_controller`
+  under the SAME names. Every script here would then be addressing an
+  ambiguous pair, and which arm answers a goal is a race. To run a second
+  arm, isolate it on its own domain:
+
+  ```bash
+  SWARM_DOMAIN_ID=43 source swarm_env.sh
+  ```
+
+  That keeps them from colliding. Making them cooperate needs per-robot
+  namespaces throughout the launch files, the MoveIt config and every
+  script -- see "Future work" in README.md.
 
 Confirmed working on the real robot: `mycobot_hardware` builds clean on
 Galactic, `mycobot_bridge.py` connects to the arm at `/dev/ttyAMA0 @
@@ -349,20 +364,23 @@ DO NOT start Terminal 2 on a workstation before Terminal 1 states that all contr
 ### Terminal 2: Planning + RViz (on mars, Jazzy)
 ```bash
 cd ~/swarm/swarm_project
-source /opt/ros/jazzy/setup.bash
-# DDS env already in .bashrc -- skip these exports if so:
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export ROS_DOMAIN_ID=42
-export CYCLONEDDS_URI=file://$(ros2 pkg prefix swarm_network)/share/swarm_network/config/cyclonedds_jazzy.xml
 
+# Build BEFORE sourcing the env: swarm_env.sh reads `ros2 pkg prefix
+# swarm_network` out of install/, so the package has to exist there first.
+source /opt/ros/jazzy/setup.bash
 colcon build --packages-skip mycobot_hardware
-source install/setup.bash
+
+# ROS + workspace + DDS, in the order that works. Replaces the three exports.
+source swarm_env.sh
+
+# WAIT for Terminal 1 to report all three controllers configured before
+# starting this -- see the note under Terminal 1.
 ros2 launch mycobot_280pi_camera_moveit2 real_robot_planning.launch.py
 ```
 
 ### Terminal 3: Verify, then run pick_place.py / annulus_test.py (on mars)
 ```bash
-source ~/swarm/swarm_project/install/setup.bash
+source ~/swarm/swarm_project/swarm_env.sh
 ros2 node list                    # /move_group must be present, plus the robot's nodes
 ros2 control list_controllers     # all three should show "active" (queried over DDS from the robot)
 ros2 topic hz /joint_states       # should show ~50-100Hz streaming from the Pi

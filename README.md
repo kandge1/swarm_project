@@ -74,19 +74,23 @@ cd ~/swarm/swarm_project
 
 ### 1d. Check out the right branch — do not skip this
 
-A fresh clone puts you on `main`, which is **59 commits behind** the arm's real
-work. Nothing in this README will match what you see. Switch immediately:
+A fresh clone puts you on `main`, which is **a long way behind** the arm's real
+work — dozens of commits, and the gap grows every time `mycobot_main` moves.
+Nothing in this README will match what you see there. Switch immediately:
 
 ```bash
 git checkout mycobot_main
 git log --oneline -3        # newest commit should mention april_tags / stacking
+
+# how far behind is main today? (0 on the left, a big number on the right)
+git rev-list --left-right --count origin/main...origin/mycobot_main
 ```
 
 | Branch | What it is |
 |---|---|
 | `mycobot_main` | **The arm. Start here.** |
 | `myagv_main` | The AGV line — a different robot, not this guide |
-| `main` | Long out of date. Do not build from it |
+| `main` | A stale snapshot. Do not build from it or open PRs against it |
 
 Then make your own branch before changing anything — see
 [git_user_guide.md](git_user_guide.md):
@@ -418,7 +422,7 @@ Full troubleshooting, including the DDS verification procedure, is in
 
 ---
 
-## 10. Known gaps
+## 10. Known gaps and future work
 
 Read these before promising anyone a demo:
 
@@ -434,6 +438,45 @@ Read these before promising anyone a demo:
   does not tip the stack.
 - **Jaw aperture and finger dimensions are unmeasured guesses**, and a clearance
   gate depends on them. Three caliper readings would close this.
+
+### Future work
+
+- **Two or more arms at once is NOT supported.** Everything here assumes exactly
+  one robot on the DDS domain. Bringing up a second arm on the same
+  `ROS_DOMAIN_ID` gives you two `/controller_manager`s, two `/joint_states`
+  publishers and two `arm_group_controller`s under identical names — the
+  scripts would be commanding an ambiguous pair of robots, and which one
+  answers is a race. **Do not run two arms on one domain.**
+
+  The stopgap today is to keep them apart: `swarm_env.sh` honours
+  `SWARM_DOMAIN_ID`, so a second arm and the terminals that talk to it can run
+  isolated:
+
+  ```bash
+  SWARM_DOMAIN_ID=43 source swarm_env.sh
+  ```
+
+  That isolates them; it does not let them cooperate. Real multi-arm work needs
+  per-robot namespaces (`/arm1/joint_states`, `/arm1/controller_manager`, …)
+  pushed through the launch files, the MoveIt config and every script that
+  hardcodes a topic or action name, plus a story for which arm a given script
+  is addressing. None of that exists. This is the single biggest piece of
+  future work for a project named "swarm".
+
+- **Peer IPs are hand-edited and DHCP moves them.** The address has already
+  changed three times (`172.30.6.165` → `172.30.11.51` → `172.30.11.42`). A
+  script that writes both configs from `hostname -I` would remove the most
+  common bring-up failure.
+
+- **RViz's Execute button cannot drive the real arm on Galactic** — planning
+  works, execution is rejected for zero time parameterization. Restoring it
+  means giving Galactic a working time-parameterization response adapter. The
+  Python scripts work around it; RViz cannot.
+
+- **Only red, green and blue have measured geometry.** Orange, yellow, purple
+  and cyan are detected but fall back to a generic 30 mm cube for height and
+  footprint, which feeds the grasp height and the clearance gate. Three caliper
+  readings per colour closes this.
 
 Confirmed working on hardware: a full autonomous colour stack, both blocks placed,
 level 0 centred and level 1 square on top, zero nudges (2026-08-12).
